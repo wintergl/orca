@@ -7,7 +7,10 @@ import { useAppStore } from '@/store'
 import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { translate } from '@/i18n/i18n'
-import { findOriginalAiVaultSessionPane } from './ai-vault-original-pane'
+import {
+  findOriginalAiVaultSessionPane,
+  originalPaneTargetMatchesCurrentAuthority
+} from './ai-vault-original-pane'
 import {
   createLazyAiVaultOriginalPaneIndex,
   findAiVaultSessionLiveStateInIndex,
@@ -28,7 +31,11 @@ export function useAiVaultOriginalPaneActions(): {
       retainedAgentsByPaneKey: s.retainedAgentsByPaneKey,
       sleepingAgentSessionsByPaneKey: s.sleepingAgentSessionsByPaneKey,
       tabsByWorktree: s.tabsByWorktree,
-      terminalLayoutsByTabId: s.terminalLayoutsByTabId
+      terminalLayoutsByTabId: s.terminalLayoutsByTabId,
+      folderWorkspaces: s.folderWorkspaces,
+      projectGroups: s.projectGroups,
+      repos: s.repos,
+      worktreesByRepo: s.worktreesByRepo
     }))
   )
   // Why: loading, filtered, or collapsed views may render no session rows.
@@ -53,6 +60,15 @@ export function useAiVaultOriginalPaneActions(): {
   const jumpToOriginalPane = useCallback((session: AiVaultSession): void => {
     const target = findOriginalAiVaultSessionPane(useAppStore.getState(), session)
     if (!target) {
+      toast.error(
+        translate(
+          'auto.components.right.sidebar.AiVaultPanel.originalPaneUnavailable',
+          'Original pane is no longer available.'
+        )
+      )
+      return
+    }
+    if (!originalPaneTargetMatchesCurrentAuthority(useAppStore.getState(), target)) {
       toast.error(
         translate(
           'auto.components.right.sidebar.AiVaultPanel.originalPaneUnavailable',

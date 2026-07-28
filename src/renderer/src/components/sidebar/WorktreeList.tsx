@@ -127,6 +127,7 @@ import {
   getWorktreeLineageAncestors
 } from './worktree-lineage-projection'
 import { getWorktreeIdsWithLiveAgent } from '@/lib/worktree-activity-state'
+import { getLiveAgentAutoRevealCollapsedGroups } from './live-agent-auto-reveal-groups'
 import { getEmptyProjectPlaceholderRepoIds } from './empty-project-placeholder-repos'
 import {
   getVisibleWorktreeBrowserActivityTabs,
@@ -5555,44 +5556,47 @@ const WorktreeList = React.memo(function WorktreeList({
   )
   const projectGroups = useAppStore((s) => s.projectGroups ?? EMPTY_PROJECT_GROUPS)
   const folderWorkspaces = useAppStore((s) => s.folderWorkspaces)
-  const effectiveCollapsedGroups = useMemo(() => {
+  const defaultHostId = getSettingsFocusedExecutionHostId(settings)
+  const liveAgentWorkspaceIds = useMemo(() => {
+    void agentStatusEpoch
+    return getWorktreeIdsWithLiveAgent(
+      useAppStore.getState().agentStatusByPaneKey,
+      tabsByWorktree,
+      Date.now()
+    )
+  }, [agentStatusEpoch, tabsByWorktree])
+  const autoRevealWorkspaceIds = useMemo(() => {
     if (!agentSendTargetWorktreeId) {
-      return collapsedGroups
+      return liveAgentWorkspaceIds
     }
-    const targetWorktree = worktreeMap.get(agentSendTargetWorktreeId)
-    if (!targetWorktree) {
-      return collapsedGroups
-    }
-    const next = new Set(collapsedGroups)
-    if (targetWorktree.isPinned) {
-      next.delete(PINNED_GROUP_KEY)
-    } else {
-      for (const groupKey of getGroupKeysForWorktree(
-        groupBy,
-        targetWorktree,
-        repoMap,
-        prCache,
-        workspaceStatuses,
-        settings,
-        projectGroups,
-        projectGrouping
-      )) {
-        next.delete(groupKey)
-      }
-    }
-
-    for (const parent of getWorktreeLineageAncestors(
-      targetWorktree,
-      worktreeLineageById,
-      worktreeMap
-    )) {
-      next.delete(getLineageGroupKey(parent.id))
-    }
+    const next = new Set(liveAgentWorkspaceIds)
+    next.add(agentSendTargetWorktreeId)
     return next
+  }, [agentSendTargetWorktreeId, liveAgentWorkspaceIds])
+  const effectiveCollapsedGroups = useMemo(() => {
+    return getLiveAgentAutoRevealCollapsedGroups({
+      collapsedGroups,
+      liveWorkspaceIds: autoRevealWorkspaceIds,
+      groupBy,
+      worktreeMap,
+      repoMap,
+      prCache,
+      workspaceStatuses,
+      settings,
+      projectGroups,
+      projectGrouping,
+      folderWorkspaces,
+      worktreeLineageById,
+      defaultHostId,
+      pinnedDisplayPolicy
+    })
   }, [
-    agentSendTargetWorktreeId,
+    autoRevealWorkspaceIds,
     collapsedGroups,
+    defaultHostId,
+    folderWorkspaces,
     groupBy,
+    pinnedDisplayPolicy,
     prCache,
     projectGroups,
     projectGrouping,
@@ -5602,7 +5606,6 @@ const WorktreeList = React.memo(function WorktreeList({
     worktreeLineageById,
     worktreeMap
   ])
-  const defaultHostId = getSettingsFocusedExecutionHostId(settings)
   const visibleHostIdSet = useMemo(
     () => getVisibleSidebarHostIdSet(visibleWorkspaceHostIds, workspaceHostScope),
     [visibleWorkspaceHostIds, workspaceHostScope]

@@ -172,6 +172,22 @@ describe('buildWorktreeAgentRows', () => {
     expect(rows[0].agentType).toBe('omp')
   })
 
+  it('normalizes live Codex hook rows from the launched Codex wrapper agent', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'codexdb', title: 'Codex ready' })],
+      entries: [
+        makeEntry(PANE_KEY_1, 1000, {
+          agentType: 'codex',
+          terminalTitle: 'Codex ready'
+        })
+      ],
+      retained: [],
+      now: 2000
+    })
+
+    expect(rows[0].agentType).toBe('codexdb')
+  })
+
   it('resolves retained unknown rows from the launched tab agent', () => {
     const retained = makeRetained(ORPHAN_PANE_KEY, 'wt-1', 1000, {
       entry: makeEntry(ORPHAN_PANE_KEY, 1000, {
@@ -243,11 +259,7 @@ describe('buildWorktreeAgentRows', () => {
     expect(rows.map((row) => row.paneKey)).toEqual(['tab-1:2', PANE_KEY_1])
   })
 
-  it('decays a stale working entry to idle but leaves a stale done entry alone', () => {
-    // Why: the freshness scheduler ticks agentStatusEpoch when an entry crosses
-    // the stale boundary; the row state machine must collapse working/blocked/
-    // waiting to idle but preserve done. Sleep is the most common path that
-    // freezes hook entries past their TTL.
+  it('removes stale hook-only rows until foreground or title evidence proves the pane is live', () => {
     const staleAt = 1000
     const freshDoneAt = 2000
     const now = staleAt + AGENT_STATUS_STALE_AFTER_MS + 1
@@ -261,10 +273,8 @@ describe('buildWorktreeAgentRows', () => {
       now
     })
 
-    const working = rows.find((r) => r.paneKey === PANE_KEY_1)
-    const done = rows.find((r) => r.paneKey === PANE_KEY_2)
-    expect(working?.state).toBe('idle')
-    expect(done?.state).toBe('done')
+    expect(rows.find((row) => row.paneKey === PANE_KEY_1)).toBeUndefined()
+    expect(rows.find((row) => row.paneKey === PANE_KEY_2)?.state).toBe('done')
   })
 
   it('renders live worktree-attributed entries even when their tab is absent', () => {
@@ -754,6 +764,9 @@ describe('applyAgentRowLineage', () => {
       tabs: [makeTab('tab-1')],
       entries: [entry],
       retained: [],
+      paneForegroundAgentByPaneKey: {
+        [PANE_KEY_1]: { agent: 'claude', shellForeground: false }
+      },
       now: 1000 + AGENT_STATUS_STALE_AFTER_MS + 1
     })
 

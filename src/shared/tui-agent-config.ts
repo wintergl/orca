@@ -1,6 +1,6 @@
 import type { TuiAgent } from './types'
 import { getOrcaCliCommandNameForPlatform } from './orca-cli-command-name'
-
+import { LOCAL_PROVIDER_TUI_AGENT_CONFIG } from './tui-agent-config-local-providers'
 export type AgentPromptInjectionMode =
   | 'argv'
   | 'flag-prompt'
@@ -8,7 +8,6 @@ export type AgentPromptInjectionMode =
   | 'flag-interactive'
   | 'hermes-query'
   | 'stdin-after-start'
-
 export type DraftPasteReadySignal =
   | 'render-quiet-after-bracketed-paste'
   | 'codex-composer-prompt'
@@ -277,22 +276,7 @@ export const TUI_AGENT_CONFIG: Record<TuiAgent, TuiAgentConfig> = {
     // Why: first-launch trust menu swallows the bracketed paste; pre-write trust so it skips (see agent-trust-presets.ts).
     preflightTrust: 'copilot'
   },
-  grok: {
-    detectCmd: 'grok',
-    launchCmd: 'grok',
-    expectedProcess: 'grok',
-    // Why: argv (grok takes a positional prompt) so multi-line/special-char text isn't mangled as raw PTY keystrokes.
-    promptInjectionMode: 'argv',
-    // Why: separator so prompts like `help`/`--version` aren't parsed as Grok CLI syntax.
-    argvPromptSeparator: '--'
-  },
-  devin: {
-    detectCmd: 'devin',
-    launchCmd: 'devin',
-    expectedProcess: 'devin',
-    // Why: `devin -- <prompt>` auto-submits immediately (docs.devin.ai/cli), so start the REPL with no argv prompt.
-    promptInjectionMode: 'stdin-after-start'
-  }
+  ...LOCAL_PROVIDER_TUI_AGENT_CONFIG
 }
 
 export function isTuiAgent(value: unknown): value is TuiAgent {

@@ -16,6 +16,8 @@ import { buildWorktreeAgentRows } from '../sidebar/worktree-agent-rows'
 import {
   selectLiveAgentStatusEntriesForWorktree,
   selectMigrationUnsupportedEntriesForWorktree,
+  selectPaneAgentLifecyclesForWorktree,
+  selectPaneForegroundAgentsForWorktree,
   selectRetainedAgentEntriesForWorktree,
   selectRuntimeAgentOrchestrationForWorktree,
   selectTerminalLayoutsForWorktree
@@ -46,7 +48,8 @@ export type DashboardSnapshotState = Pick<
   | 'runtimePaneTitlesByTabId'
   | 'acknowledgedAgentsByPaneKey'
   | 'settings'
->
+> &
+  Partial<Pick<AppState, 'paneForegroundAgentByPaneKey' | 'paneAgentLifecycleByPaneKey'>>
 
 function bucketForState(state: DashboardAgentRow['state']): DashboardBucket {
   switch (state) {
@@ -163,6 +166,8 @@ export function buildDashboardSnapshot(
           singletonOrchestration ??
           orchestrationByWorktree?.get(worktreeId) ??
           EMPTY_WORKTREE_AGENT_ORCHESTRATION,
+        paneForegroundAgentByPaneKey: selectPaneForegroundAgentsForWorktree(state, worktreeId),
+        paneAgentLifecycleByPaneKey: selectPaneAgentLifecyclesForWorktree(state, worktreeId),
         now
       })
     )
@@ -172,11 +177,8 @@ export function buildDashboardSnapshot(
       if (row.rowSource === 'subagent') {
         continue
       }
-      // Title-derived rows (a live pane read only from its terminal title, no
-      // agent-hook status) carry synthetic prompt/lastAssistantMessage — the
-      // agent LABEL and a status word like "Idle". They're marked by
-      // startedAt === 0, and must NOT be shown as real conversation.
-      const isTitleDerived = row.startedAt === 0
+      // Title-derived rows carry labels and status words, never provider conversation content.
+      const hasSyntheticContent = row.contentEvidence === 'synthetic'
       const routingPaneKey = row.activationPaneKey ?? row.paneKey
       const parsed = parsePaneKey(routingPaneKey)
       const tabId = parsed?.tabId ?? row.tab.id
@@ -201,22 +203,28 @@ export function buildDashboardSnapshot(
         agentType: row.agentType,
         bucket,
         dotState,
-        task: isTitleDerived ? '' : rowTask(row),
+        rowSource: row.rowSource ?? 'live',
+        presenceEvidence: row.presenceEvidence,
+        contentEvidence: row.contentEvidence,
+        agentLifecycleId: row.entry.agentLifecycleId ?? null,
+        task: hasSyntheticContent ? '' : rowTask(row),
         repoId: repo.id,
         worktreeId,
         tabId,
         leafId,
         repoName: repo.displayName,
         worktreeName: worktree.displayName,
-        lastUserMessage: isTitleDerived ? undefined : nonEmpty(row.entry.prompt),
-        lastAgentMessage: isTitleDerived ? undefined : nonEmpty(row.entry.lastAssistantMessage),
+        lastUserMessage: hasSyntheticContent ? undefined : nonEmpty(row.entry.prompt),
+        lastAgentMessage: hasSyntheticContent
+          ? undefined
+          : nonEmpty(row.entry.lastAssistantMessage),
         startedAt: row.startedAt,
         finishedAt: lastEnteredDoneAt(row),
         stateChangedAt: row.entry.stateStartedAt || row.startedAt,
         // Same derivation as WorktreeCardAgents' unvisitedByPaneKey, so the
         // board and the sidebar bold/mute the same agents at the same time.
         unseen:
-          !isTitleDerived &&
+          !hasSyntheticContent &&
           (state.acknowledgedAgentsByPaneKey?.[row.paneKey] ?? 0) < row.entry.stateStartedAt,
         askSummary: bucket === 'attention' ? (row.entry.interactivePrompt ?? undefined) : undefined,
         conversationName: rowConversationName(row, generatedTitlesEnabled)

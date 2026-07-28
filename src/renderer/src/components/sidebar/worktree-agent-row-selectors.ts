@@ -14,10 +14,13 @@ import {
 } from './worktree-agent-live-index-patch'
 import { selectWorktreeAgentOrchestration } from './worktree-agent-orchestration-index'
 import type { TerminalLayoutSnapshot } from '../../../../shared/types'
+import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
+import type { PaneAgentLifecycle } from '@/store/slices/pane-agent-lifecycle'
 
 const EMPTY_LIVE_ENTRIES: AgentStatusEntry[] = []
 const EMPTY_MIGRATION_UNSUPPORTED_ENTRIES: MigrationUnsupportedPtyEntry[] = []
 const EMPTY_RETAINED: RetainedAgentEntry[] = []
+const EMPTY_PANE_FOREGROUND_AGENTS: Record<string, PaneForegroundAgentEntry> = {}
 // Why: selector unit tests often pass partial store mocks; production state
 // owns these maps, but missing mock maps should behave like empty slices.
 const EMPTY_RECORD = {}
@@ -227,6 +230,21 @@ export function selectRetainedAgentEntriesForWorktree(
   return getRetainedEntriesByWorktree(state).get(worktreeId) ?? EMPTY_RETAINED
 }
 
+export function selectPaneAgentLifecyclesForWorktree(
+  state: Pick<AppState, 'tabsByWorktree'> & Partial<Pick<AppState, 'paneAgentLifecycleByPaneKey'>>,
+  worktreeId: string
+): Record<string, PaneAgentLifecycle> {
+  const tabIds = new Set((state.tabsByWorktree[worktreeId] ?? []).map((tab) => tab.id))
+  const lifecycles: Record<string, PaneAgentLifecycle> = {}
+  for (const [paneKey, lifecycle] of Object.entries(state.paneAgentLifecycleByPaneKey ?? {})) {
+    const pane = parsePaneKey(paneKey)
+    if (pane && tabIds.has(pane.tabId)) {
+      lifecycles[paneKey] = lifecycle
+    }
+  }
+  return lifecycles
+}
+
 // Why: reads a shared worktree-keyed index instead of rescanning every
 // orchestration context. Zustand re-runs each mounted card's selector on every
 // publication, so the old per-card scan was O(cards x contexts) on unrelated
@@ -253,4 +271,25 @@ export function selectTerminalLayoutsForWorktree(
     out[tab.id] = (state.terminalLayoutsByTabId ?? EMPTY_RECORD)[tab.id]
   }
   return out
+}
+
+export function selectPaneForegroundAgentsForWorktree(
+  state: Pick<AppState, 'tabsByWorktree'> & Partial<Pick<AppState, 'paneForegroundAgentByPaneKey'>>,
+  worktreeId: string
+): Record<string, PaneForegroundAgentEntry> {
+  const tabs = (state.tabsByWorktree ?? EMPTY_RECORD)[worktreeId] ?? []
+  if (tabs.length === 0) {
+    return EMPTY_PANE_FOREGROUND_AGENTS
+  }
+  const tabIds = new Set(tabs.map((tab) => tab.id))
+  const out: Record<string, PaneForegroundAgentEntry> = {}
+  for (const [paneKey, entry] of Object.entries(
+    state.paneForegroundAgentByPaneKey ?? EMPTY_PANE_FOREGROUND_AGENTS
+  )) {
+    const parsed = parsePaneKey(paneKey)
+    if (parsed && tabIds.has(parsed.tabId)) {
+      out[paneKey] = entry
+    }
+  }
+  return Object.keys(out).length > 0 ? out : EMPTY_PANE_FOREGROUND_AGENTS
 }

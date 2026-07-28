@@ -19,6 +19,7 @@ import { resolveDropZone } from './tab-drop-zone'
 import type { TabDropZone } from './useTabDragSplit'
 import { translate } from '@/i18n/i18n'
 import { isLegacySharedCodexHome } from '../../../../shared/ai-vault-resume-preparation'
+import { isCodexRuntimeAgentType } from '../../../../shared/codex-wrapper-agent'
 
 type PaneDropTarget = {
   groupId: string
@@ -210,7 +211,7 @@ export default function AiVaultSessionDropLayer({
         )
       }
       const preparation =
-        payload.agent === 'codex' &&
+        isCodexRuntimeAgentType(payload.agent) &&
         isLegacySharedCodexHome(payload.codexHome ?? null) &&
         payload.sessionFilePath &&
         payload.sessionExecutionHostId &&

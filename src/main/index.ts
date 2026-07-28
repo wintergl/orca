@@ -73,6 +73,7 @@ import {
 } from './updater'
 import { configureRemoteServerUpdater } from './runtime/remote-server-updater'
 import type { TuiAgent, UpdateCheckOptions } from '../shared/types'
+import { isCodexRuntimeAgentType } from '../shared/codex-wrapper-agent'
 import { recordUpdaterLifecycle } from './updater-lifecycle-diagnostics'
 import {
   installServeSupervisorDisconnectQuit,
@@ -786,7 +787,7 @@ function prepareCodexRuntimeHomeForLaunch(
 ): string | null {
   if (
     target?.runtime !== 'wsl' &&
-    launchContext?.launchAgent === 'codex' &&
+    isCodexRuntimeAgentType(launchContext?.launchAgent) &&
     launchContext.workspacePath
   ) {
     try {

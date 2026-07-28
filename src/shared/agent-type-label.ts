@@ -6,6 +6,8 @@ const WELL_KNOWN_LABELS: Record<string, string> = {
   claude: 'Claude',
   openclaude: 'OpenClaude',
   codex: 'Codex',
+  codexdb: 'Codex (Doubao Coding)',
+  codexdba: 'Codex (Doubao Agent)',
   gemini: 'Gemini',
   antigravity: 'Antigravity',
   amp: 'Amp',

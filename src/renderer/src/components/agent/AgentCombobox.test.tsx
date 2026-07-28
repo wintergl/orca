@@ -56,8 +56,8 @@ describe('AgentCombobox', () => {
       expect(markup).toContain(agent.label)
       expect(markup).toContain('size-3.5 shrink-0')
       expect(markup).not.toContain('translate-y')
-      expect(markup).toContain('width="14"')
-      expect(markup).toContain('height="14"')
+      expect(markup).toMatch(/(?:width="14"|width:14px)/)
+      expect(markup).toMatch(/(?:height="14"|height:14px)/)
     }
   })
 
@@ -93,6 +93,17 @@ describe('AgentCombobox', () => {
     expect(markup).not.toContain('/resources/opencode.webp')
     expect(markup).not.toContain('https://www.google.com/s2/favicons')
     expect(markup).not.toContain('<img')
+  })
+
+  it('renders distinct profile icons for Codex Doubao wrappers', () => {
+    const coding = renderToStaticMarkup(<AgentIcon agent="codexdb" />)
+    const agent = renderToStaticMarkup(<AgentIcon agent="codexdba" />)
+    const codex = renderToStaticMarkup(<AgentIcon agent="codex" />)
+
+    expect(coding).toContain('data-agent-profile-icon="codexdb"')
+    expect(agent).toContain('data-agent-profile-icon="codexdba"')
+    expect(codex).not.toContain('data-agent-profile-icon')
+    expect(coding).not.toEqual(agent)
   })
 
   it('renders bundled favicons for favicon-domain agents instead of the remote Google service', () => {

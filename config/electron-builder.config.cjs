@@ -16,9 +16,11 @@ const { writeMacBuildCompatibility } = require('./scripts/mac-build-compatibilit
 const { verifyPackagedPluginResources } = require('./scripts/verify-packaged-plugin-resources.cjs')
 
 const isMacRelease = process.env.ORCA_MAC_RELEASE === '1'
+const isMacLocalBuild = process.env.ORCA_MAC_LOCAL_BUILD === '1' && !isMacRelease
 const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
 const localBuildVersion = isMacRelease ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
-const appId = 'com.stablyai.orca'
+const appId = isMacLocalBuild ? 'com.stablyai.orca.dev' : 'com.stablyai.orca'
+const productName = isMacLocalBuild ? 'Orca Dev' : 'Orca'
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -63,7 +65,7 @@ const winSpeechNativeResource = {
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId,
-  productName: 'Orca',
+  productName,
   ...(localBuildVersion ? { extraMetadata: { version: localBuildVersion } } : {}),
   directories: {
     buildResources: 'resources/build'
@@ -204,7 +206,10 @@ module.exports = {
     const archEnumByNodeArch = { ia32: 0, x64: 1, armv7l: 2, arm64: 3 }
     const hostArchEnum = archEnumByNodeArch[process.arch]
     if (context.arch === hostArchEnum || context.arch === 4) {
-      verifyPackagedDaemonEntryBoots(resourcesDir)
+      verifyPackagedDaemonEntryBoots(resourcesDir, {
+        // Why: local macOS packaging competes with large DMG/native rebuild I/O; keep release gating unchanged but avoid false local ETIMEDOUT failures.
+        timeoutMs: isMacLocalBuild ? 60_000 : undefined
+      })
     } else {
       // Why: a cross-arch slice can't be booted by the host Node, but the
       // unpacked entry must still exist — its absence is a layout regression
@@ -355,7 +360,7 @@ module.exports = {
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
   forceCodeSigning: isMacRelease,
   dmg: {
-    artifactName: 'orca-macos-${arch}.${ext}'
+    artifactName: isMacLocalBuild ? 'orca-macos-dev-${arch}.${ext}' : 'orca-macos-${arch}.${ext}'
   },
   linux: {
     // Why: Ubuntu desktop ships GNOME Orca as the `orca` package and /usr/bin/orca.

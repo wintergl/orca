@@ -11,6 +11,7 @@ import {
   sshConnectionStatesEqual,
   sshTargetLabelsEqual
 } from './ssh-target-cleanup'
+import { markPaneAgentLifecyclesTransportDisconnected } from './pane-agent-transport-disconnect'
 
 export type RemoteWorkspaceSyncStatus = {
   phase: 'idle' | 'pulling' | 'pushing' | 'synced' | 'conflict' | 'error' | 'offline'
@@ -94,7 +95,7 @@ export const createSshSlice: StateCreator<AppState, [], [], SshSlice> = (set) =>
   portForwardsByConnection: {},
   detectedPortsByConnection: {},
 
-  setSshConnectionState: (targetId, state) =>
+  setSshConnectionState: (targetId, state) => {
     set((s) => {
       const next = new Map(s.sshConnectionStates)
       const previous = next.get(targetId)
@@ -109,14 +110,29 @@ export const createSshSlice: StateCreator<AppState, [], [], SshSlice> = (set) =>
         blockedConnections = { ...blockedConnections }
         delete blockedConnections[targetId]
       }
+      const transportLost = [
+        'disconnected',
+        'auth-failed',
+        'reconnection-failed',
+        'error'
+      ].includes(state.status)
       return {
         sshConnectionStates: next,
         sshConnectedGeneration: didReconnect
           ? s.sshConnectedGeneration + 1
           : s.sshConnectedGeneration,
-        transientClearedAgentStatusConnectionIds: blockedConnections
+        transientClearedAgentStatusConnectionIds: blockedConnections,
+        ...(transportLost
+          ? {
+              paneAgentLifecycleByPaneKey: markPaneAgentLifecyclesTransportDisconnected(
+                s.paneAgentLifecycleByPaneKey,
+                targetId
+              )
+            }
+          : {})
       }
-    }),
+    })
+  },
 
   setSshTargetLabels: (labels) => set({ sshTargetLabels: labels }),
   setRemovedSshTargetLabels: (labels) =>

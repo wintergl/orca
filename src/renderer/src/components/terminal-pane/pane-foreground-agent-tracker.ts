@@ -4,7 +4,10 @@ import {
 } from '../../../../shared/agent-process-recognition'
 import { isShellProcess } from '../../../../shared/shell-process-detection'
 import type { TuiAgent } from '../../../../shared/types'
-import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
+import type {
+  PaneForegroundAgentAuthority,
+  PaneForegroundAgentEntry
+} from '@/store/slices/pane-foreground-agent'
 
 // Why: settle after exec, then place the final generic retry beyond sequential
 // 3s PowerShell and WMIC enrichment scans.
@@ -22,6 +25,8 @@ type PaneForegroundAgentTrackerDeps = {
   /** Fresh, provider-owned evidence used only when input routing may change. */
   confirmForegroundProcess?: (ptyId: string) => Promise<string | null>
   publish: (entry: PaneForegroundAgentEntry) => void
+  /** Captures the current pane authority before an async process read begins. */
+  captureAuthority?: (ptyId: string) => PaneForegroundAgentAuthority | undefined
   /** True when the pane is otherwise known to run an agent (launchAgent, live
    *  hook status). Lets a restored agent pane confirm — rather than trust — a
    *  133;D before any command-start read has recorded its own evidence. */
@@ -62,6 +67,13 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
   // cannot remove the identity that authorizes the bounded retry ladder.
   let hasKnownAgentEvidence = false
   let hasAgentExpectation = false
+
+  const publish = (
+    entry: Omit<PaneForegroundAgentEntry, 'authority'>,
+    authority?: PaneForegroundAgentAuthority
+  ): void => {
+    deps.publish(authority ? { ...entry, authority } : entry)
+  }
 
   const trackablePtyId = (): string | null => {
     const ptyId = deps.getPtyId()
@@ -106,6 +118,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     if (disposed || generation !== readGeneration || !ptyId) {
       return
     }
+    const authority = deps.captureAuthority?.(ptyId)
     let processName: string | null = null
     const requiresRoutingConfirmation =
       reason === 'command-finished' ||
@@ -128,11 +141,14 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     if (recognized) {
       hasForegroundAgentEvidence = true
       hasAgentExpectation = false
-      deps.publish({
-        agent: recognized.agent,
-        shellForeground: false,
-        ...(requiresRoutingConfirmation ? { routingTrusted: true } : {})
-      })
+      publish(
+        {
+          agent: recognized.agent,
+          shellForeground: false,
+          ...(requiresRoutingConfirmation ? { routingTrusted: true } : {})
+        },
+        authority
+      )
       if (reason === 'visible-pty') {
         deps.onVisibleForegroundSettled?.('agent')
       }
@@ -160,7 +176,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     }
     if (reason === 'command') {
       hasAgentExpectation = false
-      deps.publish({ agent: null, shellForeground: false })
+      publish({ agent: null, shellForeground: false }, authority)
       return
     }
     if (reason === 'visible-pty') {
@@ -172,7 +188,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
         hasForegroundAgentEvidence = false
         hasKnownAgentEvidence = false
         hasAgentExpectation = false
-        deps.publish({ agent: null, shellForeground: true })
+        publish({ agent: null, shellForeground: true }, authority)
         deps.onConfirmedShellForeground?.(reason)
         deps.onVisibleForegroundSettled?.('shell')
       } else {
@@ -187,7 +203,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
         hasForegroundAgentEvidence = false
         hasKnownAgentEvidence = false
         hasAgentExpectation = false
-        deps.publish({ agent: null, shellForeground: false })
+        publish({ agent: null, shellForeground: false }, authority)
         deps.onCommandFinishedUnavailable?.()
         return
       }
@@ -200,7 +216,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       hasForegroundAgentEvidence = false
       hasKnownAgentEvidence = false
       hasAgentExpectation = false
-      deps.publish({ agent: null, shellForeground: true })
+      publish({ agent: null, shellForeground: true }, authority)
       // Why: confirmed exit — let callers clear a stale agent title the shell
       // won't repaint (a plain `codex`/`grok` leaves its OSC title behind).
       deps.onConfirmedShellForeground?.(reason)
@@ -233,7 +249,8 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     },
     onCommandStarted(expectedAgent = null) {
       cancelPendingRead()
-      if (!trackablePtyId()) {
+      const ptyId = trackablePtyId()
+      if (!ptyId) {
         return
       }
       const alreadyHasKnownIdentity = deps.hasKnownAgentIdentity?.() === true
@@ -243,7 +260,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       }
       // Why: every new command invalidates the previous byte-routing authority.
       // Launch/hook identity remains only an expectation until fresh evidence.
-      deps.publish({ agent: null, shellForeground: false })
+      publish({ agent: null, shellForeground: false }, deps.captureAuthority?.(ptyId))
       scheduleRead(COMMAND_SETTLE_MS, 0, 'command')
     },
     onCommandFinished() {
@@ -261,14 +278,15 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       // sampleVisiblePaneForegroundAgent gate would then latch, permanently hiding
       // an idle reattached agent's icon (the "codex reattached at rest" bug).
       cancelPendingRead()
-      if (!trackablePtyId()) {
+      const ptyId = trackablePtyId()
+      if (!ptyId) {
         return false
       }
       // Why: trust the 133;D and mark shell without an RPC only when nothing hints
       // at an agent — no prior agent evidence, no launch/hook identity, and no
       // identity read racing this finish.
       if (!hasForegroundAgentEvidence && !hasKnownAgentEvidence && !hasAgentExpectation) {
-        deps.publish({ agent: null, shellForeground: true })
+        publish({ agent: null, shellForeground: true }, deps.captureAuthority?.(ptyId))
         return false
       }
       // Why: confirm the foreground before clearing — if the agent still owns it,

@@ -32,6 +32,70 @@ describe('pane foreground agent slice', () => {
     expect(store.getState().paneForegroundAgentByPaneKey).toEqual({})
   })
 
+  it('ignores an old PTY teardown after the pane has been rebound', () => {
+    const store = createTestStore()
+    const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    store.getState().setPaneForegroundAgent(paneKey, { agent: 'codex', shellForeground: false })
+    const original = store.getState().observePaneAgentLifecycle({
+      paneKey,
+      executionHostId: 'local',
+      ptyId: 'pty-old',
+      runtimeAgent: 'codex',
+      observedAt: 10
+    })
+    const replacement = store.getState().dispatchPaneAgentLifecycleEvent({
+      type: 'pty-replaced',
+      paneKey,
+      executionHostId: 'local',
+      ptyId: 'pty-new',
+      runtimeAgent: 'codex',
+      authorityRevision: original!.authorityRevision + 1,
+      observedAt: 20
+    })
+
+    store.getState().clearPaneForegroundAgent(paneKey, { ptyId: 'pty-old' })
+
+    expect(store.getState().paneForegroundAgentByPaneKey[paneKey]).toEqual({
+      agent: 'codex',
+      shellForeground: false
+    })
+    expect(store.getState().paneAgentLifecycleByPaneKey[paneKey]).toBe(replacement)
+  })
+
+  it('rejects a late shell sample through the foreground entrypoint', () => {
+    const store = createTestStore()
+    const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const original = store.getState().observePaneAgentLifecycle({
+      paneKey,
+      executionHostId: 'local',
+      ptyId: 'pty-old',
+      runtimeAgent: 'codex',
+      observedAt: 10
+    })!
+    const replacement = store.getState().dispatchPaneAgentLifecycleEvent({
+      type: 'pty-replaced',
+      paneKey,
+      executionHostId: 'local',
+      ptyId: 'pty-new',
+      runtimeAgent: 'claude',
+      authorityRevision: original.authorityRevision + 1,
+      observedAt: 20
+    })!
+
+    store.getState().setPaneForegroundAgent(paneKey, {
+      agent: null,
+      shellForeground: true,
+      authority: {
+        ptyId: 'pty-old',
+        lifecycleId: original.id,
+        authorityRevision: original.authorityRevision
+      }
+    })
+
+    expect(store.getState().paneAgentLifecycleByPaneKey[paneKey]).toBe(replacement)
+    expect(store.getState().paneForegroundAgentByPaneKey[paneKey]).toBeUndefined()
+  })
+
   it('sweeps only the closed tab prefix, not sibling tabs or prefix-share ids', () => {
     const store = createTestStore()
     store

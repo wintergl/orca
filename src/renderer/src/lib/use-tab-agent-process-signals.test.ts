@@ -37,7 +37,21 @@ async function renderHookProbe(tab: TerminalTab): Promise<Root> {
 
 async function setPaneForeground(entry: PaneForegroundAgentEntry): Promise<void> {
   await act(async () => {
-    useAppStore.getState().setPaneForegroundAgent(PANE_KEY, entry)
+    const state = useAppStore.getState()
+    const lifecycle = state.paneAgentLifecycleByPaneKey[PANE_KEY]
+    state.setPaneForegroundAgent(
+      PANE_KEY,
+      lifecycle?.ptyId
+        ? {
+            ...entry,
+            authority: {
+              ptyId: lifecycle.ptyId,
+              lifecycleId: lifecycle.id,
+              authorityRevision: lifecycle.authorityRevision
+            }
+          }
+        : entry
+    )
   })
 }
 

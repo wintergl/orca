@@ -101,6 +101,35 @@ describe('MiMo title detection', () => {
   )
 })
 
+describe('Codex wrapper title detection', () => {
+  it.each([
+    ['codexdb ready', 'Codex (Doubao Coding)'],
+    ['codexdba working', 'Codex (Doubao Agent)']
+  ] as const)('classifies %s as %s', (title, expectedLabel) => {
+    expect(getAgentLabel(title)).toBe(expectedLabel)
+  })
+
+  it('normalizes Codex hook status identity to the launched wrapper owner', () => {
+    const status = normalizeCompatibleAgentStatusEntryForOwner(
+      {
+        state: 'working',
+        prompt: '',
+        updatedAt: 1,
+        stateStartedAt: 1,
+        agentType: 'codex',
+        paneKey: 'tab-1:leaf-1',
+        terminalTitle: 'Codex ready',
+        stateHistory: []
+      },
+      'codexdb'
+    )
+
+    expect(status.agentType).toBe('codexdb')
+    expect(status.terminalTitle).toBe('Codex ready')
+    expect(resolveCompatibleAgentTypeForOwner('codex', 'codexdba')).toBe('codexdba')
+  })
+})
+
 describe('Pi-compatible title detection', () => {
   it.each([
     ['\u280b OMP', 'OMP', 'working'],

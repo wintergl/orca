@@ -10,6 +10,8 @@ import {
 describe('agent session resume metadata', () => {
   it('treats devin as a resumable TUI agent', () => {
     expect(isResumableTuiAgent('devin')).toBe(true)
+    expect(isResumableTuiAgent('codexdb')).toBe(true)
+    expect(isResumableTuiAgent('codexdba')).toBe(true)
   })
 
   it('treats omp as a resumable TUI agent', () => {
@@ -43,6 +45,8 @@ describe('agent session resume metadata', () => {
   it.each([
     ['claude', { key: 'session_id', id: 's1' }, ['claude', '--resume', 's1']],
     ['codex', { key: 'session_id', id: 's1' }, ['codex', 'resume', 's1']],
+    ['codexdb', { key: 'session_id', id: 's1' }, ['codexdb', 'resume', 's1']],
+    ['codexdba', { key: 'session_id', id: 's1' }, ['codexdba', 'resume', 's1']],
     ['gemini', { key: 'session_id', id: 's1' }, ['gemini', '--resume', 's1']],
     ['antigravity', { key: 'conversation_id', id: 's1' }, ['agy', '--conversation', 's1']],
     ['opencode', { key: 'session_id', id: 's1' }, ['opencode', '--session', 's1']],

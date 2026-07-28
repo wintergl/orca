@@ -239,7 +239,26 @@ describe('buildDashboardSnapshot', () => {
     }
   )
 
-  it('decays a stale working agent to the idle bucket', () => {
+  it('decays stale hook state to idle only with live foreground evidence', () => {
+    const snapshot = buildDashboardSnapshot(
+      baseState({
+        agentStatusByPaneKey: {
+          [PANE_KEY]: entry({
+            state: 'working',
+            updatedAt: NOW - AGENT_STATUS_STALE_AFTER_MS - 1000
+          })
+        },
+        paneForegroundAgentByPaneKey: {
+          [PANE_KEY]: { agent: 'claude', shellForeground: false }
+        }
+      }),
+      NOW
+    )
+    expect(snapshot.cards[0].bucket).toBe('idle')
+    expect(snapshot.cards[0].dotState).toBe('idle')
+  })
+
+  it('does not create an idle card from stale hook state alone', () => {
     const snapshot = buildDashboardSnapshot(
       baseState({
         agentStatusByPaneKey: {
@@ -251,8 +270,8 @@ describe('buildDashboardSnapshot', () => {
       }),
       NOW
     )
-    expect(snapshot.cards[0].bucket).toBe('idle')
-    expect(snapshot.cards[0].dotState).toBe('idle')
+
+    expect(snapshot.cards).toEqual([])
   })
 
   it('folds retained done agents into the idle bucket, keeping a done dot', () => {

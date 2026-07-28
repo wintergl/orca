@@ -56,7 +56,7 @@ export function isNativeChatSkillForAgent(
   }
   if (!result) {
     return (
-      agent === 'codex' &&
+      profile.skillSourceOwner === 'codex' &&
       (skill.providers.includes('codex') || skill.providers.includes('agent-skills'))
     )
   }

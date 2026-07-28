@@ -35,6 +35,13 @@ const SESSION: AiVaultSession = {
   subagent: null
 }
 
+const LOCAL_HOST_STATE = {
+  folderWorkspaces: [],
+  projectGroups: [],
+  repos: [{ id: 'repo-1', executionHostId: 'local' }],
+  worktreesByRepo: { 'repo-1': [{ id: 'wt-1', repoId: 'repo-1', hostId: 'local' }] }
+}
+
 function countedRecord<T>(count: number, makeValue: (index: number) => T) {
   const reads = { value: 0 }
   const record: Record<string, T> = {}
@@ -199,6 +206,7 @@ describe('AI Vault original-pane index', () => {
       providerSession: { key: 'session_id', id: 'retained-direct' }
     } as AgentStatusEntry
     const state = {
+      ...LOCAL_HOST_STATE,
       agentStatusByPaneKey: {
         [liveDirect.paneKey]: liveDirect,
         [livePrompt.paneKey]: livePrompt
@@ -250,5 +258,66 @@ describe('AI Vault original-pane index', () => {
         findAiVaultSessionLiveState(state, session)
       )
     }
+  })
+
+  it('indexes Codex wrapper runtime agents under Codex Vault sessions', () => {
+    const leafId = '55555555-5555-4555-8555-555555555555'
+    const paneKey = `tab-wrapper:${leafId}`
+    const entry = {
+      ...unrelatedEntry(1),
+      agentType: 'codexdb',
+      paneKey,
+      tabId: 'tab-wrapper',
+      worktreeId: 'wt-1',
+      state: 'waiting',
+      providerSession: { key: 'session_id', id: 'target-session' }
+    } as AgentStatusEntry
+    const state = {
+      ...LOCAL_HOST_STATE,
+      agentStatusByPaneKey: { [paneKey]: entry },
+      retainedAgentsByPaneKey: {},
+      sleepingAgentSessionsByPaneKey: {},
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-wrapper', worktreeId: 'wt-1' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-wrapper': {
+          root: { type: 'leaf', leafId },
+          activeLeafId: leafId,
+          expandedLeafId: null,
+          ptyIdsByLeafId: { [leafId]: 'pty-wrapper' }
+        }
+      }
+    } as never
+    const index = buildAiVaultOriginalPaneIndex(state)
+
+    expect(findAiVaultSessionLiveStateInIndex(index, SESSION)).toBe('waiting')
+    expect(findOriginalAiVaultSessionPaneInIndex(index, SESSION)?.paneKey).toBe(paneKey)
+  })
+
+  it('does not reuse a matching provider session from another execution host', () => {
+    const remote = {
+      ...unrelatedEntry(1),
+      agentType: 'codex',
+      executionHostId: 'ssh:worker-a',
+      providerSession: { key: 'session_id', id: SESSION.sessionId },
+      state: 'waiting'
+    } as AgentStatusEntry
+    const local = {
+      ...unrelatedEntry(2),
+      agentType: 'codex',
+      executionHostId: 'local',
+      providerSession: { key: 'session_id', id: SESSION.sessionId },
+      state: 'working'
+    } as AgentStatusEntry
+    const index = buildAiVaultOriginalPaneIndex({
+      agentStatusByPaneKey: { remote, local },
+      retainedAgentsByPaneKey: {},
+      sleepingAgentSessionsByPaneKey: {},
+      tabsByWorktree: {},
+      terminalLayoutsByTabId: {}
+    } as never)
+
+    expect(findAiVaultSessionLiveStateInIndex(index, SESSION)).toBe('working')
   })
 })

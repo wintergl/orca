@@ -17,6 +17,8 @@ export const AGENT_NAMES = [
   'claude',
   'openclaude',
   'codex',
+  'codexdb',
+  'codexdba',
   'copilot',
   'cursor',
   'gemini',

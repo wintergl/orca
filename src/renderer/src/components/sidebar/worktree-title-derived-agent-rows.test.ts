@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyAgentRowLineage } from '@/components/dashboard/agent-row-lineage'
 import type { TerminalLayoutSnapshot, TerminalTab, TuiAgent } from '../../../../shared/types'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { AGENT_STATUS_STALE_AFTER_MS } from '../../../../shared/agent-status-types'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
 
 const LEAF_ID_1 = '77777777-7777-4777-8777-777777777777'
@@ -67,6 +68,62 @@ describe('buildTitleDerivedAgentRows', () => {
       makePaneKey('tab-1', LEAF_ID_1),
       makePaneKey('tab-1', LEAF_ID_2)
     ])
+  })
+
+  it('lets live title evidence replace a stale hook row for the same Pane', () => {
+    const paneKey = makePaneKey('tab-1', LEAF_ID_1)
+    const now = AGENT_STATUS_STALE_AFTER_MS + 2_000
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1')],
+      entries: [
+        {
+          paneKey,
+          state: 'waiting',
+          prompt: 'Old permission request',
+          updatedAt: 1,
+          stateStartedAt: 1,
+          stateHistory: [],
+          agentType: 'codex',
+          lastAssistantMessage: 'Older provider summary',
+          providerSession: { key: 'session_id', id: 'session-1' },
+          agentLifecycleId: 'lifecycle-1',
+          agentSessionStartedAt: 1
+        }
+      ],
+      retained: [],
+      runtimePaneTitlesByTabId: { 'tab-1': { 1: '⠋ Codex' } },
+      ptyIdsByTabId: { 'tab-1': ['ssh:host-a@@pty-1'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      paneAgentLifecycleByPaneKey: {
+        [paneKey]: {
+          id: 'lifecycle-1',
+          startedAt: 1,
+          paneKey,
+          executionHostId: 'ssh:host-a',
+          connectionId: 'host-a',
+          ptyId: 'ssh:host-a@@pty-1',
+          runtimeAgent: 'codex',
+          providerSessionId: 'session-1',
+          launchToken: null,
+          phase: 'active',
+          authorityRevision: 1
+        }
+      },
+      now
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      rowSource: 'title',
+      presenceEvidence: 'live-title',
+      contentEvidence: 'provider',
+      state: 'working',
+      entry: {
+        lastAssistantMessage: 'Older provider summary',
+        agentLifecycleId: 'lifecycle-1',
+        executionHostId: 'ssh:host-a'
+      }
+    })
   })
 
   it('normalizes Pi-compatible title-derived rows to the launched OMP owner', () => {
@@ -236,6 +293,84 @@ describe('buildTitleDerivedAgentRows', () => {
     })
 
     expect(rows.map((row) => [row.agentType, row.state])).toEqual([['codex', 'working']])
+  })
+
+  it('normalizes Codex title fallback rows to the launched wrapper owner', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'codexdba' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'Codex ready' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-codexdba'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state, row.entry.prompt])).toEqual([
+      ['codexdba', 'idle', 'Codex (Doubao Agent)']
+    ])
+  })
+
+  it('recognizes explicit Codex wrapper titles without hook status', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1')],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'codexdb ready' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-codexdb'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state, row.entry.prompt])).toEqual([
+      ['codexdb', 'idle', 'Codex (Doubao Coding)']
+    ])
+  })
+
+  it('keeps a launched Codex wrapper visible from foreground process identity', () => {
+    const paneKey = makePaneKey('tab-1', LEAF_ID_1)
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'codexdb' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'demo-repo' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-codexdb'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      paneForegroundAgentByPaneKey: {
+        [paneKey]: { agent: 'codex', shellForeground: false }
+      },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state, row.entry.prompt])).toEqual([
+      ['codexdb', 'idle', 'Codex (Doubao Coding)']
+    ])
+  })
+
+  it('does not keep a foreground-derived wrapper row after shell foreground is confirmed', () => {
+    const paneKey = makePaneKey('tab-1', LEAF_ID_1)
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'codexdba' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'demo-repo' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-codexdba'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      paneForegroundAgentByPaneKey: {
+        [paneKey]: { agent: 'codex', shellForeground: true }
+      },
+      now: 2000
+    })
+
+    expect(rows).toHaveLength(0)
   })
 
   it('produces no row for a spinner-only title when the tab has no launch identity', () => {

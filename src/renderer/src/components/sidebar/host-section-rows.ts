@@ -2,8 +2,6 @@ import {
   ALL_EXECUTION_HOSTS_SCOPE,
   LOCAL_EXECUTION_HOST_ID,
   getLocalExecutionHostLabel,
-  getRepoExecutionHostId,
-  getWorktreeExecutionHostId,
   type ExecutionHostId,
   type ExecutionHostKind,
   type ExecutionHostScope
@@ -11,8 +9,12 @@ import {
 import type { ExecutionHostHealth } from '../../../../shared/execution-host-registry'
 import type { RuntimeCompatVerdict } from '../../../../shared/protocol-compat'
 import type { SshConnectionStatus } from '../../../../shared/ssh-types'
-import type { FolderWorkspace, ProjectGroup, Repo } from '../../../../shared/types'
 import type { Row } from './worktree-list-groups'
+import {
+  getFolderWorkspaceExecutionHostIdForRows,
+  getRepoExecutionHostIdForRows,
+  getWorktreeExecutionHostIdForRows
+} from './workspace-host-resolution'
 
 export type HostHeaderRow = {
   type: 'host-header'
@@ -42,43 +44,26 @@ export type HostSectionOption = {
   connectionStatus?: SshConnectionStatus
 }
 
-function getRepoHostId(
-  repo: Pick<Repo, 'connectionId' | 'executionHostId'> | undefined,
-  defaultHostId: ExecutionHostId
-): ExecutionHostId {
-  // Why: explicit executionHostId must win over the focused/default host, or
-  // runtime-owned repos group under whichever host happens to be focused.
-  if (repo?.connectionId || repo?.executionHostId) {
-    return getRepoExecutionHostId(repo)
-  }
-  return defaultHostId
-}
-
-function getSshHostId(connectionId: string): ExecutionHostId {
-  return `ssh:${encodeURIComponent(connectionId)}` as ExecutionHostId
-}
-
-function getFolderWorkspaceHostId(
-  folderWorkspace: Pick<FolderWorkspace, 'connectionId'>,
-  projectGroup: Pick<ProjectGroup, 'connectionId'>,
-  defaultHostId: ExecutionHostId
-): ExecutionHostId {
-  const connectionId = folderWorkspace.connectionId ?? projectGroup.connectionId
-  return connectionId ? getSshHostId(connectionId) : defaultHostId
-}
-
 function getRowHostId(row: Row, defaultHostId: ExecutionHostId): ExecutionHostId | null {
   switch (row.type) {
     case 'item':
-      return getWorktreeExecutionHostId(row.worktree, row.repo, defaultHostId)
+      return getWorktreeExecutionHostIdForRows({
+        worktree: row.worktree,
+        repo: row.repo,
+        defaultHostId
+      })
     case 'pending-creation':
     case 'imported-worktrees-card':
     case 'new-external-worktrees-inbox':
-      return getRepoHostId(row.repo, defaultHostId)
+      return getRepoExecutionHostIdForRows(row.repo, defaultHostId)
     case 'folder-workspace':
-      return getFolderWorkspaceHostId(row.folderWorkspace, row.projectGroup, defaultHostId)
+      return getFolderWorkspaceExecutionHostIdForRows({
+        folderWorkspace: row.folderWorkspace,
+        projectGroup: row.projectGroup,
+        defaultHostId
+      })
     case 'header':
-      return row.repo ? getRepoHostId(row.repo, defaultHostId) : null
+      return row.repo ? getRepoExecutionHostIdForRows(row.repo, defaultHostId) : null
   }
 }
 

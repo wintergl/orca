@@ -63,6 +63,10 @@ function makeState(overrides: Record<string, unknown> = {}) {
     sleepingAgentSessionsByPaneKey: {},
     tabsByWorktree: { 'wt-1': [makeTab()] },
     terminalLayoutsByTabId: { 'tab-1': makeLayout() },
+    folderWorkspaces: [],
+    projectGroups: [],
+    repos: [{ id: 'repo-1', executionHostId: 'local' }],
+    worktreesByRepo: { 'repo-1': [{ id: 'wt-1', repoId: 'repo-1', hostId: 'local' }] },
     ...overrides
   } as never
 }
@@ -115,8 +119,22 @@ describe('findOriginalAiVaultSessionPane', () => {
       paneKey: entry.paneKey,
       worktreeId: 'wt-1',
       tabId: 'tab-1',
-      leafId: LEAF_ID
+      leafId: LEAF_ID,
+      executionHostId: 'local',
+      normalizedVaultAgent: 'codex',
+      providerSessionId: 'session-1'
     })
+  })
+
+  it('matches Codex wrapper panes to Codex Vault sessions by provider id', () => {
+    const entry = makeEntry({ agentType: 'codexdba' })
+
+    const target = findOriginalAiVaultSessionPane(
+      makeState({ agentStatusByPaneKey: { [entry.paneKey]: entry } }),
+      baseSession
+    )
+
+    expect(target?.paneKey).toBe(entry.paneKey)
   })
 
   it('finds a unique live pane by prompt when provider session is not known yet', () => {
@@ -175,7 +193,7 @@ describe('findOriginalAiVaultSessionPane', () => {
     expect(target).toBeNull()
   })
 
-  it('finds a retained completed pane when the tab and layout still exist', () => {
+  it('does not expose a retained completion when no live pane authority remains', () => {
     const entry = makeEntry({ state: 'done' })
 
     const target = findOriginalAiVaultSessionPane(
@@ -193,10 +211,36 @@ describe('findOriginalAiVaultSessionPane', () => {
       baseSession
     )
 
-    expect(target?.leafId).toBe(LEAF_ID)
+    expect(target).toBeNull()
   })
 
-  it('finds a preserved sleeping pane from a matching session record', () => {
+  it('refuses a retained completion when its Pane now hosts another session', () => {
+    const retained = makeEntry({ state: 'done' })
+    const replacement = makeEntry({
+      state: 'working',
+      providerSession: { key: 'session_id', id: 'session-2' }
+    })
+
+    const target = findOriginalAiVaultSessionPane(
+      makeState({
+        agentStatusByPaneKey: { [replacement.paneKey]: replacement },
+        retainedAgentsByPaneKey: {
+          [retained.paneKey]: {
+            entry: retained,
+            worktreeId: 'wt-1',
+            tab: makeTab(),
+            agentType: 'codex',
+            startedAt: 1
+          }
+        }
+      }),
+      baseSession
+    )
+
+    expect(target).toBeNull()
+  })
+
+  it('does not expose a sleeping record without current live pane authority', () => {
     const record = makeSleepingRecord()
 
     const target = findOriginalAiVaultSessionPane(
@@ -204,10 +248,10 @@ describe('findOriginalAiVaultSessionPane', () => {
       baseSession
     )
 
-    expect(target?.paneKey).toBe(record.paneKey)
+    expect(target).toBeNull()
   })
 
-  it('resolves legacy numeric pane keys through the current tab layout', () => {
+  it('does not resolve a legacy retained target without current live authority', () => {
     const record = makeSleepingRecord({ paneKey: 'tab-1:1' })
 
     const target = findOriginalAiVaultSessionPane(
@@ -215,7 +259,7 @@ describe('findOriginalAiVaultSessionPane', () => {
       baseSession
     )
 
-    expect(target?.leafId).toBe(LEAF_ID)
+    expect(target).toBeNull()
   })
 })
 
@@ -226,6 +270,17 @@ describe('findAiVaultSessionLiveState', () => {
     })
 
     expect(findAiVaultSessionLiveState(state, baseSession)).toBe('blocked')
+  })
+
+  it('returns wrapper live state for a matching Codex Vault session', () => {
+    const wrapped = makeEntry({ agentType: 'codexdb', state: 'waiting' })
+
+    expect(
+      findAiVaultSessionLiveState(
+        makeState({ agentStatusByPaneKey: { [wrapped.paneKey]: wrapped } }),
+        baseSession
+      )
+    ).toBe('waiting')
   })
 
   it('falls back to a prompt match only when it is unambiguous', () => {

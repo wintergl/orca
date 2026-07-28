@@ -28,7 +28,10 @@ if (process.platform !== 'darwin') {
 }
 
 const args = process.argv.slice(2)
-const bundleId = readArg('--bundle-id') ?? 'com.stablyai.orca'
+const isMacLocalBuild =
+  process.env.ORCA_MAC_LOCAL_BUILD === '1' && process.env.ORCA_MAC_RELEASE !== '1'
+const defaultBundleId = isMacLocalBuild ? 'com.stablyai.orca.dev' : 'com.stablyai.orca'
+const bundleId = readArg('--bundle-id') ?? defaultBundleId
 const outputPath = readArg('--output') ?? defaultOutputPath
 // Why: dev launches only need the host architecture; release builds ship a
 // universal binary matching the app's x64 + arm64 targets.

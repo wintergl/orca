@@ -25,6 +25,8 @@ export function dashboardSnapshotInputsChanged(
     state.terminalLayoutsByTabId !== previousState.terminalLayoutsByTabId ||
     state.ptyIdsByTabId !== previousState.ptyIdsByTabId ||
     state.runtimePaneTitlesByTabId !== previousState.runtimePaneTitlesByTabId ||
+    state.paneForegroundAgentByPaneKey !== previousState.paneForegroundAgentByPaneKey ||
+    state.paneAgentLifecycleByPaneKey !== previousState.paneAgentLifecycleByPaneKey ||
     state.acknowledgedAgentsByPaneKey !== previousState.acknowledgedAgentsByPaneKey ||
     // Why: tabAutoGenerateTitle decides whether cards may show generated names.
     state.settings !== previousState.settings ||

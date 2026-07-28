@@ -42,11 +42,17 @@ import {
 import { isCompletedPiCompatibleAgentWithLiveRecoveryRecord } from '@/lib/pi-compatible-live-recovery-record'
 import {
   resolveAgentPaneAuthorityKey,
+  commitAgentPaneAuthorityTransfer,
+  previewAgentPaneAuthorityTransfer,
   retireAgentPaneAuthorityAliases,
-  retireAgentPaneAuthorityAliasesByOwnerTab,
-  transferAgentPaneAuthorityAlias
+  retireAgentPaneAuthorityAliasesByOwnerTab
 } from './agent-pane-authority'
 import { createFreshnessScheduler } from './agent-status-freshness-scheduler'
+import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../../../shared/execution-host'
+import type { TuiAgent } from '../../../../shared/types'
+import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import { getAiVaultResumeWorkspaceExecutionHostId } from '@/lib/ai-vault-resume-target'
+import { markPaneAgentLifecyclesTransportDisconnected } from './pane-agent-transport-disconnect'
 
 /** Snapshot of a finished/vanished agent status entry, kept so the dashboard and sidebar hover
  *  keep showing the completion until the user clicks the worktree. `worktreeId` is stamped at
@@ -365,6 +371,72 @@ function getTabIdFromPaneKey(paneKey: string): string | null {
     return null
   }
   return paneKey.slice(0, separator)
+}
+
+function currentPanePtyId(state: AppState, paneKey: string): string | null {
+  const pane = parsePaneKey(paneKey)
+  if (!pane) {
+    return null
+  }
+  return state.terminalLayoutsByTabId[pane.tabId]?.ptyIdsByLeafId?.[pane.leafId] ?? null
+}
+
+function executionHostIdForPane(state: AppState, paneKey: string): string | null {
+  const tabId = getTabIdFromPaneKey(paneKey)
+  if (!tabId) {
+    return null
+  }
+  const worktreeId = Object.entries(state.tabsByWorktree).find(([, tabs]) =>
+    tabs.some((tab) => tab.id === tabId)
+  )?.[0]
+  return worktreeId
+    ? (getAiVaultResumeWorkspaceExecutionHostId(state, worktreeId) ?? LOCAL_EXECUTION_HOST_ID)
+    : null
+}
+
+function paneKeyedTransferHasTargetConflict(state: AppState, paneKey: string): boolean {
+  return [
+    state.agentStatusByPaneKey,
+    state.runtimeAgentOrchestrationByPaneKey,
+    state.retainedAgentsByPaneKey,
+    state.sleepingAgentSessionsByPaneKey,
+    state.agentLaunchConfigByPaneKey,
+    state.acknowledgedAgentsByPaneKey,
+    state.paneForegroundAgentByPaneKey,
+    state.unreadTerminalPanes,
+    state.unreadAgentCompletionPanes,
+    state.lastTerminalInputAtByPaneKey,
+    state.cacheTimerByKey,
+    state.retentionSuppressedPaneKeys,
+    state.paneAgentLifecycleByPaneKey
+  ].some((record) => paneKey in record)
+}
+
+function canTransferPaneAuthority(
+  state: AppState,
+  fromPaneKey: string,
+  toPaneKey: string,
+  ptyId: string | null
+): boolean {
+  if (paneKeyedTransferHasTargetConflict(state, toPaneKey)) {
+    return false
+  }
+  const sourceLifecycle = state.paneAgentLifecycleByPaneKey[fromPaneKey]
+  if (!sourceLifecycle) {
+    // Why: a detach cannot safely move authority until its source PTY and Host
+    // are proven; status-only state may belong to an older pane incarnation.
+    return false
+  }
+  const targetTabId = getTabIdFromPaneKey(toPaneKey)
+  const targetPtyPresent =
+    currentPanePtyId(state, toPaneKey) === ptyId ||
+    Boolean(targetTabId && ptyId && state.ptyIdsByTabId[targetTabId]?.includes(ptyId))
+  return Boolean(
+    ptyId &&
+    sourceLifecycle.ptyId === ptyId &&
+    targetPtyPresent &&
+    executionHostIdForPane(state, toPaneKey) === sourceLifecycle.executionHostId
+  )
 }
 
 /** True when auto-title generation would no-op without replace (custom/quick/generated). */
@@ -1028,6 +1100,25 @@ function movePaneKeyedRecord<T>(
   return next
 }
 
+function movePaneAgentLifecycle(
+  lifecycles: AppState['paneAgentLifecycleByPaneKey'],
+  fromPaneKey: string,
+  toPaneKey: string
+): AppState['paneAgentLifecycleByPaneKey'] {
+  const lifecycle = lifecycles[fromPaneKey]
+  if (!lifecycle || fromPaneKey === toPaneKey) {
+    return lifecycles
+  }
+  const next = { ...lifecycles }
+  delete next[fromPaneKey]
+  next[toPaneKey] = {
+    ...lifecycle,
+    paneKey: toPaneKey,
+    authorityRevision: lifecycle.authorityRevision + 1
+  }
+  return next
+}
+
 function removePaneKeys<T>(
   record: Record<string, T>,
   paneKeys: ReadonlySet<string>
@@ -1286,6 +1377,9 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
           sortEpoch: hadLive ? s.sortEpoch + 1 : s.sortEpoch
         }
       })
+      for (const retiredPaneKey of retiredPaneKeys) {
+        get().retirePaneAgentLifecycle(retiredPaneKey)
+      }
       if (hadLive) {
         queueMicrotask(() => freshness.schedule())
       }
@@ -1295,7 +1389,7 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
     },
 
     transferAgentPaneAuthority: ({ fromPaneKey, toPaneKey, ptyId }) => {
-      const transfer = transferAgentPaneAuthorityAlias({ fromPaneKey, toPaneKey, ptyId })
+      const transfer = previewAgentPaneAuthorityTransfer({ fromPaneKey, toPaneKey, ptyId })
       if (!transfer || transfer.previousOwnerPaneKey === transfer.ownerPaneKey) {
         return
       }
@@ -1303,6 +1397,10 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       const to = transfer.ownerPaneKey
       const targetTabId = getTabIdFromPaneKey(to) ?? undefined
       const targetLeafId = getLeafIdFromPaneKey(to) ?? undefined
+      const state = get()
+      if (!canTransferPaneAuthority(state, from, to, transfer.ptyId)) {
+        return
+      }
       set((s) => ({
         agentStatusByPaneKey: movePaneKeyedRecord(s.agentStatusByPaneKey, from, to, (entry) => ({
           ...entry,
@@ -1345,8 +1443,10 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
         unreadAgentCompletionPanes: movePaneKeyedRecord(s.unreadAgentCompletionPanes, from, to),
         lastTerminalInputAtByPaneKey: movePaneKeyedRecord(s.lastTerminalInputAtByPaneKey, from, to),
         cacheTimerByKey: movePaneKeyedRecord(s.cacheTimerByKey, from, to),
-        retentionSuppressedPaneKeys: movePaneKeyedRecord(s.retentionSuppressedPaneKeys, from, to)
+        retentionSuppressedPaneKeys: movePaneKeyedRecord(s.retentionSuppressedPaneKeys, from, to),
+        paneAgentLifecycleByPaneKey: movePaneAgentLifecycle(s.paneAgentLifecycleByPaneKey, from, to)
       }))
+      commitAgentPaneAuthorityTransfer(transfer)
       if (typeof window !== 'undefined') {
         window.api?.agentStatus?.transferPaneAuthority?.({
           fromPaneKey: from,
@@ -1660,6 +1760,29 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       ) {
         return
       }
+      const prior = get().agentStatusByPaneKey[paneKey]
+      if (prior && updatedAt < prior.updatedAt) {
+        return
+      }
+      const state = get()
+      const executionHostId =
+        getAiVaultResumeWorkspaceExecutionHostId(
+          state,
+          routing?.worktreeId ?? prior?.worktreeId ?? null
+        ) ??
+        (routing?.connectionId
+          ? toSshExecutionHostId(routing.connectionId)
+          : (prior?.executionHostId ?? LOCAL_EXECUTION_HOST_ID))
+      const lifecycle = get().observePaneAgentLifecycle({
+        paneKey,
+        executionHostId,
+        connectionId: routing?.connectionId ?? prior?.connectionId ?? null,
+        ptyId: currentPanePtyId(state, paneKey),
+        runtimeAgent: (payload.agentType ?? prior?.agentType ?? null) as TuiAgent | null,
+        providerSessionId: metadata?.providerSession?.id ?? prior?.providerSession?.id ?? null,
+        launchToken: metadata?.launchToken ?? null,
+        observedAt: updatedAt
+      })
       let completionRefreshWorktreeId: string | null = null
       let suppressedInheritedTerminalStatus = false
       const generatedTitleEntry: { current: AgentStatusEntry | null } = { current: null }
@@ -1841,7 +1964,14 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
             : existing?.connectionId !== undefined
               ? { connectionId: existing.connectionId }
               : {}),
+          executionHostId,
           tabId: statusTabId,
+          ...(lifecycle
+            ? {
+                agentLifecycleId: lifecycle.id,
+                agentSessionStartedAt: lifecycle.startedAt
+              }
+            : {}),
           terminalTitle: effectiveTitle,
           stateHistory: history,
           toolName: payload.toolName,
@@ -2244,7 +2374,11 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
             : {}),
           transientClearedAgentStatusConnectionIds: wasAlreadyBlocked
             ? s.transientClearedAgentStatusConnectionIds
-            : { ...s.transientClearedAgentStatusConnectionIds, [connectionId]: true }
+            : { ...s.transientClearedAgentStatusConnectionIds, [connectionId]: true },
+          paneAgentLifecycleByPaneKey: markPaneAgentLifecyclesTransportDisconnected(
+            s.paneAgentLifecycleByPaneKey,
+            connectionId
+          )
         }
       })
       if (removed) {
@@ -2332,6 +2466,7 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       if (liveExisted) {
         queueMicrotask(() => freshness.schedule())
       }
+      get().retirePaneAgentLifecycle(paneKey)
       // Why: propagate the dismissal to the main-process hook cache so the on-disk cache doesn't re-hydrate this row on next launch. Fire-and-forget.
       // Why: the typeof window guard keeps the slice usable from the node test env, where window is undefined.
       if (typeof window !== 'undefined') {
@@ -2455,6 +2590,7 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       if (hadLive) {
         queueMicrotask(() => freshness.schedule())
       }
+      get().clearPaneAgentLifecyclesByTabPrefix(tabIdPrefix)
       if (typeof window !== 'undefined') {
         window.api?.agentStatus?.dropByTabPrefix?.(tabIdPrefix)
       }
@@ -2562,10 +2698,21 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       if (hadLive) {
         queueMicrotask(() => freshness.schedule())
       }
+      get().retirePaneAgentLifecycle(paneKey)
     },
 
     dropAgentStatusByWorktree: (worktreeId, opts) => {
       let hadLive = false
+      const lifecycleTabPrefixes = (get().tabsByWorktree[worktreeId] ?? []).map(
+        (tab) => `${tab.id}:`
+      )
+      const lifecyclePaneKeys = Object.entries(get().agentStatusByPaneKey)
+        .filter(
+          ([paneKey, entry]) =>
+            entry.worktreeId === worktreeId ||
+            paneKeyMatchesAnyTabPrefix(paneKey, lifecycleTabPrefixes)
+        )
+        .map(([paneKey]) => paneKey)
       set((s) => {
         const tabPrefixes = (s.tabsByWorktree[worktreeId] ?? []).map((tab) => `${tab.id}:`)
         const liveEntries = Object.entries(s.agentStatusByPaneKey).filter(
@@ -2709,6 +2856,9 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
       })
       if (hadLive) {
         queueMicrotask(() => freshness.schedule())
+      }
+      for (const paneKey of lifecyclePaneKeys) {
+        get().retirePaneAgentLifecycle(paneKey)
       }
     },
 

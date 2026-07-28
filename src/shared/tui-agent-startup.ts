@@ -20,6 +20,7 @@ import { inlineAgentDraftFitsPlatform } from './agent-draft-platform-limit'
 import type { TuiAgent } from './types'
 import type { SessionOptionValue } from './native-chat-session-options'
 import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
+import { isCodexRuntimeAgentType } from './codex-wrapper-agent'
 
 export type AgentStartupPlan = {
   agent: TuiAgent
@@ -106,7 +107,7 @@ export function buildAgentStartupPlan(args: {
       followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-      ...(agent === 'codex' ? { startupCommandDelivery: 'shell-ready' as const } : {}),
+      ...(isCodexRuntimeAgentType(agent) ? { startupCommandDelivery: 'shell-ready' as const } : {}),
       ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
@@ -293,7 +294,7 @@ export function buildAgentDraftLaunchPlan(args: {
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
       // Why: native draft flags carry user text on argv and must survive rc-file startup.
-      ...(agent === 'codex' ? { startupCommandDelivery: 'shell-ready' as const } : {}),
+      ...(isCodexRuntimeAgentType(agent) ? { startupCommandDelivery: 'shell-ready' as const } : {}),
       ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   } else if (config.draftPromptEnvVar) {

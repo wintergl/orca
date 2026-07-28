@@ -11,6 +11,7 @@ import {
 import type { Repo, Worktree, TerminalTab } from '../../../../shared/types'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
+import type { AgentContentEvidence, AgentPresenceEvidence } from '@/lib/pane-agent-evidence'
 
 // ─── Shared data types ────────────────────────────────────────────────────────
 
@@ -21,7 +22,9 @@ export type DashboardAgentRow = {
   entry: AgentStatusEntry
   tab: TerminalTab
   agentType: AgentType
-  rowSource?: 'live' | 'retained' | 'subagent'
+  rowSource?: 'live' | 'retained' | 'subagent' | 'title'
+  presenceEvidence?: AgentPresenceEvidence
+  contentEvidence?: AgentContentEvidence
   state: AgentStatusState | 'idle'
   /** Pane to focus when the row is activated, when it differs from paneKey.
    *  Subagent rows have no pane of their own and activate their parent's. */

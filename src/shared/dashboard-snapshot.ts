@@ -31,6 +31,10 @@ export type DashboardCard = {
   agentType: AgentType
   bucket: DashboardBucket
   dotState: DashboardCardDotState
+  rowSource?: 'live' | 'retained' | 'subagent' | 'title'
+  presenceEvidence?: 'fresh-hook' | 'foreground-process' | 'live-title' | 'stale-hook' | 'retained'
+  contentEvidence?: 'provider' | 'synthetic'
+  agentLifecycleId?: string | null
   /** One-line task/prompt text shown on the card. */
   task: string
   /** The most recent message the user sent this agent (its current prompt). */

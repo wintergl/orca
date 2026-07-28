@@ -17,6 +17,7 @@ import type {
 } from './agent-completion-coordinator-types'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
 import { isPiCompatibleAgentType } from '../../../../shared/pi-agent-kind'
+import { isCodexRuntimeAgentType } from '../../../../shared/codex-wrapper-agent'
 import {
   titleHasExplicitAgentIdentity,
   titleIsInconclusiveNativeDroidTitle
@@ -332,7 +333,7 @@ export function createAgentCompletionCoordinator(
     lastAttentionToken = token
     // Why: the visual "needs input" status updates immediately; only the OS attention notification is debounced (Codex, below).
     options.dispatchHookLifecycle?.(payload)
-    if (payload.agentType === 'codex') {
+    if (isCodexRuntimeAgentType(payload.agentType)) {
       // Why: an auto-resolved Codex "Approve for me" cancels this pending notification via a later hook; scoped to Codex so other agents notify at once.
       clearPendingCodexAttention()
       pendingCodexAttentionTimer = setTimeout(() => {

@@ -1,11 +1,22 @@
 import type { AgentStatusState } from '../../../../shared/agent-status-types'
-import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import {
-  promptsMatchSession,
+  toAiVaultAgent,
+  type AiVaultAgent,
+  type AiVaultSession
+} from '../../../../shared/ai-vault-types'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
+import {
+  resolveOriginalPaneCandidateExecutionHostId,
   resolveOriginalPaneTarget,
+  paneHasCurrentLiveAuthority,
   type OriginalPaneState,
   type AiVaultOriginalPaneTarget
 } from './ai-vault-original-pane'
+import { promptsMatchSession } from './ai-vault-original-pane-prompt-match'
+import {
+  buildAgentActivityProviderAgentKey,
+  buildAgentActivityProviderKey
+} from './agent-activity-session-index'
 
 type LiveEntry = NonNullable<OriginalPaneState['agentStatusByPaneKey'][string]>
 type RetainedEntry = NonNullable<OriginalPaneState['retainedAgentsByPaneKey'][string]>
@@ -23,13 +34,22 @@ export type AiVaultOriginalPaneIndex = {
   sleepingByProvider: ProviderIndex<SleepingEntry>
 }
 
-function providerKey(agent: string, sessionId: string): string {
-  // Why: unlike punctuation delimiters, NUL cannot collide with agent or
-  // provider-session text, so distinct identity pairs stay distinct keys.
-  return `${agent}\u0000${sessionId}`
+function providerKey(executionHostId: string, agent: AiVaultAgent, sessionId: string): string {
+  return buildAgentActivityProviderKey({
+    executionHostId: executionHostId as ExecutionHostId,
+    vaultAgent: agent,
+    providerSessionId: sessionId
+  })
 }
 
-function appendToIndex<T>(index: Map<string, T[]>, key: string, value: T): void {
+function agentKey(executionHostId: string, agent: AiVaultAgent): string {
+  return buildAgentActivityProviderAgentKey({
+    executionHostId: executionHostId as ExecutionHostId,
+    vaultAgent: agent
+  })
+}
+
+function appendToIndex<K, T>(index: Map<K, T[]>, key: K, value: T): void {
   const entries = index.get(key)
   if (entries) {
     entries.push(value)
@@ -46,34 +66,58 @@ export function buildAiVaultOriginalPaneIndex(state: OriginalPaneState): AiVault
   const sleepingByProvider: ProviderIndex<SleepingEntry> = new Map()
 
   for (const entry of Object.values(state.agentStatusByPaneKey)) {
-    if (!entry?.agentType) {
+    const agent = toAiVaultAgent(entry?.agentType)
+    const executionHostId = entry
+      ? resolveOriginalPaneCandidateExecutionHostId({
+          state,
+          worktreeId: entry.worktreeId,
+          executionHostId: entry.executionHostId
+        })
+      : null
+    if (!agent || !executionHostId) {
       continue
     }
     if (entry.providerSession) {
-      appendToIndex(liveByProvider, providerKey(entry.agentType, entry.providerSession.id), entry)
+      appendToIndex(
+        liveByProvider,
+        providerKey(executionHostId, agent, entry.providerSession.id),
+        entry
+      )
     } else if (entry.providerSession === undefined) {
-      appendToIndex(liveWithoutProviderByAgent, entry.agentType, entry)
+      appendToIndex(liveWithoutProviderByAgent, agentKey(executionHostId, agent), entry)
     }
   }
   for (const retained of Object.values(state.retainedAgentsByPaneKey)) {
-    if (!retained?.agentType) {
+    const agent = toAiVaultAgent(retained?.agentType)
+    const executionHostId = retained
+      ? resolveOriginalPaneCandidateExecutionHostId({
+          state,
+          worktreeId: retained.worktreeId,
+          executionHostId: retained.entry.executionHostId
+        })
+      : null
+    if (!agent || !executionHostId) {
       continue
     }
     if (retained.entry.providerSession) {
       appendToIndex(
         retainedByProvider,
-        providerKey(retained.agentType, retained.entry.providerSession.id),
+        providerKey(executionHostId, agent, retained.entry.providerSession.id),
         retained
       )
     } else if (retained.entry.providerSession === undefined) {
-      appendToIndex(retainedWithoutProviderByAgent, retained.agentType, retained)
+      appendToIndex(retainedWithoutProviderByAgent, agentKey(executionHostId, agent), retained)
     }
   }
   for (const record of Object.values(state.sleepingAgentSessionsByPaneKey)) {
-    if (record) {
+    const agent = toAiVaultAgent(record?.agent)
+    const executionHostId = record
+      ? resolveOriginalPaneCandidateExecutionHostId({ state, worktreeId: record.worktreeId })
+      : null
+    if (record && agent && executionHostId) {
       appendToIndex(
         sleepingByProvider,
-        providerKey(record.agent, record.providerSession.id),
+        providerKey(executionHostId, agent, record.providerSession.id),
         record
       )
     }
@@ -103,12 +147,14 @@ export function findOriginalAiVaultSessionPaneInIndex(
   index: AiVaultOriginalPaneIndex,
   session: AiVaultSession
 ): AiVaultOriginalPaneTarget | null {
-  const key = providerKey(session.agent, session.sessionId)
+  const key = providerKey(session.executionHostId, session.agent, session.sessionId)
+  const sessionAgentKey = agentKey(session.executionHostId, session.agent)
   const promptMatchedTargets: AiVaultOriginalPaneTarget[] = []
 
   for (const entry of index.liveByProvider.get(key) ?? []) {
     const target = resolveOriginalPaneTarget({
       state: index.state,
+      session,
       paneKey: entry.paneKey,
       worktreeIdHint: entry.worktreeId,
       tabIdHint: entry.tabId
@@ -117,12 +163,13 @@ export function findOriginalAiVaultSessionPaneInIndex(
       return target
     }
   }
-  for (const entry of index.liveWithoutProviderByAgent.get(session.agent) ?? []) {
+  for (const entry of index.liveWithoutProviderByAgent.get(sessionAgentKey) ?? []) {
     if (!promptsMatchSession(session, entry)) {
       continue
     }
     const target = resolveOriginalPaneTarget({
       state: index.state,
+      session,
       paneKey: entry.paneKey,
       worktreeIdHint: entry.worktreeId,
       tabIdHint: entry.tabId
@@ -132,8 +179,12 @@ export function findOriginalAiVaultSessionPaneInIndex(
     }
   }
   for (const retained of index.retainedByProvider.get(key) ?? []) {
+    if (!paneHasCurrentLiveAuthority(index.state, session, retained.entry.paneKey)) {
+      continue
+    }
     const target = resolveOriginalPaneTarget({
       state: index.state,
+      session,
       paneKey: retained.entry.paneKey,
       worktreeIdHint: retained.worktreeId,
       tabIdHint: retained.entry.tabId ?? retained.tab.id
@@ -142,12 +193,16 @@ export function findOriginalAiVaultSessionPaneInIndex(
       return target
     }
   }
-  for (const retained of index.retainedWithoutProviderByAgent.get(session.agent) ?? []) {
+  for (const retained of index.retainedWithoutProviderByAgent.get(sessionAgentKey) ?? []) {
     if (!promptsMatchSession(session, retained.entry)) {
+      continue
+    }
+    if (!paneHasCurrentLiveAuthority(index.state, session, retained.entry.paneKey)) {
       continue
     }
     const target = resolveOriginalPaneTarget({
       state: index.state,
+      session,
       paneKey: retained.entry.paneKey,
       worktreeIdHint: retained.worktreeId,
       tabIdHint: retained.entry.tabId ?? retained.tab.id
@@ -157,8 +212,12 @@ export function findOriginalAiVaultSessionPaneInIndex(
     }
   }
   for (const record of index.sleepingByProvider.get(key) ?? []) {
+    if (!paneHasCurrentLiveAuthority(index.state, session, record.paneKey)) {
+      continue
+    }
     const target = resolveOriginalPaneTarget({
       state: index.state,
+      session,
       paneKey: record.paneKey,
       worktreeIdHint: record.worktreeId,
       tabIdHint: record.tabId
@@ -175,12 +234,16 @@ export function findAiVaultSessionLiveStateInIndex(
   index: AiVaultOriginalPaneIndex,
   session: AiVaultSession
 ): AgentStatusState | null {
-  const direct = index.liveByProvider.get(providerKey(session.agent, session.sessionId))
+  const direct = index.liveByProvider.get(
+    providerKey(session.executionHostId, session.agent, session.sessionId)
+  )
   if (direct?.[0]) {
     return direct[0].state
   }
   const promptMatchedStates: AgentStatusState[] = []
-  for (const entry of index.liveWithoutProviderByAgent.get(session.agent) ?? []) {
+  for (const entry of index.liveWithoutProviderByAgent.get(
+    agentKey(session.executionHostId, session.agent)
+  ) ?? []) {
     if (promptsMatchSession(session, entry)) {
       promptMatchedStates.push(entry.state)
     }

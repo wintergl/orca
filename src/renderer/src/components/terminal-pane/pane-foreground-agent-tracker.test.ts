@@ -66,6 +66,35 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(publish).toHaveBeenLastCalledWith({ agent: 'claude', shellForeground: false })
   })
 
+  it('preserves the sampled lifecycle authority on a shell publication', () => {
+    const captureAuthority = vi.fn(() => ({
+      ptyId: 'pty-1',
+      lifecycleId: 'lifecycle-1',
+      authorityRevision: 4
+    }))
+    const tracker = createPaneForegroundAgentTracker({
+      getPtyId: () => ptyId,
+      isTrackablePtyId: (id) => !id.startsWith('remote:') && !id.startsWith('ssh:'),
+      readForegroundProcess,
+      confirmForegroundProcess,
+      publish,
+      captureAuthority
+    })
+
+    tracker.onCommandFinished()
+
+    expect(captureAuthority).toHaveBeenCalledExactlyOnceWith('pty-1')
+    expect(publish).toHaveBeenCalledExactlyOnceWith({
+      agent: null,
+      shellForeground: true,
+      authority: {
+        ptyId: 'pty-1',
+        lifecycleId: 'lifecycle-1',
+        authorityRevision: 4
+      }
+    })
+  })
+
   it('drops a delayed foreground result after the pane rebinds to another PTY', async () => {
     let resolveRead!: (processName: string) => void
     readForegroundProcess.mockReturnValue(

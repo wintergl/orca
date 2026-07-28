@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 const require = createRequire(import.meta.url)
 const electronBuilderConfig = require('../electron-builder.config.cjs')
 const electronBuilderNativeRebuild = require('./electron-builder-native-rebuild.cjs')
+const packageJson = require('../../package.json')
 const {
   createPackagedRuntimeNodeModuleResources,
   findAsarEntry,
@@ -22,6 +23,48 @@ describe('electron-builder config', () => {
   it('keeps the packaged app identity aligned with local-build validation', () => {
     expect(electronBuilderConfig.appId).toBe(
       require('../../src/shared/local-build-compatibility-contract.json').appId
+    )
+  })
+
+  it('isolates local macOS packages from the release app identity', () => {
+    const configPath = require.resolve('../electron-builder.config.cjs')
+    const originalLocalBuild = process.env.ORCA_MAC_LOCAL_BUILD
+    const originalRelease = process.env.ORCA_MAC_RELEASE
+    try {
+      delete require.cache[configPath]
+      process.env.ORCA_MAC_LOCAL_BUILD = '1'
+      delete process.env.ORCA_MAC_RELEASE
+      const localConfig = require('../electron-builder.config.cjs')
+      expect(localConfig.appId).toBe('com.stablyai.orca.dev')
+      expect(localConfig.productName).toBe('Orca Dev')
+      expect(localConfig.dmg.artifactName).toBe('orca-macos-dev-${arch}.${ext}')
+
+      delete require.cache[configPath]
+      process.env.ORCA_MAC_RELEASE = '1'
+      const releaseConfig = require('../electron-builder.config.cjs')
+      expect(releaseConfig.appId).toBe('com.stablyai.orca')
+      expect(releaseConfig.productName).toBe('Orca')
+      expect(releaseConfig.dmg.artifactName).toBe('orca-macos-${arch}.${ext}')
+    } finally {
+      if (originalLocalBuild === undefined) {
+        delete process.env.ORCA_MAC_LOCAL_BUILD
+      } else {
+        process.env.ORCA_MAC_LOCAL_BUILD = originalLocalBuild
+      }
+      if (originalRelease === undefined) {
+        delete process.env.ORCA_MAC_RELEASE
+      } else {
+        process.env.ORCA_MAC_RELEASE = originalRelease
+      }
+      delete require.cache[configPath]
+      require('../electron-builder.config.cjs')
+    }
+  })
+
+  it('marks every local macOS build stage with the development identity', () => {
+    expect(packageJson.scripts['build:mac'].match(/ORCA_MAC_LOCAL_BUILD=1/g)).toHaveLength(3)
+    expect(packageJson.scripts['build:mac']).toContain(
+      'ORCA_MAC_LOCAL_BUILD=1 node config/scripts/build-mac-local.mjs'
     )
   })
 

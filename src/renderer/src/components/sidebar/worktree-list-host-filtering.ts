@@ -1,15 +1,24 @@
 import {
   ALL_EXECUTION_HOSTS_SCOPE,
-  normalizeExecutionHostId,
-  parseExecutionHostId,
-  toSshExecutionHostId,
   type ExecutionHostId,
   type ExecutionHostScope
 } from '../../../../shared/execution-host'
 import type { FolderWorkspacePathStatusRequest } from '../../../../shared/folder-workspace-path-status'
 import type { FolderWorkspace, ProjectGroup } from '../../../../shared/types'
+import {
+  getFolderWorkspaceExecutionHostIdForRows,
+  getProjectGroupExecutionHostIdForFolderPathStatus,
+  getProjectGroupExecutionHostIdForRows,
+  getRuntimeEnvironmentIdForFolderPathStatusHost
+} from './workspace-host-resolution'
 
-/** null means "no host filter" — every host is visible. */
+export {
+  getFolderWorkspaceExecutionHostIdForRows,
+  getProjectGroupExecutionHostIdForRows,
+  getRuntimeEnvironmentIdForFolderPathStatusHost
+}
+
+/** null means every host is visible. */
 export function getVisibleSidebarHostIdSet(
   visibleWorkspaceHostIds: readonly ExecutionHostId[] | null | undefined,
   workspaceHostScope: ExecutionHostScope
@@ -20,8 +29,7 @@ export function getVisibleSidebarHostIdSet(
   return visibleHostIds ? new Set<ExecutionHostId>(visibleHostIds) : null
 }
 
-// Why shared: the sidebar render path and the Cmd+1–9 order must apply the same
-// host filtering, or the numbering drifts from the cards whenever a filter is on.
+// Why: sidebar rendering and Cmd+1–9 must use the same host-filtered order.
 export function filterProjectGroupsForVisibleHosts(
   projectGroups: readonly ProjectGroup[],
   visibleHostIdSet: ReadonlySet<ExecutionHostId> | null,
@@ -54,58 +62,6 @@ export function filterFolderWorkspacesForVisibleHosts(
       })
     )
   )
-}
-
-export function getProjectGroupExecutionHostIdForRows(
-  group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>,
-  defaultHostId: ExecutionHostId
-): ExecutionHostId {
-  const executionHostId = normalizeExecutionHostId(group.executionHostId)
-  if (executionHostId) {
-    return executionHostId
-  }
-  return group.connectionId ? toSshExecutionHostId(group.connectionId) : defaultHostId
-}
-
-export function getFolderWorkspaceExecutionHostIdForRows({
-  folderWorkspace,
-  projectGroup,
-  defaultHostId
-}: {
-  folderWorkspace: Pick<FolderWorkspace, 'connectionId'>
-  projectGroup: Pick<ProjectGroup, 'connectionId' | 'executionHostId'> | undefined
-  defaultHostId: ExecutionHostId
-}): ExecutionHostId {
-  if (projectGroup) {
-    const explicitProjectGroupHostId = normalizeExecutionHostId(projectGroup.executionHostId)
-    if (explicitProjectGroupHostId) {
-      return explicitProjectGroupHostId
-    }
-    const projectGroupHostId = getProjectGroupExecutionHostIdForRows(projectGroup, defaultHostId)
-    if (projectGroupHostId !== defaultHostId || !folderWorkspace.connectionId) {
-      return projectGroupHostId
-    }
-  }
-  return folderWorkspace.connectionId
-    ? toSshExecutionHostId(folderWorkspace.connectionId)
-    : defaultHostId
-}
-
-export function getRuntimeEnvironmentIdForFolderPathStatusHost(
-  hostId: ExecutionHostId
-): string | null {
-  const parsed = parseExecutionHostId(hostId)
-  return parsed?.kind === 'runtime' ? parsed.environmentId : null
-}
-
-function getProjectGroupExecutionHostIdForFolderPathStatus(
-  group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>
-): ExecutionHostId {
-  const executionHostId = normalizeExecutionHostId(group.executionHostId)
-  if (executionHostId) {
-    return executionHostId
-  }
-  return group.connectionId ? toSshExecutionHostId(group.connectionId) : 'local'
 }
 
 export function getFolderPathStatusRouteOptionsForRows({

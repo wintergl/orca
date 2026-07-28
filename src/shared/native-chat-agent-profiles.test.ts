@@ -8,6 +8,16 @@ describe('native chat agent picker profiles', () => {
       groupedSlash: false,
       skillSourceOwner: 'codex'
     })
+    expect(getNativeChatAgentProfile('codexdb')).toMatchObject({
+      skillPrefix: '$',
+      groupedSlash: false,
+      skillSourceOwner: 'codex'
+    })
+    expect(getNativeChatAgentProfile('codexdba')).toMatchObject({
+      skillPrefix: '$',
+      groupedSlash: false,
+      skillSourceOwner: 'codex'
+    })
   })
 
   it('groups Claude-family and Grok skills under slash', () => {

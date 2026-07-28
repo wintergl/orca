@@ -16,6 +16,7 @@ import {
 } from '../../../shared/tui-agent-launch-defaults'
 import { parseWslUncPath } from '../../../shared/wsl-paths'
 import { resolveWindowsShellStartupFamily } from '../../../shared/windows-terminal-shell'
+import { isCodexRuntimeAgentType } from '../../../shared/codex-wrapper-agent'
 import type { AgentStartupShell } from '../../../shared/tui-agent-startup-shell'
 import {
   clearEnvCommand,
@@ -65,7 +66,7 @@ type AiVaultResumeWorktreeArgs = {
 
 export function buildAiVaultResumeCopyCommandForWorktree(args: AiVaultResumeWorktreeArgs): string {
   const command = buildAiVaultResumeForWorktree(args).command
-  if (args.session.agent !== 'codex' || args.session.codexHome !== null) {
+  if (!isCodexRuntimeAgentType(args.session.agent) || args.session.codexHome !== null) {
     return command
   }
   const shell = resolveAiVaultResumeShell(args)
@@ -89,7 +90,7 @@ function buildAiVaultResumeForWorktree(args: AiVaultResumeWorktreeArgs): AiVault
     args.session.executionHostId !== LOCAL_EXECUTION_HOST_ID &&
     args.session.resumeCommand &&
     args.session.agent !== 'omp' &&
-    !(args.session.agent === 'codex' && args.session.codexHome === null) &&
+    !(isCodexRuntimeAgentType(args.session.agent) && args.session.codexHome === null) &&
     !args.commandOverride?.trim()
   ) {
     return {

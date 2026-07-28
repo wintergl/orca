@@ -1,140 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type { FolderWorkspace, ProjectGroup, Repo, Worktree } from '../../../../shared/types'
+import type { Repo } from '../../../../shared/types'
 import { PINNED_GROUP_KEY, type Row } from './worktree-list-groups'
-import { addHostSectionRows, type HostSectionRow } from './host-section-rows'
-
-function repo(id: string, connectionId?: string | null): Repo {
-  return {
-    id,
-    path: `/${id}`,
-    displayName: id,
-    badgeColor: '#000000',
-    addedAt: 0,
-    connectionId
-  }
-}
-
-function worktree(id: string, repoId: string): Worktree {
-  return {
-    id,
-    repoId,
-    path: `/${repoId}/${id}`,
-    branch: `refs/heads/${id}`,
-    head: 'abc123',
-    isBare: false,
-    isMainWorktree: false,
-    linkedIssue: null,
-    linkedPR: null,
-    linkedLinearIssue: null,
-    isArchived: false,
-    comment: '',
-    isUnread: false,
-    isPinned: false,
-    displayName: id,
-    sortOrder: 0,
-    lastActivityAt: 0
-  }
-}
-
-function header(key: string, label = key): Extract<Row, { type: 'header' }> {
-  return {
-    type: 'header',
-    key,
-    label,
-    count: 1,
-    tone: 'text-foreground'
-  }
-}
-
-function pinnedHeader(
-  counts: ReadonlyMap<'local' | 'ssh:ssh-1', number>,
-  idsByHost?: ReadonlyMap<'local' | 'ssh:ssh-1', readonly string[]>
-): Extract<Row, { type: 'header' }> {
-  return {
-    ...header(PINNED_GROUP_KEY, 'Pinned'),
-    count: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
-    hostWorktreeCounts: counts,
-    hostWorktreeIds: idsByHost,
-    worktreeIds: idsByHost ? Array.from(idsByHost.values()).flat() : undefined
-  }
-}
-
-function repoHeader(project: Repo): Extract<Row, { type: 'header' }> {
-  return {
-    ...header(`repo:${project.id}`, project.displayName),
-    repo: project
-  }
-}
-
-function item(id: string, project: Repo): Extract<Row, { type: 'item' }> {
-  const sectionKey = `repo:${project.id}`
-  return {
-    type: 'item',
-    rowKey: `${sectionKey}:${id}`,
-    sectionKey,
-    worktree: worktree(id, project.id),
-    repo: project,
-    depth: 0,
-    groupDepth: 0,
-    lineageTrail: [],
-    isLastLineageChild: true,
-    lineageChildCount: 0
-  }
-}
-
-function pinnedItem(id: string, project: Repo, sectionKey: string): Extract<Row, { type: 'item' }> {
-  const row = item(id, project)
-  row.worktree.isPinned = true
-  row.rowKey = `${sectionKey}:${id}`
-  row.sectionKey = sectionKey
-  return row
-}
-
-function folderWorkspaceRow(
-  connectionId: string | null
-): Extract<Row, { type: 'folder-workspace' }> {
-  const projectGroup: ProjectGroup = {
-    id: 'group-1',
-    name: 'Remote folder',
-    parentPath: '/srv/project',
-    connectionId,
-    parentGroupId: null,
-    createdFrom: 'manual',
-    tabOrder: 0,
-    isCollapsed: false,
-    color: null,
-    createdAt: 1,
-    updatedAt: 1
-  }
-  const folderWorkspace: FolderWorkspace = {
-    id: 'folder-1',
-    projectGroupId: projectGroup.id,
-    name: 'Folder workspace',
-    folderPath: '/srv/project',
-    connectionId,
-    linkedTask: null,
-    comment: '',
-    isArchived: false,
-    isUnread: false,
-    isPinned: false,
-    sortOrder: 0,
-    lastActivityAt: 1,
-    createdAt: 1,
-    updatedAt: 1
-  }
-  return {
-    type: 'folder-workspace',
-    key: 'folder-workspace:folder-1',
-    folderWorkspace,
-    projectGroup,
-    depth: 0,
-    groupDepth: 0
-  }
-}
-
-function rowKey(row: HostSectionRow): string {
-  return row.type === 'item' ? row.worktree.id : row.key
-}
+import { addHostSectionRows } from './host-section-rows'
+import {
+  folderWorkspaceRow,
+  header,
+  item,
+  pinnedHeader,
+  pinnedItem,
+  repo,
+  repoHeader,
+  rowKey
+} from './host-section-rows-test-fixtures'
 
 describe('addHostSectionRows', () => {
   it('does not add host headers for a specific host scope', () => {
@@ -597,6 +474,46 @@ describe('addHostSectionRows', () => {
       'repo:local',
       'local-wt',
       'host:ssh:ssh-1',
+      'folder-workspace:folder-1'
+    ])
+  })
+
+  it('groups runtime-owned folder workspace rows under the project group runtime host', () => {
+    const local = repo('local')
+    const rows: Row[] = [
+      repoHeader(local),
+      item('local-wt', local),
+      folderWorkspaceRow('ssh-1', { executionHostId: 'runtime:env-2' })
+    ]
+
+    const sectioned = addHostSectionRows({
+      rows,
+      hostOptions: [
+        {
+          id: 'local',
+          kind: 'local',
+          label: 'Local Mac',
+          detail: 'This computer',
+          health: 'local'
+        },
+        { id: 'ssh:ssh-1', kind: 'ssh', label: 'Builder', detail: 'SSH', health: 'available' },
+        {
+          id: 'runtime:env-2',
+          kind: 'runtime',
+          label: 'env-2',
+          detail: 'Orca server',
+          health: 'available'
+        }
+      ],
+      workspaceHostScope: 'all',
+      defaultHostId: 'local'
+    })
+
+    expect(sectioned.map(rowKey)).toEqual([
+      'host:local',
+      'repo:local',
+      'local-wt',
+      'host:runtime:env-2',
       'folder-workspace:folder-1'
     ])
   })

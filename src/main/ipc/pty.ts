@@ -70,6 +70,7 @@ import {
   visitPtyProcessListingsInBatches
 } from '../providers/pty-process-list-admission'
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
+import { isCodexRuntimeAgentType } from '../../shared/codex-wrapper-agent'
 import {
   SSH_SESSION_EXPIRED_ERROR,
   isSshPtyIdentityMismatchError,
@@ -3246,7 +3247,11 @@ export function registerPtyHandlers(
     providerSession: AgentProviderSessionMetadata
     preparation: Promise<CodexSessionResumePreparation | null>
   } | null => {
-    if (args.connectionId || args.launchAgent !== 'codex' || !options?.prepareCodexSessionResume) {
+    if (
+      args.connectionId ||
+      !isCodexRuntimeAgentType(args.launchAgent) ||
+      !options?.prepareCodexSessionResume
+    ) {
       return null
     }
     const providerSession = normalizeAgentProviderSession(args.providerSession)

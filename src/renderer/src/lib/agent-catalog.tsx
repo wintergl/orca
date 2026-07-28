@@ -1,20 +1,10 @@
 import type React from 'react'
-import { ClaudeIcon, DroidIcon, OpenAIIcon } from '@/components/status-bar/icons'
 import openClaudeLogoUrl from '../../../../resources/openclaude-logo.png?url'
 import type { TuiAgent } from '../../../shared/types'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
-import {
-  AgentLetterIcon,
-  AiderIcon,
-  CopilotIcon,
-  KiloIcon,
-  OmpIcon,
-  OpenCodeIcon,
-  PiIcon
-} from './agent-icon-glyphs'
 import { translate } from '@/i18n/i18n'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
-import { AGENT_FAVICON_ASSETS } from './agent-favicon-assets'
+import { AgentCatalogIcon } from './agent-catalog-icon'
 
 export type AgentCatalogEntry = {
   id: TuiAgent
@@ -290,6 +280,50 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     cmd: 'openclaw',
     faviconDomain: 'openclaw.ai',
     homepageUrl: 'https://github.com/openclaw/openclaw'
+  },
+  // Why (二开定制): local provider wrappers around claude/codex keep their
+  // stable local command ids while the visible labels participate in localization.
+  {
+    id: 'cc-mn',
+    label: translate('auto.lib.agent.catalog.ccMiniMax', 'CC (MiniMax)'),
+    cmd: 'cc-mn',
+    faviconDomain: 'minimaxi.com',
+    homepageUrl: 'https://api.minimaxi.com'
+  },
+  {
+    id: 'cc-db',
+    label: translate('auto.lib.agent.catalog.ccDoubao', 'CC (Doubao)'),
+    cmd: 'cc-db',
+    faviconDomain: 'volces.com',
+    homepageUrl: 'https://www.volcengine.com'
+  },
+  {
+    id: 'cc-zp',
+    label: translate('auto.lib.agent.catalog.ccZhipu', 'CC (Zhipu)'),
+    cmd: 'cc-zp',
+    faviconDomain: 'z.ai',
+    homepageUrl: 'https://z.ai'
+  },
+  {
+    id: 'cc-ali',
+    label: translate('auto.lib.agent.catalog.ccAliyun', 'CC (Aliyun)'),
+    cmd: 'cc-ali',
+    faviconDomain: 'dashscope.aliyuncs.com',
+    homepageUrl: 'https://dashscope.aliyun.com'
+  },
+  {
+    id: 'codexdb',
+    label: translate('auto.lib.agent.catalog.codexDoubaoCoding', 'Codex (Doubao Coding)'),
+    cmd: 'codexdb',
+    faviconDomain: 'volces.com',
+    homepageUrl: 'https://www.volcengine.com'
+  },
+  {
+    id: 'codexdba',
+    label: translate('auto.lib.agent.catalog.codexDoubaoAgent', 'Codex (Doubao Agent)'),
+    cmd: 'codexdba',
+    faviconDomain: 'volces.com',
+    homepageUrl: 'https://www.volcengine.com'
   }
 ])
 
@@ -307,75 +341,5 @@ export function AgentIcon({
   agent: TuiAgent | null | undefined
   size?: number
 }): React.JSX.Element {
-  // Why: render a neutral question-mark glyph when the agent identity is not
-  // yet known. Before, the caller coerced null → 'claude', which caused Codex
-  // panes to briefly show the Claude icon until the first hook callback
-  // arrived.
-  if (!agent) {
-    return <AgentLetterIcon letter="?" size={size} />
-  }
-  if (agent === 'claude' || agent === 'claude-agent-teams') {
-    return <ClaudeIcon size={size} />
-  }
-  if (agent === 'codex') {
-    return <OpenAIIcon size={size} />
-  }
-  if (agent === 'droid') {
-    return <DroidIcon size={size} />
-  }
-  if (agent === 'pi') {
-    return <PiIcon size={size} />
-  }
-  if (agent === 'omp') {
-    return <OmpIcon size={size} />
-  }
-  if (agent === 'aider') {
-    return <AiderIcon size={size} />
-  }
-  if (agent === 'kilo') {
-    return <KiloIcon size={size} />
-  }
-  if (agent === 'copilot') {
-    return <CopilotIcon size={size} />
-  }
-  if (agent === 'opencode') {
-    return <OpenCodeIcon size={size} />
-  }
-  const catalogEntry = getAgentCatalog().find((a) => a.id === agent)
-  // Why: prefer the favicon bundled at build time so the icon renders without a
-  // live network request — Google's favicon service is unreachable in some
-  // regions and offline, which left these icons broken (#8451).
-  const bundledFaviconUrl = AGENT_FAVICON_ASSETS[agent]
-  // Why: one resolved src for guard + attribute so empty `iconUrl` cannot pass
-  // a truthy `||` check while `??` still renders a broken `<img src="">`.
-  const iconSrc = catalogEntry?.iconUrl ?? bundledFaviconUrl
-  if (iconSrc) {
-    return (
-      <img
-        src={iconSrc}
-        width={size}
-        height={size}
-        alt=""
-        aria-hidden
-        style={{ borderRadius: 2 }}
-      />
-    )
-  }
-  if (catalogEntry?.faviconDomain) {
-    // Why: agents without a published SVG icon or bundled favicon fall back to
-    // their site favicon via Google's favicon service — same source the README
-    // uses for the agent badge list.
-    return (
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${catalogEntry.faviconDomain}&sz=64`}
-        width={size}
-        height={size}
-        alt=""
-        aria-hidden
-        style={{ borderRadius: 2 }}
-      />
-    )
-  }
-  const label = catalogEntry?.label ?? agent
-  return <AgentLetterIcon letter={label.charAt(0).toUpperCase()} size={size} />
+  return <AgentCatalogIcon agent={agent} size={size} catalog={getAgentCatalog()} />
 }

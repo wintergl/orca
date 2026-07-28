@@ -9,6 +9,24 @@ import {
   type AgentType
 } from '../../../shared/agent-status-types'
 
+export type AgentPresenceEvidence =
+  | 'fresh-hook'
+  | 'foreground-process'
+  | 'live-title'
+  | 'stale-hook'
+  | 'retained'
+
+export type AgentContentEvidence = 'provider' | 'synthetic'
+
+export type TitleAgentActivity = 'working' | 'permission' | 'idle'
+
+export function providerAgentEvidence(presenceEvidence: AgentPresenceEvidence): {
+  presenceEvidence: AgentPresenceEvidence
+  contentEvidence: AgentContentEvidence
+} {
+  return { presenceEvidence, contentEvidence: 'provider' }
+}
+
 // Why: explicit agent status entries (from hook-based reports) can go stale if
 // the agent process exits without sending a final update. This helper lets
 // callers decide whether to trust the entry based on a configurable TTL.

@@ -39,7 +39,13 @@ export const TUI_AGENT_DISPLAY_NAMES: Record<TuiAgent, string> = {
   hermes: 'Hermes',
   openclaw: 'OpenClaw',
   copilot: 'GitHub Copilot',
-  grok: 'Grok'
+  grok: 'Grok',
+  'cc-mn': 'CC (MiniMax)',
+  'cc-db': 'CC (Doubao)',
+  'cc-zp': 'CC (Zhipu)',
+  'cc-ali': 'CC (Aliyun)',
+  codexdb: 'Codex (Doubao Coding)',
+  codexdba: 'Codex (Doubao Agent)'
 }
 
 /** Canonical agent id list derived from the exhaustive display-name record,

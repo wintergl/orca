@@ -25,6 +25,8 @@ export function useAgentBucketCounts(): AgentBucketCounts {
     terminalLayoutsByTabId,
     ptyIdsByTabId,
     runtimePaneTitlesByTabId,
+    paneForegroundAgentByPaneKey,
+    paneAgentLifecycleByPaneKey,
     agentStatusEpoch
   } = useAppStore(
     useShallow((s) => ({
@@ -38,6 +40,8 @@ export function useAgentBucketCounts(): AgentBucketCounts {
       terminalLayoutsByTabId: s.terminalLayoutsByTabId,
       ptyIdsByTabId: s.ptyIdsByTabId,
       runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId,
+      paneForegroundAgentByPaneKey: s.paneForegroundAgentByPaneKey,
+      paneAgentLifecycleByPaneKey: s.paneAgentLifecycleByPaneKey,
       agentStatusEpoch: s.agentStatusEpoch
     }))
   )
@@ -55,6 +59,8 @@ export function useAgentBucketCounts(): AgentBucketCounts {
         terminalLayoutsByTabId,
         ptyIdsByTabId,
         runtimePaneTitlesByTabId,
+        paneForegroundAgentByPaneKey,
+        paneAgentLifecycleByPaneKey,
         // Counts do not render acknowledgement state, so avoid subscribing the sidebar to it.
         acknowledgedAgentsByPaneKey: {},
         // Same: counts never render a card's conversation name, so the
@@ -85,6 +91,8 @@ export function useAgentBucketCounts(): AgentBucketCounts {
     terminalLayoutsByTabId,
     ptyIdsByTabId,
     runtimePaneTitlesByTabId,
+    paneForegroundAgentByPaneKey,
+    paneAgentLifecycleByPaneKey,
     agentStatusEpoch
   ])
 }

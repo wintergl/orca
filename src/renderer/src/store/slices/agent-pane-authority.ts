@@ -18,7 +18,7 @@ export function resolveAgentPaneAuthorityKey(paneKey: string): string {
   return aliasesByPhysicalPaneKey.get(paneKey)?.ownerPaneKey ?? paneKey
 }
 
-export function transferAgentPaneAuthorityAlias(args: {
+export function previewAgentPaneAuthorityTransfer(args: {
   fromPaneKey: string
   toPaneKey: string
   ptyId?: string | null
@@ -38,20 +38,35 @@ export function transferAgentPaneAuthorityAlias(args: {
     }
   }
   const ptyId = args.ptyId?.trim() || aliasesByPhysicalPaneKey.get(physicalPaneKey)?.ptyId || null
-  if (physicalPaneKey !== args.toPaneKey) {
-    // Why: the process keeps posting its original ORCA_PANE_KEY after detach;
-    // one physical-to-owner alias keeps chained moves on the current surface.
-    aliasesByPhysicalPaneKey.set(physicalPaneKey, {
-      ownerPaneKey: args.toPaneKey,
-      ptyId
-    })
-  }
   return {
     physicalPaneKey,
     previousOwnerPaneKey,
     ownerPaneKey: args.toPaneKey,
     ptyId
   }
+}
+
+export function commitAgentPaneAuthorityTransfer(transfer: AgentPaneAuthorityTransfer): void {
+  if (transfer.physicalPaneKey !== transfer.ownerPaneKey) {
+    // Why: the process keeps posting its original ORCA_PANE_KEY after detach;
+    // one physical-to-owner alias keeps chained moves on the current surface.
+    aliasesByPhysicalPaneKey.set(transfer.physicalPaneKey, {
+      ownerPaneKey: transfer.ownerPaneKey,
+      ptyId: transfer.ptyId
+    })
+  }
+}
+
+export function transferAgentPaneAuthorityAlias(args: {
+  fromPaneKey: string
+  toPaneKey: string
+  ptyId?: string | null
+}): AgentPaneAuthorityTransfer | null {
+  const transfer = previewAgentPaneAuthorityTransfer(args)
+  if (transfer) {
+    commitAgentPaneAuthorityTransfer(transfer)
+  }
+  return transfer
 }
 
 export function retireAgentPaneAuthorityAliases(paneKey: string): string[] {

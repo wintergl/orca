@@ -6,6 +6,7 @@ import {
   type SyntheticAgentTitleProfile
 } from './synthetic-agent-title'
 import { isLegacyPiCompatibleTitle } from './pi-compatible-synthetic-title'
+import { isCodexRuntimeAgentType, isCodexWrapperAgentType } from './codex-wrapper-agent'
 
 type TitleProfileMatch = {
   profile: SyntheticAgentTitleProfile
@@ -124,6 +125,9 @@ export function resolveCompatibleAgentTypeForOwner(
 ): AgentType | undefined {
   if (!incomingAgentType) {
     return undefined
+  }
+  if (isCodexRuntimeAgentType(incomingAgentType) && isCodexWrapperAgentType(ownerAgentType)) {
+    return ownerAgentType
   }
   const incomingProfile = getSyntheticAgentTitleProfile(incomingAgentType)
   const ownerProfile = getSyntheticAgentTitleProfile(ownerAgentType)

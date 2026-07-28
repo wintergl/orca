@@ -419,6 +419,39 @@ describe('tui agent startup plans', () => {
     expect(plan?.startupCommandDelivery).toBe('shell-ready')
   })
 
+  it.each([
+    ['codexdb', 'codex --profile doubao-coding'],
+    ['codexdba', 'codex --profile doubao-agent']
+  ] as const)(
+    'launches %s through Codex directly so managed hooks stay active',
+    (agent, command) => {
+      const plan = buildAgentStartupPlan({
+        agent,
+        prompt: 'fix it',
+        cmdOverrides: {},
+        platform: 'linux'
+      })
+
+      expect(plan?.launchCommand).toBe(`${command} 'fix it'`)
+      expect(plan?.launchConfig.agentCommand).toBe(command)
+      expect(plan?.startupCommandDelivery).toBe('shell-ready')
+    }
+  )
+
+  it.each([
+    ['codexdb', "codex --profile doubao-coding 'resume' 's1'"],
+    ['codexdba', "codex --profile doubao-agent 'resume' 's1'"]
+  ] as const)('resumes %s sessions through the matching Codex profile', (agent, command) => {
+    const plan = buildAgentResumeStartupPlan({
+      agent,
+      providerSession: { key: 'session_id', id: 's1' },
+      cmdOverrides: {},
+      platform: 'linux'
+    })
+
+    expect(plan?.launchCommand).toBe(command)
+  })
+
   it('keeps plain empty Codex startup on the fast delivery path', () => {
     const plan = buildAgentStartupPlan({
       agent: 'codex',

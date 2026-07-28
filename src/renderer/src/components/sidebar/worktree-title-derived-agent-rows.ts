@@ -19,28 +19,13 @@ import {
   normalizeCompatibleAgentTitleForOwner,
   resolveCompatibleAgentTypeForOwner
 } from '../../../../shared/agent-title-owner'
+import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
+import type { PaneAgentLifecycle } from '@/store/slices/pane-agent-lifecycle'
+import { resolveRuntimeAgentForTitleLabel } from '../../../../shared/runtime-agent-from-title'
 
 const EMPTY_RUNTIME_TITLES: Record<string, Record<number, string>> = {}
 const EMPTY_LIVE_PTY_IDS: Record<string, string[]> = {}
 const EMPTY_TERMINAL_LAYOUTS: Record<string, TerminalLayoutSnapshot | undefined> = {}
-
-const TITLE_AGENT_LABEL_TO_TYPE: Record<string, AgentType> = {
-  'Claude Code': 'claude',
-  OpenClaude: 'openclaude',
-  Codex: 'codex',
-  'Gemini CLI': 'gemini',
-  'GitHub Copilot': 'copilot',
-  Grok: 'grok',
-  Devin: 'devin',
-  Antigravity: 'antigravity',
-  OpenCode: 'opencode',
-  Aider: 'aider',
-  Cursor: 'cursor',
-  Droid: 'droid',
-  Hermes: 'hermes',
-  Pi: 'pi',
-  OMP: 'omp'
-}
 
 const CLAUDE_AGENT_TOKEN_RE = /(?<![\w./\\-])claude(?![\w./\\-])/i
 
@@ -50,6 +35,8 @@ export function buildTitleDerivedAgentRows(args: {
   ptyIdsByTabId?: Record<string, string[]>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   runtimeAgentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
+  paneForegroundAgentByPaneKey?: Record<string, PaneForegroundAgentEntry | undefined>
+  paneAgentLifecycleByPaneKey?: Record<string, PaneAgentLifecycle | undefined>
   seenPaneKeys: Set<string>
   now: number
 }): DashboardAgentRow[] {
@@ -85,7 +72,9 @@ export function buildTitleDerivedAgentRows(args: {
           leafId,
           title,
           now: args.now,
-          runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
+          runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey,
+          paneForegroundAgentByPaneKey: args.paneForegroundAgentByPaneKey,
+          paneAgentLifecycleByPaneKey: args.paneAgentLifecycleByPaneKey
         })
         if (!row || args.seenPaneKeys.has(row.paneKey)) {
           continue
@@ -105,7 +94,9 @@ export function buildTitleDerivedAgentRows(args: {
       leafId,
       title: tab.title,
       now: args.now,
-      runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
+      runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey,
+      paneForegroundAgentByPaneKey: args.paneForegroundAgentByPaneKey,
+      paneAgentLifecycleByPaneKey: args.paneAgentLifecycleByPaneKey
     })
     if (!row || args.seenPaneKeys.has(row.paneKey)) {
       continue
@@ -127,6 +118,8 @@ function buildTitleDerivedAgentRow(args: {
   title: string
   now: number
   runtimeAgentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
+  paneForegroundAgentByPaneKey?: Record<string, PaneForegroundAgentEntry | undefined>
+  paneAgentLifecycleByPaneKey?: Record<string, PaneAgentLifecycle | undefined>
 }): DashboardAgentRow | null {
   const title = normalizeCompatibleAgentTitleForOwner(args.title, args.tab.launchAgent)
   const isClaudeAgentsTitle = isClaudeManagementTitle(title)
@@ -135,15 +128,31 @@ function buildTitleDerivedAgentRow(args: {
   // the management/list screen as active work.
   const status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
   const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
-  if (!status || !label) {
-    return null
-  }
   if (!isTerminalLeafId(args.leafId)) {
     return null
   }
   const paneKey = makePaneKey(args.tab.id, args.leafId)
   const orchestration = args.runtimeAgentOrchestrationByPaneKey?.[paneKey]
+  const foregroundAgentType = resolveForegroundAgentType(
+    args.paneForegroundAgentByPaneKey?.[paneKey],
+    args.tab.launchAgent
+  )
+  if (!status || !label) {
+    return foregroundAgentType
+      ? buildIdleForegroundAgentRow({
+          paneKey,
+          tab: args.tab,
+          agentType: foregroundAgentType,
+          title,
+          now: args.now,
+          orchestration,
+          lifecycle: args.paneAgentLifecycleByPaneKey?.[paneKey]
+        })
+      : null
+  }
   const titleAgentType = isClaudeAgentsTitle ? 'claude' : resolveTitleDerivedAgentType(title, label)
+  const ownerResolvedTitleAgentType =
+    resolveCompatibleAgentTypeForOwner(titleAgentType, args.tab.launchAgent) ?? titleAgentType
   // Why: a braille spinner proves activity, not identity, so the resolver drops
   // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
   // fall back to the tab's launch identity instead of hiding the pane. Gated on
@@ -152,15 +161,20 @@ function buildTitleDerivedAgentRow(args: {
   // title alone, so a non-agent title must never become a row. Residual: a split
   // pane whose own title carries a braille glyph is still attributed to launchAgent.
   const agentType =
-    titleAgentType ?? (containsBrailleSpinner(title) ? (args.tab.launchAgent ?? null) : null)
+    ownerResolvedTitleAgentType ??
+    (containsBrailleSpinner(title) ? (args.tab.launchAgent ?? null) : null)
   if (!agentType) {
     return null
   }
-  const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
+  const rowLabel =
+    titleAgentType && ownerResolvedTitleAgentType === titleAgentType
+      ? label
+      : formatAgentTypeLabel(agentType)
   const rowState = titleStatusToRowState(status)
   const secondary =
     status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
   const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+  const lifecycle = args.paneAgentLifecycleByPaneKey?.[paneKey]
   const entry: AgentStatusEntry = {
     paneKey,
     state: entryState,
@@ -171,6 +185,13 @@ function buildTitleDerivedAgentRow(args: {
     agentType,
     terminalTitle: title,
     lastAssistantMessage: secondary,
+    ...(lifecycle
+      ? {
+          executionHostId: lifecycle.executionHostId,
+          agentLifecycleId: lifecycle.id,
+          agentSessionStartedAt: lifecycle.startedAt
+        }
+      : {}),
     ...(orchestration ? { orchestration } : {})
   }
   return {
@@ -178,14 +199,67 @@ function buildTitleDerivedAgentRow(args: {
     entry,
     tab: args.tab,
     agentType,
-    rowSource: 'live',
+    rowSource: 'title',
+    presenceEvidence: 'live-title',
+    contentEvidence: 'synthetic',
     state: rowState,
     startedAt: 0
   }
 }
 
+function resolveForegroundAgentType(
+  foreground: PaneForegroundAgentEntry | undefined,
+  ownerAgentType?: AgentType | null
+): AgentType | null {
+  if (!foreground?.agent || foreground.shellForeground) {
+    return null
+  }
+  return resolveCompatibleAgentTypeForOwner(foreground.agent, ownerAgentType) ?? foreground.agent
+}
+
+function buildIdleForegroundAgentRow(args: {
+  paneKey: string
+  tab: TerminalTab
+  agentType: AgentType
+  title: string
+  now: number
+  orchestration?: AgentStatusOrchestrationContext
+  lifecycle?: PaneAgentLifecycle
+}): DashboardAgentRow {
+  const label = formatAgentTypeLabel(args.agentType)
+  return {
+    paneKey: args.paneKey,
+    entry: {
+      paneKey: args.paneKey,
+      state: 'working',
+      prompt: label,
+      updatedAt: args.now,
+      stateStartedAt: args.now,
+      stateHistory: [],
+      agentType: args.agentType,
+      terminalTitle: args.title,
+      lastAssistantMessage: 'Idle',
+      ...(args.lifecycle
+        ? {
+            executionHostId: args.lifecycle.executionHostId,
+            agentLifecycleId: args.lifecycle.id,
+            agentSessionStartedAt: args.lifecycle.startedAt
+          }
+        : {}),
+      ...(args.orchestration ? { orchestration: args.orchestration } : {})
+    },
+    tab: args.tab,
+    agentType: args.agentType,
+    rowSource: 'title',
+    presenceEvidence: 'foreground-process',
+    contentEvidence: 'synthetic',
+    state: 'idle',
+    startedAt: 0
+  }
+}
+
 export function resolveTitleDerivedAgentType(title: string, label: string): AgentType | null {
-  const agentType = TITLE_AGENT_LABEL_TO_TYPE[label] ?? 'unknown'
+  const agentType = resolveRuntimeAgentForTitleLabel(label) ?? 'unknown'
   if (agentType !== 'claude') {
     return agentType
   }

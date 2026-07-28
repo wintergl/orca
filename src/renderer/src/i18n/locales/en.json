@@ -356,7 +356,13 @@
           "0708ed89f1": "Claude",
           "fc80296033": "Devin",
           "da41abbdd4": "Ante",
-          "mimo_code_label": "MiMo Code"
+          "mimo_code_label": "MiMo Code",
+          "ccMiniMax": "CC (MiniMax)",
+          "ccDoubao": "CC (Doubao)",
+          "ccZhipu": "CC (Zhipu)",
+          "ccAliyun": "CC (Aliyun)",
+          "codexDoubaoCoding": "Codex (Doubao Coding)",
+          "codexDoubaoAgent": "Codex (Doubao Agent)"
         },
         "skill": {
           "cli": {
@@ -11077,6 +11083,48 @@
           },
           "activityBar": {
             "error": "Error"
+          },
+          "AgentActivityBox": {
+            "attentionCount": "{{count}} needs attention",
+            "workingCount": "{{count}} working",
+            "idleCount": "{{count}} idle",
+            "completedCount": "{{count}} completed",
+            "title": "Agent activity",
+            "showFewerIdle": "Show fewer idle agents",
+            "moreIdle": "{{count}} more idle agents",
+            "recentlyCompleted": "Recently completed",
+            "agentUnavailable": "Agent pane is no longer available."
+          },
+          "AgentActivityCompletedRow": {
+            "agent": "Agent",
+            "conclusionCopied": "Conclusion copied",
+            "copyConclusionFailed": "Failed to copy conclusion",
+            "copyConclusion": "Copy conclusion",
+            "openLog": "Open log",
+            "openOriginalPane": "Open original pane"
+          },
+          "AgentActivityCurrentRow": {
+            "agent": "Agent",
+            "openAndIdle": "Open and currently idle",
+            "executionHostUnavailable": "Execution host is unavailable",
+            "sessionIdentityAmbiguous": "Session identity is ambiguous",
+            "remoteHostDisconnected": "Remote host is disconnected",
+            "paneIdentifying": "Pane is still being identified",
+            "titleOnlyUnavailable": "Title-only activity cannot be opened safely",
+            "paneUnavailable": "Agent pane is unavailable",
+            "openIdle": "Open · idle",
+            "paneUnavailableAria": "Agent pane unavailable",
+            "justNow": "just now",
+            "minutesAgo": "{{count}}m ago",
+            "hoursAgo": "{{count}}h ago",
+            "daysAgo": "{{count}}d ago",
+            "stateChanged": "State changed {{time}}"
+          },
+          "AgentConclusionsBox": {
+            "copySuccess": "Conclusion copied",
+            "copyFailure": "Failed to copy conclusion",
+            "title": "Recent agent conclusions",
+            "copyConclusion": "Copy conclusion"
           }
         }
       },

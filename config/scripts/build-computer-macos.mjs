@@ -14,8 +14,12 @@ const entitlementsPath = path.join(
   'build',
   'entitlements.computer-use.mac.plist'
 )
-const bundleId = process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ?? 'com.stablyai.orca.computer-use'
-const displayName = 'Orca Computer Use'
+const isMacLocalBuild =
+  process.env.ORCA_MAC_LOCAL_BUILD === '1' && process.env.ORCA_MAC_RELEASE !== '1'
+const bundleId =
+  process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ??
+  (isMacLocalBuild ? 'com.stablyai.orca.dev.computer-use' : 'com.stablyai.orca.computer-use')
+const displayName = isMacLocalBuild ? 'Orca Dev Computer Use' : 'Orca Computer Use'
 const signingIdentity = resolveSigningIdentity()
 const universalTriples = ['arm64-apple-macosx', 'x86_64-apple-macosx']
 

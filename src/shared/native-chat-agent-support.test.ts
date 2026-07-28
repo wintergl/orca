@@ -13,6 +13,8 @@ describe('resolveNativeChatTranscriptAgent', () => {
 
   it('passes codex and grok through and rejects everything else', () => {
     expect(resolveNativeChatTranscriptAgent('codex')).toBe('codex')
+    expect(resolveNativeChatTranscriptAgent('codexdb')).toBe('codex')
+    expect(resolveNativeChatTranscriptAgent('codexdba')).toBe('codex')
     expect(resolveNativeChatTranscriptAgent('grok')).toBe('grok')
     expect(resolveNativeChatTranscriptAgent('cursor')).toBeNull()
     expect(resolveNativeChatTranscriptAgent(null)).toBeNull()
@@ -24,6 +26,8 @@ describe('isNativeChatSupportedAgent', () => {
   it('recognizes the parseable agents and rejects unknown / nullish input', () => {
     expect(isNativeChatSupportedAgent('claude')).toBe(true)
     expect(isNativeChatSupportedAgent('openclaude')).toBe(true)
+    expect(isNativeChatSupportedAgent('codexdb')).toBe(true)
+    expect(isNativeChatSupportedAgent('codexdba')).toBe(true)
     expect(isNativeChatSupportedAgent('cursor')).toBe(false)
     expect(isNativeChatSupportedAgent(null)).toBe(false)
     expect(isNativeChatSupportedAgent(undefined)).toBe(false)

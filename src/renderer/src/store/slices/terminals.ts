@@ -20,7 +20,11 @@ import {
   DEFAULT_REPO_BADGE_COLOR,
   FLOATING_TERMINAL_WORKTREE_ID
 } from '../../../../shared/constants'
-import { parseExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
+import {
+  LOCAL_EXECUTION_HOST_ID,
+  parseExecutionHostId,
+  type ExecutionHostId
+} from '../../../../shared/execution-host'
 import {
   folderWorkspaceKey,
   parseWorkspaceKey,
@@ -47,6 +51,8 @@ import { resolveLocalWindowsTerminalShellOverrideForTab } from '../../../../shar
 import { WINDOWS_GIT_BASH_SHELL } from '../../../../shared/windows-terminal-shell'
 import type { AgentStartedTelemetry } from '../../lib/worktree-activation'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
+import { getAiVaultResumeWorkspaceExecutionHostId } from '@/lib/ai-vault-resume-target'
+import { resolveRuntimePaneTitleLeafId } from '@/lib/runtime-pane-title-leaf-id'
 import { forgetAgentHibernationTabOutput } from '@/lib/agent-hibernation-output-activity'
 import { forgetForegroundTerminalTabs } from '@/lib/foreground-terminal-tabs'
 import { forgetAgentStartupDeliveriesForTabs } from '@/lib/agent-startup-delivery-guards'
@@ -54,6 +60,7 @@ import { clearTransientTerminalState, emptyLayoutSnapshot } from './terminal-hel
 import { pushClosedTerminalTabSnapshot, pushRecentlyClosedTabKind } from './recently-closed-tabs'
 import { isClaudeAgent } from '@/lib/agent-status'
 import { recordTerminalInputActivity } from '@/lib/terminal-input-activity-coalescing'
+import { resolveRuntimeAgentFromTitle } from '../../../../shared/runtime-agent-from-title'
 import { classifyTitleActivity } from '@/lib/pane-agent-evidence'
 import { buildOrphanTerminalCleanupPatch, getOrphanTerminalIds } from './terminal-orphan-helpers'
 import {
@@ -1759,6 +1766,40 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         ...(shouldBump ? { sortEpoch: s.sortEpoch + 1 } : {})
       }
     })
+    const state = get()
+    const leafId = resolveRuntimePaneTitleLeafId(
+      state.terminalLayoutsByTabId[tabId],
+      String(paneId)
+    )
+    const ptyId = leafId ? state.terminalLayoutsByTabId[tabId]?.ptyIdsByLeafId?.[leafId] : null
+    if (!leafId || !ptyId || !(state.ptyIdsByTabId[tabId] ?? []).includes(ptyId)) {
+      return
+    }
+    const tab = Object.values(state.tabsByWorktree)
+      .flat()
+      .find((candidate) => candidate.id === tabId)
+    const runtimeAgent = resolveRuntimeAgentFromTitle(title, tab?.launchAgent)
+    if (!runtimeAgent) {
+      return
+    }
+    const paneKey = makePaneKey(tabId, leafId)
+    const status = state.agentStatusByPaneKey[paneKey]
+    const worktreeId = getTerminalTabOwnerWorktreeId(state.tabsByWorktree, tabId)
+    const executionHostId =
+      status?.executionHostId ??
+      getAiVaultResumeWorkspaceExecutionHostId(state, worktreeId) ??
+      LOCAL_EXECUTION_HOST_ID
+    const parsedHost = parseExecutionHostId(executionHostId)
+    state.observePaneAgentLifecycle({
+      paneKey,
+      executionHostId,
+      connectionId:
+        status?.connectionId ?? (parsedHost?.kind === 'ssh' ? parsedHost.targetId : null),
+      ptyId,
+      runtimeAgent,
+      providerSessionId: status?.providerSession?.id ?? null,
+      observedAt: status?.updatedAt
+    })
   },
 
   clearRuntimePaneTitle: (tabId, paneId) => {
@@ -2958,6 +2999,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   },
 
   setTabLayout: (tabId, layout) => {
+    const previousLayout = get().terminalLayoutsByTabId[tabId]
     set((s) => {
       const next = { ...s.terminalLayoutsByTabId }
       if (layout) {
@@ -2967,6 +3009,28 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       }
       return { terminalLayoutsByTabId: next }
     })
+    const previousPtyIds = previousLayout?.ptyIdsByLeafId ?? {}
+    const nextPtyIds = layout?.ptyIdsByLeafId ?? {}
+    for (const [paneKey, lifecycle] of Object.entries(get().paneAgentLifecycleByPaneKey)) {
+      const pane = parsePaneKey(paneKey)
+      if (!pane || pane.tabId !== tabId) {
+        continue
+      }
+      const nextPtyId = nextPtyIds[pane.leafId] ?? null
+      const previousPtyId = previousPtyIds[pane.leafId] ?? null
+      if (!nextPtyId || nextPtyId === previousPtyId) {
+        continue
+      }
+      get().dispatchPaneAgentLifecycleEvent({
+        type: previousPtyId || lifecycle.ptyId ? 'pty-replaced' : 'pty-bound',
+        paneKey,
+        executionHostId: lifecycle.executionHostId,
+        connectionId: lifecycle.connectionId,
+        ptyId: nextPtyId,
+        runtimeAgent: lifecycle.runtimeAgent,
+        authorityRevision: lifecycle.authorityRevision + 1
+      })
+    }
   },
 
   syncPaneDetachPtyOwnership: ({
@@ -3022,6 +3086,21 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         ...(nextTabsByWorktree !== s.tabsByWorktree ? { tabsByWorktree: nextTabsByWorktree } : {})
       }
     })
+    const sourceLifecycle = get().paneAgentLifecycleByPaneKey[sourcePaneKey]
+    if (sourceLifecycle && detachedPtyId && sourceLifecycle.ptyId === null) {
+      // Why: detach ownership is authoritative PTY evidence for lifecycles first observed before layout binding.
+      get().dispatchPaneAgentLifecycleEvent({
+        type: 'pty-bound',
+        paneKey: sourcePaneKey,
+        executionHostId: sourceLifecycle.executionHostId,
+        connectionId: sourceLifecycle.connectionId,
+        ptyId: detachedPtyId,
+        runtimeAgent: sourceLifecycle.runtimeAgent,
+        providerSessionId: sourceLifecycle.providerSessionId,
+        launchToken: sourceLifecycle.launchToken,
+        authorityRevision: sourceLifecycle.authorityRevision + 1
+      })
+    }
     // Why: detach keeps the process and its pane key alive, so move resume/status authority to the new surface before the source closes.
     get().transferAgentPaneAuthority({
       fromPaneKey: sourcePaneKey,

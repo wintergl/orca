@@ -4,7 +4,7 @@ import { translate } from '@/i18n/i18n'
 // Why: a skill is skipped for one concrete reason; lead with the highest-priority
 // blocking placement so the sentence explains the real cause (an edited copy is
 // more useful to surface than a downstream symptom).
-const SKIPPED_REASON_PRIORITY: SkillLocationChip[] = [
+const SKIPPED_REASON_PRIORITY = [
   'unrecognized',
   'read-only',
   'inaccessible',
@@ -15,7 +15,7 @@ const SKIPPED_REASON_PRIORITY: SkillLocationChip[] = [
   // Why: lowest priority — a stale duplicate only explains the skip once no
   // harder blocker is present, since the others describe a more specific cause.
   'duplicate'
-]
+] as const satisfies readonly SkillLocationChip[]
 
 function blockingChip(locations: readonly SkillLocationRow[]): SkillLocationChip | undefined {
   const present = new Set(locations.map((location) => location.chip))

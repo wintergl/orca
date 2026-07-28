@@ -71,7 +71,23 @@ describe('agent pane authority', () => {
 
   it('keeps a physical pane routed through chained detaches until its current owner closes', () => {
     const store = createTestStore()
+    store.setState({
+      tabsByWorktree: {
+        'wt-1': [
+          { id: 'tab-source', worktreeId: 'wt-1' },
+          { id: 'tab-target', worktreeId: 'wt-1' },
+          { id: 'tab-final', worktreeId: 'wt-1' }
+        ]
+      },
+      ptyIdsByTabId: { 'tab-target': ['pty-1'], 'tab-final': ['pty-1'] }
+    } as never)
     store.getState().setAgentStatus(SOURCE, { state: 'working', prompt: 'source' })
+    store.getState().observePaneAgentLifecycle({
+      paneKey: SOURCE,
+      executionHostId: 'local',
+      ptyId: 'pty-1',
+      runtimeAgent: 'codex'
+    })
     store.setState({
       sleepingAgentSessionsByPaneKey: {
         [SOURCE]: {
@@ -121,5 +137,128 @@ describe('agent pane authority', () => {
     expect(store.getState().agentStatusByPaneKey[SOURCE]).toBeUndefined()
     expect(store.getState().agentStatusByPaneKey[FINAL]).toBeUndefined()
     expect(store.getState().recentlyRetiredAgentStatusPaneKeys[SOURCE]).toBe(true)
+  })
+
+  it('moves lifecycle and pane records atomically only when the target has verified free authority', () => {
+    const store = createTestStore()
+    store.setState({
+      tabsByWorktree: {
+        'wt-1': [
+          { id: 'tab-source', worktreeId: 'wt-1' },
+          { id: 'tab-target', worktreeId: 'wt-1' }
+        ]
+      },
+      ptyIdsByTabId: { 'tab-target': ['pty-1'] }
+    } as never)
+    store
+      .getState()
+      .setAgentStatus(SOURCE, { state: 'working', prompt: 'source', agentType: 'codex' })
+    store.getState().observePaneAgentLifecycle({
+      paneKey: SOURCE,
+      executionHostId: 'local',
+      ptyId: 'pty-1',
+      runtimeAgent: 'codex'
+    })
+    const subscriber = vi.fn()
+    const unsubscribe = store.subscribe(subscriber)
+
+    store.getState().transferAgentPaneAuthority({
+      fromPaneKey: SOURCE,
+      toPaneKey: TARGET,
+      ptyId: 'pty-1'
+    })
+
+    unsubscribe()
+    expect(subscriber).toHaveBeenCalledOnce()
+    expect(store.getState().agentStatusByPaneKey[SOURCE]).toBeUndefined()
+    expect(store.getState().agentStatusByPaneKey[TARGET]?.paneKey).toBe(TARGET)
+    expect(store.getState().paneAgentLifecycleByPaneKey[SOURCE]).toBeUndefined()
+    expect(store.getState().paneAgentLifecycleByPaneKey[TARGET]).toMatchObject({
+      paneKey: TARGET,
+      ptyId: 'pty-1',
+      executionHostId: 'local'
+    })
+  })
+
+  it('leaves every pane-keyed record in place when the target already has a lifecycle', () => {
+    const store = createTestStore()
+    store.setState({
+      tabsByWorktree: {
+        'wt-1': [
+          { id: 'tab-source', worktreeId: 'wt-1' },
+          { id: 'tab-target', worktreeId: 'wt-1' }
+        ]
+      },
+      ptyIdsByTabId: { 'tab-target': ['pty-1'] }
+    } as never)
+    store
+      .getState()
+      .setAgentStatus(SOURCE, { state: 'working', prompt: 'source', agentType: 'codex' })
+    store.getState().observePaneAgentLifecycle({
+      paneKey: SOURCE,
+      executionHostId: 'local',
+      ptyId: 'pty-1',
+      runtimeAgent: 'codex'
+    })
+    store.getState().observePaneAgentLifecycle({
+      paneKey: TARGET,
+      executionHostId: 'local',
+      ptyId: 'pty-2',
+      runtimeAgent: 'claude'
+    })
+
+    store.getState().transferAgentPaneAuthority({
+      fromPaneKey: SOURCE,
+      toPaneKey: TARGET,
+      ptyId: 'pty-1'
+    })
+
+    expect(store.getState().agentStatusByPaneKey[SOURCE]?.prompt).toBe('source')
+    expect(store.getState().agentStatusByPaneKey[TARGET]).toBeUndefined()
+    expect(store.getState().paneAgentLifecycleByPaneKey[TARGET]?.runtimeAgent).toBe('claude')
+    expect(resolveAgentPaneAuthorityKey(SOURCE)).toBe(SOURCE)
+  })
+
+  it('fails closed when a detach arrives before source lifecycle authority exists', () => {
+    const store = createTestStore()
+    store.setState({
+      tabsByWorktree: {
+        'wt-1': [
+          { id: 'tab-source', worktreeId: 'wt-1' },
+          { id: 'tab-target', worktreeId: 'wt-1' }
+        ]
+      },
+      ptyIdsByTabId: { 'tab-target': ['pty-1'] }
+    } as never)
+    store
+      .getState()
+      .setAgentStatus(SOURCE, { state: 'working', prompt: 'source', agentType: 'codex' })
+    store.setState({
+      sleepingAgentSessionsByPaneKey: {
+        [SOURCE]: {
+          paneKey: SOURCE,
+          tabId: 'tab-source',
+          worktreeId: 'wt-1',
+          agent: 'codex',
+          providerSession: { key: 'session_id', id: 'session-1' },
+          prompt: 'continue',
+          state: 'working',
+          capturedAt: 1,
+          updatedAt: 1
+        }
+      }
+    })
+
+    store.getState().transferAgentPaneAuthority({
+      fromPaneKey: SOURCE,
+      toPaneKey: TARGET,
+      ptyId: 'pty-1'
+    })
+
+    expect(store.getState().agentStatusByPaneKey[SOURCE]?.prompt).toBe('source')
+    expect(store.getState().sleepingAgentSessionsByPaneKey[SOURCE]).toBeDefined()
+    expect(store.getState().agentStatusByPaneKey[TARGET]).toBeUndefined()
+    expect(resolveAgentPaneAuthorityKey(SOURCE)).toBe(SOURCE)
+    expect(transferPaneAuthority).not.toHaveBeenCalled()
   })
 })

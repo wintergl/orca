@@ -120,6 +120,7 @@ import {
 import { buildFreshShellViewportBlankingSequence } from './terminal-restored-viewport'
 import { createShellReadyMarkerScanState, scanForShellReadyMarker } from './shell-ready-marker-scan'
 import { shouldUseShellReadyStartupDelivery } from '../../../../shared/codex-startup-delivery'
+import { isCodexRuntimeAgentType } from '../../../../shared/codex-wrapper-agent'
 import { resolveSetupAgentSequenceLaunchCommand } from '../../../../shared/setup-agent-sequencing'
 import { getSystemPrefersDark } from '@/lib/terminal-theme'
 import {
@@ -1068,7 +1069,9 @@ export function connectPanePty(
   ): void => {
     const titleAgentType = resolveCommittedTitleAgentType(title ?? '')
     suppressNativeWindowsIdleCodexFocusReports =
-      agentType && agentType !== 'unknown' ? agentType === 'codex' : titleAgentType === 'codex'
+      agentType && agentType !== 'unknown'
+        ? isCodexRuntimeAgentType(agentType)
+        : isCodexRuntimeAgentType(titleAgentType)
   }
   let queueAgentIdleTerminalModeReset = (): void => {
     if (disposed) {
@@ -2015,6 +2018,16 @@ export function connectPanePty(
     isTrackablePtyId: isForegroundTrackingAllowed,
     readForegroundProcess: (id) => window.api.pty.getForegroundProcess(id),
     confirmForegroundProcess: (id) => window.api.pty.confirmForegroundProcess(id),
+    captureAuthority: (ptyId) => {
+      const lifecycle = useAppStore.getState().paneAgentLifecycleByPaneKey?.[cacheKey]
+      return lifecycle?.ptyId === ptyId
+        ? {
+            ptyId,
+            lifecycleId: lifecycle.id,
+            authorityRevision: lifecycle.authorityRevision
+          }
+        : undefined
+    },
     publish: (entry) => useAppStore.getState().setPaneForegroundAgent(cacheKey, entry),
     hasKnownAgentIdentity: paneHasKnownAgentIdentity,
     onConfirmedShellForeground: (reason) => {
@@ -2529,7 +2542,7 @@ export function connectPanePty(
     // Why: a dead terminal has no running agent — remove its explicit status
     // entry so the hover UI only shows what is running *now*.
     useAppStore.getState().removeAgentStatus(cacheKey)
-    useAppStore.getState().clearPaneForegroundAgent(cacheKey)
+    useAppStore.getState().clearPaneForegroundAgent(cacheKey, { ptyId })
     // The runtime graph is the CLI's source for live terminal bindings, so
     // we must republish when a pane loses its PTY instead of waiting for a
     // broader layout change that may never happen.
@@ -3309,7 +3322,8 @@ export function connectPanePty(
       !initialAgentStatus &&
       paneStartup?.telemetry?.launch_source === 'sidebar' &&
       paneStartup.telemetry.request_kind === 'resume' &&
-      (paneStartup.launchAgent === 'codex' || paneStartup.telemetry.agent_kind === 'codex')
+      (isCodexRuntimeAgentType(paneStartup.launchAgent) ||
+        paneStartup.telemetry.agent_kind === 'codex')
     ) {
       // Why: history resumes open on a completed Codex composer without a done
       // row, so arm the same Windows stale-focus guard until work starts again.

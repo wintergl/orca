@@ -1,3 +1,5 @@
+import { isCodexRuntimeAgentType } from './codex-wrapper-agent'
+
 export type NativeChatTranscriptAgent = 'claude' | 'codex' | 'grok'
 
 /** Agents whose transcripts the native chat view can parse and render. */
@@ -5,6 +7,8 @@ export const NATIVE_CHAT_SUPPORTED_AGENTS: ReadonlySet<string> = new Set([
   'claude',
   'openclaude',
   'codex',
+  'codexdb',
+  'codexdba',
   'grok'
 ])
 
@@ -30,8 +34,11 @@ export function resolveNativeChatTranscriptAgent(
   if (agent === 'claude' || agent === 'openclaude') {
     return 'claude'
   }
-  if (agent === 'codex' || agent === 'grok') {
-    return agent
+  if (isCodexRuntimeAgentType(agent)) {
+    return 'codex'
+  }
+  if (agent === 'grok') {
+    return 'grok'
   }
   return null
 }

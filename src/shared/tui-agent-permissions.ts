@@ -27,7 +27,16 @@ export const YOLO_TUI_AGENT_ARGS: Partial<Record<TuiAgent, string>> = {
   copilot: '--yolo',
   grok: '--permission-mode bypassPermissions',
   devin: '--permission-mode bypass',
-  ante: '--yolo'
+  ante: '--yolo',
+  // Why (二开定制): cc-* wrap claude and codexdb* wrap codex, so they inherit
+  // the same YOLO flag as their underlying agent. The wrapper scripts pass all
+  // args through (`exec claude/codex "$@"`), so the flag reaches the agent.
+  'cc-mn': '--dangerously-skip-permissions',
+  'cc-db': '--dangerously-skip-permissions',
+  'cc-zp': '--dangerously-skip-permissions',
+  'cc-ali': '--dangerously-skip-permissions',
+  codexdb: '--dangerously-bypass-approvals-and-sandbox',
+  codexdba: '--dangerously-bypass-approvals-and-sandbox'
 }
 
 export const YOLO_TUI_AGENT_ENV: Partial<Record<TuiAgent, Record<string, string>>> = {

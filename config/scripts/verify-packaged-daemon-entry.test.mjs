@@ -43,6 +43,14 @@ describe('verify-packaged-daemon-entry', () => {
     expect(() => verifyPackagedDaemonEntryBoots(resourcesDir)).not.toThrow()
   })
 
+  it('honors a caller-provided boot timeout', () => {
+    writePackagedEntry('setTimeout(() => console.error("Usage: daemon-entry <socket>"), 20)\n')
+    expect(() => verifyPackagedDaemonEntryBoots(resourcesDir, { timeoutMs: 1 })).toThrow(
+      /could not launch daemon-entry\.js/
+    )
+    expect(() => verifyPackagedDaemonEntryBoots(resourcesDir, { timeoutMs: 200 })).not.toThrow()
+  })
+
   it('fails when the packaged entry cannot resolve its module graph', () => {
     writePackagedEntry('require("orca-module-that-does-not-exist")\n')
     expect(() => verifyPackagedDaemonEntryBoots(resourcesDir)).toThrow(

@@ -42,7 +42,7 @@ import {
 } from './ai-vault-host-scope'
 import { usePersistedAiVaultViewOptions } from './use-persisted-ai-vault-view-options'
 import { AgentSessionContinuationDialog } from '@/components/agent-session-continuation/AgentSessionContinuationDialog'
-
+import { AiVaultAgentActivitySection } from './AiVaultAgentActivitySection'
 export default function AiVaultPanel(): React.JSX.Element {
   const activeWorktreeId = useActiveWorktreeId()
   const activeWorktree = useActiveWorktree()
@@ -80,7 +80,6 @@ export default function AiVaultPanel(): React.JSX.Element {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const userChangedScopeRef = useRef(false)
   const preferredScopeRef = useRef<AiVaultScope>(DEFAULT_AI_VAULT_SCOPE)
-
   const runtimeHostOptions = useMemo(
     () => buildRuntimeAiVaultHostScopeOptions(runtimeEnvironments),
     [runtimeEnvironments]
@@ -166,7 +165,6 @@ export default function AiVaultPanel(): React.JSX.Element {
     group,
     hideEmptySessions
   })
-
   // Workspace is the preferred default, but unavailable context still falls back to All.
   useEffect(() => {
     const normalizedScope = normalizeAiVaultScopeForContext({
@@ -178,7 +176,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       setScope(normalizedScope)
     }
   }, [activeProjectKey, activeWorktreePath, scope])
-
   useEffect(() => {
     const restorableScope = getRestorableAiVaultScope({
       scope,
@@ -191,7 +188,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       setScope(restorableScope)
     }
   }, [activeProjectKey, activeWorktreePath, scope])
-
   const filteredSessions = useMemo(
     () =>
       filterAiVaultSessions(sessions, {
@@ -218,7 +214,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       sort
     ]
   )
-
   const groups = useMemo(
     () =>
       groupAiVaultSessions(filteredSessions, group, {
@@ -227,7 +222,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       }),
     [filteredSessions, group, projectLabelByKey, sessionProjectById]
   )
-
   const copyText = useCallback(async (text: string, label: string): Promise<void> => {
     await window.api.ui.writeClipboardText(text)
     toast.success(
@@ -236,7 +230,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       })
     )
   }, [])
-
   const getSessionResumeState = useCallback(
     (session: AiVaultSession) =>
       resolveAiVaultSessionResumeState({
@@ -257,7 +250,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       sessionWorktreeById
     ]
   )
-
   const getSessionResumeActions = useCallback(
     (session: AiVaultSession) =>
       resolveAiVaultSessionResumeActions({
@@ -278,13 +270,11 @@ export default function AiVaultPanel(): React.JSX.Element {
       sessionWorktreeById
     ]
   )
-
   const handleScopeChange = useCallback((nextScope: AiVaultScope) => {
     preferredScopeRef.current = nextScope
     userChangedScopeRef.current = nextScope !== DEFAULT_AI_VAULT_SCOPE
     setScope(nextScope)
   }, [])
-
   const toggleGroup = useCallback((key: string) => {
     setCollapsedGroups((current) => {
       const next = new Set(current)
@@ -296,7 +286,6 @@ export default function AiVaultPanel(): React.JSX.Element {
       return next
     })
   }, [])
-
   return (
     <div className="@container/ai-vault flex h-full min-h-0 flex-col bg-sidebar">
       <AiVaultPanelHeader
@@ -325,13 +314,11 @@ export default function AiVaultPanel(): React.JSX.Element {
         onReset={resetViewOptions}
         onRefresh={() => void refresh({ force: true })}
       />
-
       {error ? (
         <div className="border-b border-sidebar-border px-3 py-2 text-xs text-destructive">
           {error}
         </div>
       ) : null}
-
       {scanResult && scanResult.issues.length > 0 ? (
         <div className="border-b border-sidebar-border px-3 py-1.5 text-[11px] text-muted-foreground">
           {translate(
@@ -341,7 +328,24 @@ export default function AiVaultPanel(): React.JSX.Element {
           )}
         </div>
       ) : null}
-
+      <AiVaultAgentActivitySection
+        activity={{
+          activeProjectKey,
+          activeWorktreeId,
+          activeWorktreePaths,
+          allWorktrees,
+          enabledVaultAgents: agents,
+          executionHostScope,
+          filteredSessions,
+          projectHostSetupProjection,
+          query,
+          resumeTargetState,
+          scope,
+          sessions
+        }}
+        getOriginalPaneTarget={getOriginalPaneTarget}
+        onOpenOriginalPane={jumpToOriginalPane}
+      />
       <AiVaultSessionVirtualList
         groups={groups}
         collapsedGroups={collapsedGroups}

@@ -1,4 +1,5 @@
 import type { AgentType } from './agent-status-types'
+import { isCodexRuntimeAgentType } from './codex-wrapper-agent'
 import { getAgentSlashCommands, type SlashCommandSuggestion } from './native-chat-slash-commands'
 
 export type NativeChatAgentProfile = {
@@ -34,6 +35,9 @@ const NATIVE_CHAT_AGENT_PROFILES: Partial<Record<AgentType, NativeChatAgentProfi
 export function getNativeChatAgentProfile(
   agent: AgentType | null | undefined
 ): NativeChatAgentProfile | null {
+  if (isCodexRuntimeAgentType(agent)) {
+    return NATIVE_CHAT_AGENT_PROFILES.codex ?? null
+  }
   return agent ? (NATIVE_CHAT_AGENT_PROFILES[agent] ?? null) : null
 }
 
@@ -41,5 +45,7 @@ export function getNativeChatAgentProfile(
  *  envelope surfacing key off. Grok has no verified catalog yet, so its slash
  *  surface stays skills-only — this is the single place that policy lives. */
 export function getVerifiedNativeChatCommands(agent: AgentType): readonly SlashCommandSuggestion[] {
-  return agent === 'grok' ? [] : getAgentSlashCommands(agent)
+  return agent === 'grok'
+    ? []
+    : getAgentSlashCommands(isCodexRuntimeAgentType(agent) ? 'codex' : agent)
 }

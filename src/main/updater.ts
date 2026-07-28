@@ -1556,8 +1556,8 @@ export function setupAutoUpdater(
     autoUpdater.allowDowngrade = false
     autoUpdater.disableDifferentialDownload = false
   }
-  // Why: supervised serve installs require an explicit handoff; ordinary service quits must never install implicitly.
-  autoUpdater.autoInstallOnAppQuit = updateInstallMode === 'interactive'
+  // Why: local customization keeps update prompts but requires an explicit restart action.
+  autoUpdater.autoInstallOnAppQuit = false
   // Why: MacUpdater ignores quitAndInstall arguments; the surviving CLI supervisor must be the only serve relaunch owner.
   autoUpdater.autoRunAppAfterInstall = updateInstallMode === 'interactive'
 

@@ -19,7 +19,7 @@ describe('tuiAgentToAgentKind', () => {
 
   it('keeps concrete telemetry kinds in exact sync with shipped TuiAgents', () => {
     const agents = Object.keys(TUI_AGENT_CONFIG) as TuiAgent[]
-    const mappedKinds = agents.map((agent) => tuiAgentToAgentKind(agent)).sort()
+    const mappedKinds = [...new Set(agents.map((agent) => tuiAgentToAgentKind(agent)))].sort()
     const concreteSchemaKinds = AGENT_KIND_VALUES.filter((kind) => kind !== 'other').sort()
 
     expect(mappedKinds).toEqual(concreteSchemaKinds)
@@ -32,10 +32,23 @@ describe('tuiAgentToAgentKind', () => {
 })
 
 describe('agentKindToTuiAgent', () => {
-  it('round-trips every shipped TuiAgent through its telemetry kind', () => {
+  it('round-trips canonical agents and rolls provider wrappers up to their base agent', () => {
+    const providerWrappers = new Set<TuiAgent>([
+      'cc-mn',
+      'cc-db',
+      'cc-zp',
+      'cc-ali',
+      'codexdb',
+      'codexdba'
+    ])
     const agents = Object.keys(TUI_AGENT_CONFIG) as TuiAgent[]
     for (const agent of agents) {
-      expect(agentKindToTuiAgent(tuiAgentToAgentKind(agent))).toBe(agent)
+      const expected = agent.startsWith('cc-')
+        ? 'claude'
+        : providerWrappers.has(agent)
+          ? 'codex'
+          : agent
+      expect(agentKindToTuiAgent(tuiAgentToAgentKind(agent))).toBe(expected)
     }
   })
 

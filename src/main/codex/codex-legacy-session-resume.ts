@@ -8,6 +8,7 @@ import type {
 } from '../../shared/ai-vault-resume-preparation'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
+import { isCodexRuntimeAgentType } from '../../shared/codex-wrapper-agent'
 import {
   appendCodexSessionHealAuditRecord,
   createCodexSessionBackfillAuditWriter
@@ -35,7 +36,7 @@ export async function prepareLegacySharedCodexSessionResume(
   const legacyCodexHomePath = options.legacyCodexHomePath ?? dirname(paths.managedSessionsRoot)
   const managedSessionsRoot = join(legacyCodexHomePath, 'sessions')
   if (
-    args.agent !== 'codex' ||
+    !isCodexRuntimeAgentType(args.agent) ||
     args.executionHostId !== LOCAL_EXECUTION_HOST_ID ||
     !args.codexHome ||
     !sameRuntimePath(args.codexHome, legacyCodexHomePath) ||

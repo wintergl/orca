@@ -75,6 +75,12 @@ export function getAgentLabel(title: string): string | null {
     return 'Pi'
   }
 
+  if (titleHasAgentName(title, 'codexdb')) {
+    return 'Codex (Doubao Coding)'
+  }
+  if (titleHasAgentName(title, 'codexdba')) {
+    return 'Codex (Doubao Agent)'
+  }
   if (titleHasAgentName(title, 'codex')) {
     return 'Codex'
   }

@@ -2530,6 +2530,15 @@ export type TuiAgent =
   | 'grok' // xAI Grok CLI
   | 'devin' // Devin CLI
   | 'ante' // Ante (Antigma Labs)
+  // Custom: Claude Code behind per-provider wrappers (cc-*) and Codex profiles.
+  // Why: these map to user-installed PATH scripts that set provider env / --profile
+  // before exec'ing the underlying agent. See ~/.local/bin/cc-* and codexdb*.
+  | 'cc-mn' // Claude Code via MiniMax
+  | 'cc-db' // Claude Code via Doubao (火山引擎豆包)
+  | 'cc-zp' // Claude Code via Zhipu AI (智谱)
+  | 'cc-ali' // Claude Code via Aliyun Bailian (阿里云百炼)
+  | 'codexdb' // Codex with doubao-coding profile
+  | 'codexdba' // Codex with doubao-agent profile
 
 export type TaskViewPresetId = 'all' | 'issues' | 'review' | 'my-issues' | 'my-prs' | 'prs'
 
