@@ -100,7 +100,6 @@ export function reconcileWorkflowStepFailure(params: {
   }
 
   let current = getWorkflowCompletion(db, received.record.receiptId) ?? received.record
-  let blockTechnicalRetry = false
   if (current.state === 'received') {
     const settlement = settleWorkflowAttemptOrchestrationFailed(
       params.orchestration,
@@ -122,16 +121,17 @@ export function reconcileWorkflowStepFailure(params: {
         conflict: false
       }
     }
-    // Why: Orchestration success must not be flipped, and must not auto-retry.
-    blockTechnicalRetry = settlement.successTerminal
     terminalizeWorkflowStepOwnership(params.store, params.run, params.step)
+    // Why: persist success-terminal retry ban so crash recovery cannot re-enable retries.
     current =
-      advanceWorkflowCompletionState(db, current.receiptId, 'received', 'orchestration-settled') ??
-      current
+      advanceWorkflowCompletionState(db, current.receiptId, 'received', 'orchestration-settled', {
+        retryBlocked: settlement.successTerminal
+      }) ?? current
   }
 
   if (current.state === 'orchestration-settled') {
-    applyWorkflowFailureWrite(params, code, message, current, { allowRetry: !blockTechnicalRetry })
+    const allowRetry = !current.retryBlocked
+    applyWorkflowFailureWrite(params, code, message, current, { allowRetry })
     current = getWorkflowCompletion(db, current.receiptId) ?? current
   }
 
@@ -165,7 +165,6 @@ export function resumeWorkflowCompletionReconciliations(params: {
     if (!step) {
       continue
     }
-    let blockTechnicalRetry = false
     if (record.state === 'received' && record.outcome === 'failed') {
       const settlement = settleWorkflowAttemptOrchestrationFailed(
         params.orchestration,
@@ -181,18 +180,38 @@ export function resumeWorkflowCompletionReconciliations(params: {
         )
         continue
       }
-      blockTechnicalRetry = settlement.successTerminal
       terminalizeWorkflowStepOwnership(params.store, params.run, step)
-      advanceWorkflowCompletionState(db, record.receiptId, 'received', 'orchestration-settled')
+      advanceWorkflowCompletionState(db, record.receiptId, 'received', 'orchestration-settled', {
+        retryBlocked: settlement.successTerminal
+      })
     }
     const afterOrch = getWorkflowCompletion(db, record.receiptId)
     if (afterOrch?.state === 'orchestration-settled' && afterOrch.outcome === 'failed') {
+      // Why: re-check Orchestration if flag missing (legacy rows), else trust persisted ban.
+      let allowRetry = !afterOrch.retryBlocked
+      if (allowRetry) {
+        const settlement = settleWorkflowAttemptOrchestrationFailed(
+          params.orchestration,
+          step,
+          afterOrch.errorMessage ?? 'recovery resume'
+        )
+        if (settlement.successTerminal) {
+          allowRetry = false
+          advanceWorkflowCompletionState(
+            db,
+            afterOrch.receiptId,
+            'orchestration-settled',
+            'orchestration-settled',
+            { retryBlocked: true }
+          )
+        }
+      }
       applyWorkflowFailureWrite(
         { store: params.store, run: params.run, step },
         afterOrch.errorCode ?? 'workflow_agent_unavailable',
         afterOrch.errorMessage ?? 'recovery resume',
         afterOrch,
-        { allowRetry: !blockTechnicalRetry }
+        { allowRetry }
       )
     }
     const afterWorkflow = getWorkflowCompletion(db, record.receiptId)

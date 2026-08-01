@@ -49,6 +49,7 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
       retry_outbox_state TEXT NOT NULL DEFAULT 'none'
         CHECK(retry_outbox_state IN ('none', 'pending', 'consumed')),
       retry_step_run_id TEXT,
+      retry_blocked INTEGER NOT NULL DEFAULT 0,
       error_code TEXT,
       error_message TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -75,6 +76,20 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
       ON workflow_dispatch_ownership(run_id, state);
   `)
   migrateCompletionReconciliationAttemptUniqueness(db)
+  migrateCompletionReconciliationRetryBlocked(db)
+}
+
+function migrateCompletionReconciliationRetryBlocked(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(workflow_completion_reconciliations)`).all() as {
+    name: string
+  }[]
+  if (columns.length === 0 || columns.some((column) => column.name === 'retry_blocked')) {
+    return
+  }
+  db.exec(
+    `ALTER TABLE workflow_completion_reconciliations
+     ADD COLUMN retry_blocked INTEGER NOT NULL DEFAULT 0`
+  )
 }
 
 /** Older builds unique-keyed digests; attempt identity must be the sole winner. */
@@ -112,6 +127,7 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
         retry_outbox_state TEXT NOT NULL DEFAULT 'none'
           CHECK(retry_outbox_state IN ('none', 'pending', 'consumed')),
         retry_step_run_id TEXT,
+        retry_blocked INTEGER NOT NULL DEFAULT 0,
         error_code TEXT,
         error_message TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -120,11 +136,11 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
       );
       INSERT OR IGNORE INTO workflow_completion_reconciliations (
         receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
-        outcome, state, retry_outbox_state, retry_step_run_id, error_code, error_message,
-        created_at, updated_at
+        outcome, state, retry_outbox_state, retry_step_run_id, retry_blocked, error_code,
+        error_message, created_at, updated_at
       )
       SELECT receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
-        outcome, state, retry_outbox_state, retry_step_run_id, error_code, error_message,
+        outcome, state, retry_outbox_state, retry_step_run_id, 0, error_code, error_message,
         created_at, updated_at
       FROM workflow_completion_reconciliations_legacy
       ORDER BY created_at;

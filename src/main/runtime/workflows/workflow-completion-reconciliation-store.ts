@@ -22,6 +22,8 @@ export type WorkflowCompletionReconciliationRecord = {
   state: WorkflowCompletionReconciliationState
   retryOutboxState: WorkflowRetryOutboxState
   retryStepRunId: string | null
+  /** When true, technical retry outbox must stay none across crash recovery. */
+  retryBlocked: boolean
   errorCode: string | null
   errorMessage: string | null
 }
@@ -45,6 +47,7 @@ type ReconciliationRow = {
   state: WorkflowCompletionReconciliationState
   retry_outbox_state: WorkflowRetryOutboxState
   retry_step_run_id: string | null
+  retry_blocked: number | null
   error_code: string | null
   error_message: string | null
 }
@@ -134,6 +137,7 @@ export function advanceWorkflowCompletionState(
   patch?: {
     retryOutboxState?: WorkflowRetryOutboxState
     retryStepRunId?: string | null
+    retryBlocked?: boolean
     errorCode?: string | null
     errorMessage?: string | null
   }
@@ -144,6 +148,7 @@ export function advanceWorkflowCompletionState(
        SET state = ?,
            retry_outbox_state = COALESCE(?, retry_outbox_state),
            retry_step_run_id = COALESCE(?, retry_step_run_id),
+           retry_blocked = CASE WHEN ? IS NULL THEN retry_blocked ELSE ? END,
            error_code = COALESCE(?, error_code),
            error_message = COALESCE(?, error_message),
            updated_at = datetime('now')
@@ -153,6 +158,8 @@ export function advanceWorkflowCompletionState(
       to,
       patch?.retryOutboxState ?? null,
       patch?.retryStepRunId ?? null,
+      patch?.retryBlocked === undefined ? null : patch.retryBlocked ? 1 : 0,
+      patch?.retryBlocked === undefined ? null : patch.retryBlocked ? 1 : 0,
       patch?.errorCode ?? null,
       patch?.errorMessage ?? null,
       receiptId,
@@ -239,6 +246,7 @@ function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecor
     state: row.state,
     retryOutboxState: row.retry_outbox_state,
     retryStepRunId: row.retry_step_run_id,
+    retryBlocked: Boolean(row.retry_blocked),
     errorCode: row.error_code,
     errorMessage: row.error_message
   }

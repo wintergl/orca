@@ -3,7 +3,7 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import { retryWorkflowStepWithDuplicateRisk } from './workflow-completion-retry-outbox'
+import { retryWorkflowStepWithDuplicateRiskInTransaction } from './workflow-completion-retry-outbox'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 
@@ -21,9 +21,12 @@ export class WorkflowStepControl {
     })
   }
 
-  /** Fence running/uncertain steps and create a successor after operator risk accept. */
+  /**
+   * Fence running/uncertain steps and create a successor after operator risk accept.
+   * Must run inside an existing Workflow DB transaction (e.g. resolveRun mutation).
+   */
   retryWithDuplicateRisk(run: WorkflowRunRecord, stepRunId: string, reason: string | null): void {
-    retryWorkflowStepWithDuplicateRisk(this.store, run, stepRunId, reason)
+    retryWorkflowStepWithDuplicateRiskInTransaction(this.store, run, stepRunId, reason)
   }
 
   reassign(
