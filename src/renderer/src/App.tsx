@@ -322,6 +322,7 @@ const WorktreeCreationPanel = lazy(
 )
 const TaskPage = lazy(() => import('./components/TaskPage'))
 const AutomationsPage = lazy(() => import('./components/automations/AutomationsPage'))
+const WorkflowsPage = lazy(() => import('./components/workflows/WorkflowsPage'))
 const ActivityPrototypePage = lazy(() => import('./components/activity/ActivityPrototypePage'))
 const Settings = lazy(() => import('./components/settings/Settings'))
 const SkillsPage = lazy(() => import('./components/skills/SkillsPage'))
@@ -543,9 +544,13 @@ function App(): React.JSX.Element {
     hasActivePendingCreation: activePendingCreationExists
   })
   const workspaceChromeActive =
-    activeView === 'terminal' && activeWorktreeId !== null && !creationLayoutActive
+    (activeView === 'terminal' || activeView === 'workflows') &&
+    activeWorktreeId !== null &&
+    !creationLayoutActive
   const terminalWorkbenchVisible =
-    activeView === 'terminal' && activeWorktreeId !== null && !creationLayoutActive
+    (activeView === 'terminal' || activeView === 'workflows') &&
+    activeWorktreeId !== null &&
+    !creationLayoutActive
   // Why: once the floating workspace owns tabs, keep it mounted while closed so hidden terminal/browser/editor panes retain local state.
   const shouldMountFloatingTerminalPanel =
     floatingTerminalEnabled && (floatingTerminalOpen || floatingVisibleTabCount > 0)
@@ -2350,6 +2355,9 @@ function App(): React.JSX.Element {
                               {activeView === 'skills' ? <SkillsPage /> : null}
                               {activeView === 'tasks' ? <TaskPage /> : null}
                               {activeView === 'automations' ? <AutomationsPage /> : null}
+                              {activeView === 'workflows' && !activeWorktreeId ? (
+                                <WorkflowsPage />
+                              ) : null}
                               {activeView === 'activity' ? <ActivityPrototypePage /> : null}
                               {activeView === 'space' ? <WorkspaceSpacePage /> : null}
                               {activeView === 'mobile' ? <MobilePage /> : null}

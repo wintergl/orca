@@ -1,4 +1,5 @@
 import { measureClipboardTextByteLength } from './clipboard-text'
+import { WORKFLOW_AGENT_DRAG_MIME } from './workflow-agent-drag-contract'
 
 export const ORCA_INTERNAL_FILE_DRAG_TYPE = 'text/x-orca-file-path'
 
@@ -94,6 +95,13 @@ export function hasNativeFileDragTypes(
 ): boolean {
   const values = getDataTransferTypes(types)
   return values.includes('Files') && !values.includes(ORCA_INTERNAL_FILE_DRAG_TYPE)
+}
+
+export function isRendererHandledDrop(
+  types: Iterable<string> | ArrayLike<string> | null | undefined
+): boolean {
+  const values = getDataTransferTypes(types)
+  return values.includes(ORCA_INTERNAL_FILE_DRAG_TYPE) || values.includes(WORKFLOW_AGENT_DRAG_MIME)
 }
 
 export function resolveNativeFileDropPath(

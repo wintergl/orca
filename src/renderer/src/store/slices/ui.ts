@@ -603,62 +603,15 @@ export type UISlice = {
   acknowledgeAgents: (paneKeys: string[]) => void
   unacknowledgeAgents: (paneKeys: string[]) => void
   activeView: TopLevelView
-  previousViewBeforeTasks:
-    | 'terminal'
-    | 'settings'
-    | 'activity'
-    | 'automations'
-    | 'space'
-    | 'skills'
-    | 'mobile'
-  previousViewBeforeSettings:
-    | 'terminal'
-    | 'tasks'
-    | 'activity'
-    | 'automations'
-    | 'space'
-    | 'skills'
-    | 'mobile'
-  previousViewBeforeActivity:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'automations'
-    | 'space'
-    | 'skills'
-    | 'mobile'
-  previousViewBeforeAutomations:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'activity'
-    | 'space'
-    | 'skills'
-    | 'mobile'
-  previousViewBeforeSpace:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'activity'
-    | 'automations'
-    | 'skills'
-    | 'mobile'
-  previousViewBeforeSkills:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'activity'
-    | 'automations'
-    | 'space'
-    | 'mobile'
-  previousViewBeforeMobile:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'activity'
-    | 'automations'
-    | 'space'
-    | 'skills'
+  previousViewBeforeTasks: Exclude<TopLevelView, 'tasks'>
+  previousViewBeforeSettings: Exclude<TopLevelView, 'settings'>
+  previousViewBeforeActivity: Exclude<TopLevelView, 'activity'>
+  previousViewBeforeAutomations: Exclude<TopLevelView, 'automations'>
+  previousViewBeforeWorkflows: Exclude<TopLevelView, 'workflows'>
+  workflowTabOpen: boolean
+  previousViewBeforeSpace: Exclude<TopLevelView, 'space'>
+  previousViewBeforeSkills: Exclude<TopLevelView, 'skills'>
+  previousViewBeforeMobile: Exclude<TopLevelView, 'mobile'>
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
     preselectedRepoId?: string
@@ -729,6 +682,8 @@ export type UISlice = {
   ) => void
   openAutomationsPage: () => void
   closeAutomationsPage: () => void
+  openWorkflowsPage: () => void
+  closeWorkflowsPage: () => void
   openSpacePage: () => void
   closeSpacePage: () => void
   openSkillsPage: () => void
@@ -1222,6 +1177,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   previousViewBeforeSettings: 'terminal',
   previousViewBeforeActivity: 'terminal',
   previousViewBeforeAutomations: 'terminal',
+  previousViewBeforeWorkflows: 'terminal',
+  workflowTabOpen: false,
   previousViewBeforeSpace: 'terminal',
   previousViewBeforeSkills: 'terminal',
   previousViewBeforeMobile: 'terminal',
@@ -1448,6 +1405,19 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         worktreeNavHistoryIndex: nextHistoryIndex
       }
     }),
+  openWorkflowsPage: () =>
+    set((state) => ({
+      activeView: 'workflows',
+      workflowTabOpen: true,
+      previousViewBeforeWorkflows:
+        state.activeView === 'workflows' ? state.previousViewBeforeWorkflows : state.activeView
+    })),
+  closeWorkflowsPage: () =>
+    set((state) => ({
+      activeView:
+        state.activeView === 'workflows' ? state.previousViewBeforeWorkflows : state.activeView,
+      workflowTabOpen: false
+    })),
   openSpacePage: () => {
     get().recordFeatureInteraction?.('workspace-cleanup')
     set((state) => ({

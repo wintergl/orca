@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   state: {} as Record<string, unknown>,
   openTaskPage: vi.fn(),
   openAutomationsPage: vi.fn(),
+  openWorkflowsPage: vi.fn(),
   openActivityPage: vi.fn(),
   openMobilePage: vi.fn(),
   openModal: vi.fn(),
@@ -125,6 +126,7 @@ function setSidebarState({
     activeView: 'worktrees',
     openTaskPage: mocks.openTaskPage,
     openAutomationsPage: mocks.openAutomationsPage,
+    openWorkflowsPage: mocks.openWorkflowsPage,
     openActivityPage: mocks.openActivityPage,
     openMobilePage: mocks.openMobilePage,
     openModal: mocks.openModal,
@@ -210,6 +212,17 @@ describe('SidebarNav', () => {
     mocks.hasPairedMobileDevice = false
     mocks.agentBucketCounts = { attention: 0, working: 0, idle: 0 }
     setSidebarState()
+  })
+
+  it('opens Workflows from the top-level entry below Automations', async () => {
+    const container = await renderSidebarNav()
+    const automations = getButtonByText(container, 'Automations')
+    const workflows = getButtonByText(container, 'Workflows')
+    expect(
+      automations.compareDocumentPosition(workflows) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    await clickButton(workflows)
+    expect(mocks.openWorkflowsPage).toHaveBeenCalledOnce()
   })
 
   it('hides the Agents entry while settings are loading', () => {

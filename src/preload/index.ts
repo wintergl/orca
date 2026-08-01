@@ -218,10 +218,10 @@ import {
 } from '../shared/updater-renderer-events'
 import { ORCA_RENDERER_UNLOAD_PREVENTED_EVENT } from '../shared/renderer-shutdown-events'
 import {
-  ORCA_INTERNAL_FILE_DRAG_TYPE,
   createNativeFileDropPayload,
   createRejectedNativeFileDropPayload,
   hasNativeFileDragTypes,
+  isRendererHandledDrop,
   NATIVE_FILE_DROP_MAX_PATHS,
   resolveNativeFileDropPath,
   type NativeDropResolution,
@@ -387,7 +387,7 @@ document.addEventListener(
   'drop',
   (e) => {
     // Let in-app drags (e.g. file explorer → terminal) through to React handlers
-    if (e.dataTransfer?.types.includes(ORCA_INTERNAL_FILE_DRAG_TYPE)) {
+    if (isRendererHandledDrop(e.dataTransfer?.types)) {
       return
     }
 

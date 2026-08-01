@@ -10,5 +10,8 @@ export function buildActiveViewUnloadPatch(
 ): Partial<PersistedUIState> {
   // Why: unloading during startup must not overwrite the saved view with the
   // renderer default before persisted UI hydration finishes.
-  return state.persistedUIReady ? { activeView: state.activeView } : {}
+  if (!state.persistedUIReady) {
+    return {}
+  }
+  return { activeView: state.activeView === 'workflows' ? 'terminal' : state.activeView }
 }

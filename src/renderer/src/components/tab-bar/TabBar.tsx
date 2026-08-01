@@ -80,6 +80,7 @@ import { canToggleNativeChat } from '../native-chat/native-chat-availability'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { selectTabBarAgentProjections } from './tab-agent-types-by-tab-id'
 import { resolveCommittedTitleAgentType } from '@/lib/pane-agent-evidence'
+import { WorkflowTab } from './WorkflowTab'
 
 const isWindows = navigator.userAgent.includes('Windows')
 const isMacOs = navigator.userAgent.includes('Mac')
@@ -145,6 +146,10 @@ type TabBarProps = {
   hoveredTabInsertion?: HoveredTabInsertion | null
   /** Floating workspace panels are rounded; skip tab top borders that clash with the curve. */
   tabStripChrome?: 'default' | 'floating-panel'
+  showWorkflowTab?: boolean
+  workflowTabActive?: boolean
+  onActivateWorkflow?: () => void
+  onCloseWorkflow?: () => void
 }
 
 type TabItem =
@@ -269,7 +274,11 @@ function TabBarInner({
   onPinFile,
   tabBarOrder,
   hoveredTabInsertion,
-  tabStripChrome = 'default'
+  tabStripChrome = 'default',
+  showWorkflowTab = false,
+  workflowTabActive = false,
+  onActivateWorkflow,
+  onCloseWorkflow
 }: TabBarProps): React.JSX.Element {
   const includeTopTabBorder = tabStripChrome !== 'floating-panel'
   const newTerminalShortcut = useShortcutLabel('tab.newTerminal')
@@ -405,6 +414,7 @@ function TabBarInner({
   ])
   const projectRuntimeShellMenuMode = getProjectRuntimeShellMenuMode(localProjectRuntime)
   const resolvedGroupId = groupId ?? activeGroupIdForWorktree ?? worktreeId
+  const workflowTabId = `workflow:${worktreeId}:${resolvedGroupId}`
 
   const statusByRelativePath = useMemo(() => buildStatusMap(gitStatusEntries), [gitStatusEntries])
   const unifiedTabByVisibleId = useMemo(
@@ -886,6 +896,7 @@ function TabBarInner({
   ])
 
   const sortableIds = useMemo(() => orderedItems.map((item) => item.id), [orderedItems])
+  const visibleTabCount = orderedItems.length + (showWorkflowTab ? 1 : 0)
 
   const activeIndicator =
     hoveredTabInsertion?.groupId === resolvedGroupId ? hoveredTabInsertion : null
@@ -901,6 +912,9 @@ function TabBarInner({
   }, [activeIndicator, orderedItems])
 
   const activeVisibleTabId = useMemo(() => {
+    if (showWorkflowTab && workflowTabActive) {
+      return workflowTabId
+    }
     const activeItem = orderedItems.find((item) => {
       if (item.type === 'terminal') {
         return (
@@ -924,7 +938,10 @@ function TabBarInner({
     activeSimulatorTabId,
     activeTabId,
     activeTabType,
-    orderedItems
+    orderedItems,
+    showWorkflowTab,
+    workflowTabActive,
+    workflowTabId
   ])
   const tabStripLayoutKey = useMemo(
     () =>
@@ -939,8 +956,16 @@ function TabBarInner({
                 : null
           })
         )
+        .concat(showWorkflowTab ? [`workflow:${workflowTabActive}`] : [])
         .join('\u001f'),
-    [expandedPaneByTabId, generatedTabTitlesEnabled, orderedItems, statusByRelativePath]
+    [
+      expandedPaneByTabId,
+      generatedTabTitlesEnabled,
+      orderedItems,
+      showWorkflowTab,
+      statusByRelativePath,
+      workflowTabActive
+    ]
   )
 
   const togglePinned = (item: TabItem): void => {
@@ -959,7 +984,7 @@ function TabBarInner({
   const { tabStripRef, tabStripOverflowState, scrollTabStrip } = useTabStripOverflowNavigation({
     activeVisibleTabId,
     layoutKey: tabStripLayoutKey,
-    tabCount: orderedItems.length,
+    tabCount: visibleTabCount,
     worktreeId
   })
   const tabStripDragScroll = useTabStripDragScrollHandlers(scrollTabStrip, {
@@ -1066,13 +1091,13 @@ function TabBarInner({
                     tab={terminalTab}
                     unifiedTabId={item.unifiedTabId}
                     groupId={resolvedGroupId}
-                    tabCount={orderedItems.length}
+                    tabCount={visibleTabCount}
                     canToggleViewMode={canToggleViewMode}
                     isChatView={nativeChatEnabled && unifiedTabForItem?.viewMode === 'chat'}
                     onToggleViewMode={
                       unifiedTabForItem ? () => toggleTabViewMode(unifiedTabForItem.id) : undefined
                     }
-                    hasTabsToRight={index < orderedItems.length - 1}
+                    hasTabsToRight={index < orderedItems.length - 1 || showWorkflowTab}
                     hasTabsToLeft={index > 0}
                     isActive={
                       (activeTabType === 'terminal' || activeTabType === 'simulator') &&
@@ -1102,9 +1127,9 @@ function TabBarInner({
                     tab={item.data}
                     isActive={activeTabType === 'browser' && activeBrowserTabId === item.id}
                     isPinned={item.isPinned}
-                    hasTabsToRight={index < orderedItems.length - 1}
+                    hasTabsToRight={index < orderedItems.length - 1 || showWorkflowTab}
                     hasTabsToLeft={index > 0}
-                    tabCount={orderedItems.length}
+                    tabCount={visibleTabCount}
                     onActivate={() => onActivateBrowserTab?.(item.id)}
                     onClose={() => onCloseBrowserTab?.(item.id)}
                     onCloseOthers={() => onCloseOthers(item.id)}
@@ -1137,9 +1162,9 @@ function TabBarInner({
                     file={simFile}
                     isActive={activeTabType === 'simulator' && item.id === activeSimulatorTabId}
                     isPinned={item.isPinned}
-                    hasTabsToRight={index < orderedItems.length - 1}
+                    hasTabsToRight={index < orderedItems.length - 1 || showWorkflowTab}
                     hasTabsToLeft={index > 0}
-                    tabCount={orderedItems.length}
+                    tabCount={visibleTabCount}
                     statusByRelativePath={statusByRelativePath}
                     onActivate={() => onActivateFile?.(item.id)}
                     onClose={() => onCloseFile?.(item.id)}
@@ -1164,9 +1189,9 @@ function TabBarInner({
                     activeFileId === item.id
                   }
                   isPinned={item.isPinned}
-                  hasTabsToRight={index < orderedItems.length - 1}
+                  hasTabsToRight={index < orderedItems.length - 1 || showWorkflowTab}
                   hasTabsToLeft={index > 0}
-                  tabCount={orderedItems.length}
+                  tabCount={visibleTabCount}
                   statusByRelativePath={statusByRelativePath}
                   onActivate={() => onActivateFile?.(item.id)}
                   onClose={() => onCloseFile?.(item.id)}
@@ -1184,6 +1209,15 @@ function TabBarInner({
                 />
               )
             })}
+            {showWorkflowTab && onActivateWorkflow && onCloseWorkflow ? (
+              <WorkflowTab
+                id={workflowTabId}
+                isActive={workflowTabActive}
+                onActivate={onActivateWorkflow}
+                onClose={onCloseWorkflow}
+                includeTopTabBorder={includeTopTabBorder}
+              />
+            ) : null}
           </div>
           <TabStripScrollIndicator metrics={tabStripOverflowState} />
         </div>

@@ -21,6 +21,7 @@ import { tabGroupBodyAnchorName } from './tab-group-body-anchor'
 import { translate } from '@/i18n/i18n'
 
 const EditorPanel = lazy(() => import('../editor/EditorPanel'))
+const WorkflowsPage = lazy(() => import('../workflows/WorkflowsPage'))
 
 export default function TabGroupPanel({
   groupId,
@@ -55,6 +56,13 @@ export default function TabGroupPanel({
 }): React.JSX.Element {
   const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+  const activeView = useAppStore((state) => state.activeView)
+  const setActiveView = useAppStore((state) => state.setActiveView)
+  const openWorkflowsPage = useAppStore((state) => state.openWorkflowsPage)
+  const closeWorkflowsPage = useAppStore((state) => state.closeWorkflowsPage)
+  const workflowTabOpen = useAppStore((state) => state.workflowTabOpen)
+  const workflowViewActive = activeView === 'workflows'
+  const workflowTabActive = workflowViewActive && isFocused
 
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const { activeTab, browserItems, commands, editorItems, tabBarOrder, terminalTabs } = model
@@ -82,7 +90,10 @@ export default function TabGroupPanel({
       groupId={groupId}
       worktreeId={worktreeId}
       expandedPaneByTabId={model.expandedPaneByTabId}
-      onActivate={commands.activateTerminal}
+      onActivate={(terminalId) => {
+        setActiveView('terminal')
+        commands.activateTerminal(terminalId)
+      }}
       onClose={(terminalId) => {
         const item = resolveGroupTabFromVisibleId(model.groupTabs, terminalId)
         if (item?.contentType === 'terminal') {
@@ -111,12 +122,30 @@ export default function TabGroupPanel({
           commands.closeToLeft(item.id)
         }
       }}
-      onNewTerminalTab={commands.newTerminalTab}
-      onNewTerminalWithShell={commands.newTerminalWithShell}
-      onNewBrowserTab={commands.newBrowserTab}
-      onNewSimulatorTab={commands.newSimulatorTab}
-      onOpenEntry={commands.openEntry}
-      onNewFileTab={commands.newFileTab}
+      onNewTerminalTab={() => {
+        setActiveView('terminal')
+        commands.newTerminalTab()
+      }}
+      onNewTerminalWithShell={(shell) => {
+        setActiveView('terminal')
+        commands.newTerminalWithShell(shell)
+      }}
+      onNewBrowserTab={() => {
+        setActiveView('terminal')
+        commands.newBrowserTab()
+      }}
+      onNewSimulatorTab={() => {
+        setActiveView('terminal')
+        commands.newSimulatorTab?.()
+      }}
+      onOpenEntry={async (args) => {
+        setActiveView('terminal')
+        await commands.openEntry(args)
+      }}
+      onNewFileTab={() => {
+        setActiveView('terminal')
+        commands.newFileTab()
+      }}
       onSetCustomTitle={commands.setTabCustomTitle}
       onSetTabColor={commands.setTabColor}
       onTogglePaneExpand={commands.toggleTerminalPaneExpand}
@@ -140,9 +169,15 @@ export default function TabGroupPanel({
               ? 'simulator'
               : 'editor'
       }
-      onActivateFile={commands.activateEditor}
+      onActivateFile={(fileId) => {
+        setActiveView('terminal')
+        commands.activateEditor(fileId)
+      }}
       onCloseFile={commands.closeItem}
-      onActivateBrowserTab={commands.activateBrowser}
+      onActivateBrowserTab={(browserTabId) => {
+        setActiveView('terminal')
+        commands.activateBrowser(browserTabId)
+      }}
       onCloseBrowserTab={(browserTabId) => {
         const item = model.groupTabs.find(
           (candidate) => candidate.entityId === browserTabId && candidate.contentType === 'browser'
@@ -175,6 +210,10 @@ export default function TabGroupPanel({
       }}
       tabBarOrder={tabBarOrder}
       hoveredTabInsertion={hoveredTabInsertion}
+      showWorkflowTab={isFocused && workflowTabOpen}
+      workflowTabActive={workflowTabActive}
+      onActivateWorkflow={openWorkflowsPage}
+      onCloseWorkflow={closeWorkflowsPage}
     />
   )
 
@@ -308,7 +347,21 @@ export default function TabGroupPanel({
             data-contextual-tour-target="workspace-agent-terminal-tip"
           />
         ) : null}
-        {activeTab &&
+        {workflowTabActive ? (
+          <div className="absolute inset-0 flex min-h-0 min-w-0" data-workflow-tab-surface="true">
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                  {translate('workflows.page.loading', 'Loading Workflows…')}
+                </div>
+              }
+            >
+              <WorkflowsPage />
+            </Suspense>
+          </div>
+        ) : null}
+        {!workflowViewActive &&
+          activeTab &&
           activeTab.contentType !== 'terminal' &&
           activeTab.contentType !== 'browser' &&
           activeTab.contentType !== 'simulator' && (

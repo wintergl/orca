@@ -3265,6 +3265,7 @@ export type TopLevelView =
   | 'tasks'
   | 'activity'
   | 'automations'
+  | 'workflows'
   | 'space'
   | 'skills'
   | 'mobile'

@@ -7,10 +7,12 @@ import {
   createNativeFileDropPayload,
   createRejectedNativeFileDropPayload,
   hasNativeFileDragTypes,
+  isRendererHandledDrop,
   isNativeFileDropPayload,
   validateNativeFileDropPaths,
   resolveNativeFileDropPath
 } from './native-file-drop'
+import { WORKFLOW_AGENT_DRAG_MIME } from './workflow-agent-drag-contract'
 
 describe('hasNativeFileDragTypes', () => {
   it('accepts native OS file drags', () => {
@@ -21,6 +23,15 @@ describe('hasNativeFileDragTypes', () => {
     expect(hasNativeFileDragTypes(['Files', ORCA_INTERNAL_FILE_DRAG_TYPE])).toBe(false)
     expect(hasNativeFileDragTypes(['text/uri-list'])).toBe(false)
     expect(hasNativeFileDragTypes(['text/plain'])).toBe(false)
+  })
+})
+
+describe('isRendererHandledDrop', () => {
+  it('allows only known Orca in-app drags through the preload file-drop capture', () => {
+    expect(isRendererHandledDrop([ORCA_INTERNAL_FILE_DRAG_TYPE])).toBe(true)
+    expect(isRendererHandledDrop([WORKFLOW_AGENT_DRAG_MIME])).toBe(true)
+    expect(isRendererHandledDrop(['Files'])).toBe(false)
+    expect(isRendererHandledDrop(['text/plain'])).toBe(false)
   })
 })
 
