@@ -10,8 +10,9 @@ export function settleWorkflowAttemptOrchestrationFailed(
   step: WorkflowStepRunRecord,
   reason: string
 ): { settled: boolean; duplicate: boolean } {
+  // Why: pre-dispatch failures (session/lifecycle) have nothing to settle.
   if (!step.taskId || !step.dispatchId) {
-    return { settled: false, duplicate: false }
+    return { settled: true, duplicate: false }
   }
   const worker = orchestration.getWorkerDispatch(step.dispatchId)
   if (worker?.state === 'starting') {
@@ -26,11 +27,12 @@ export function settleWorkflowAttemptOrchestrationFailed(
   if (!task) {
     return { settled: false, duplicate: false }
   }
-  if (task.status === 'failed') {
-    const dispatch = orchestration.getDispatchContextById(step.dispatchId)
-    if (dispatch?.status === 'failed' || worker?.state === 'failed') {
-      return { settled: true, duplicate: true }
-    }
+  // Why: if Orchestration is already terminal, workflow failure writes may still proceed.
+  if (task.status === 'failed' || task.status === 'completed') {
+    return { settled: true, duplicate: true }
+  }
+  if (worker && ['failed', 'succeeded', 'stopped', 'abandoned'].includes(worker.state)) {
+    return { settled: true, duplicate: true }
   }
   if (task.status !== 'dispatched') {
     return { settled: false, duplicate: false }

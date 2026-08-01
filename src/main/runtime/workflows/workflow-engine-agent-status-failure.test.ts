@@ -9,12 +9,21 @@ import { WorkflowEngine } from './workflow-engine'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowStore } from './workflow-store'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
+import * as reconciler from './workflow-completion-failure-reconciler'
 
 vi.mock('./workflow-agent-lifecycle-authority', () => ({
   assertWorkflowAgentLifecycle: vi.fn()
 }))
 vi.mock('./workflow-agent-output-completion', () => ({
   captureWorkflowAgentCompletion: vi.fn()
+}))
+vi.mock('./workflow-completion-failure-reconciler', () => ({
+  reconcileWorkflowStepFailure: vi.fn(() => ({
+    receiptId: 'receipt-1',
+    retryStep: null,
+    waitingHuman: false,
+    duplicate: false
+  }))
 }))
 
 describe('WorkflowEngine Agent status failure', () => {
@@ -37,12 +46,6 @@ describe('WorkflowEngine Agent status failure', () => {
       status: 'running',
       steps: [step]
     } as WorkflowRunRecord
-    const failDecision = vi.fn()
-    const settleWorkerReport = vi.fn(() => ({
-      action: 'settled' as const,
-      outcome: 'failed' as const,
-      duplicate: false
-    }))
     const store = {
       findActiveRunOwnerByDispatch: vi.fn(() => ({
         runId: run.id,
@@ -50,17 +53,9 @@ describe('WorkflowEngine Agent status failure', () => {
         stepRunId: step.id
       })),
       getStep: vi.fn(() => step),
-      showRun: vi.fn(() => run),
-      failDecision,
-      markRecoveryWaiting: vi.fn()
+      showRun: vi.fn(() => run)
     } as unknown as WorkflowStore
-    const orchestration = {
-      getTask: vi.fn(() => ({ status: 'dispatched' })),
-      getWorkerDispatch: vi.fn(() => ({ state: 'ready' })),
-      getDispatchContextById: vi.fn(),
-      failWorkerStart: vi.fn(),
-      settleWorkerReport
-    } as unknown as OrchestrationDb
+    const orchestration = {} as unknown as OrchestrationDb
     vi.mocked(captureWorkflowAgentCompletion).mockRejectedValueOnce(
       new WorkflowError(
         'workflow_completion_incomplete',
@@ -84,18 +79,12 @@ describe('WorkflowEngine Agent status failure', () => {
         lastAssistantMessage: 'ambiguous conclusion'
       })
     ).rejects.toThrow('must begin with a verdict')
-    expect(settleWorkerReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-decision',
-        dispatchId: 'dispatch-decision',
-        outcome: 'failed'
-      })
-    )
-    expect(failDecision).toHaveBeenCalledWith(
+    expect(reconciler.reconcileWorkflowStepFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         run,
         step,
-        code: 'workflow_decision_invalid'
+        store,
+        orchestration
       })
     )
   })
