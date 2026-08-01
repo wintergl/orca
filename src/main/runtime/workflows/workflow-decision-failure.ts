@@ -62,16 +62,11 @@ export function failWorkflowDecision(
       .listReviewAggregates(params.run.id)
       .toReversed()
       .find((candidate) => candidate.artifactRevisionId === current.inputArtifactRevisionId)
-    const context = aggregate
-      ? resolutionContextForAggregate(params.run, aggregate, current.id)
-      : {
-          originDecisionStepId: current.id,
-          originDecisionNodeId: current.nodeId,
-          reviewNodeId: 'not-yet-created',
-          artifactRevisionId: current.inputArtifactRevisionId ?? 'artifact-unavailable',
-          approveTransitionId: 'run-resolution:unavailable',
-          reviseTransitionId: 'run-resolution:retry-step'
-        }
+    if (!aggregate) {
+      // Why: without a Review Aggregate, approve/revise offers are not executable.
+      throw new Error('Decision failure cannot bind its Review Aggregate.')
+    }
+    const context = resolutionContextForAggregate(params.run, aggregate, current.id)
     store.db
       .prepare(
         `UPDATE workflow_runs

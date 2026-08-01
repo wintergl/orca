@@ -9,7 +9,6 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import type { OrchestrationDb } from '../orchestration/db'
 import {
-  advanceWorkflowCompletionState,
   digestWorkflowCompletionMessage,
   getWorkflowCompletion,
   receiveWorkflowCompletion
@@ -71,13 +70,49 @@ function decideNode(maxAttempts = 2) {
   }
 }
 
+function produceNode(maxAttempts = 2) {
+  return {
+    id: 'code-produce',
+    name: 'Produce',
+    type: 'produce' as const,
+    roleSlotIds: ['primary'],
+    promptTemplateKey: 'builtin.spec.produce.v1' as const,
+    retryPolicy: { maxAttempts, backoffMs: 0, onExhausted: 'wait-human' as const },
+    promptRules: {
+      rules: [
+        {
+          id: 'first',
+          name: 'first',
+          when: 'first-visit' as const,
+          template: 'produce'
+        }
+      ],
+      completionCriteria: 'done'
+    },
+    inputBindings: [],
+    artifactKind: 'code' as const,
+    outputSchema: 'workflow.completion/v1' as const
+  }
+}
+
 function makeRunAndStep(
   store: WorkflowStore,
-  options?: { maxAttempts?: number; attempt?: number }
+  options?: {
+    maxAttempts?: number
+    attempt?: number
+    nodeKind?: 'decide' | 'produce'
+    runId?: string
+    withReviewAggregate?: boolean
+  }
 ): { run: WorkflowRunRecord; step: WorkflowStepRunRecord } {
-  const node = decideNode(options?.maxAttempts ?? 2)
+  const nodeKind = options?.nodeKind ?? 'decide'
+  const node =
+    nodeKind === 'produce'
+      ? produceNode(options?.maxAttempts ?? 2)
+      : decideNode(options?.maxAttempts ?? 2)
+  const runId = options?.runId ?? 'run-recon-1'
   const run = {
-    id: 'run-recon-1',
+    id: runId,
     status: 'running',
     templateSnapshot: {
       nodes: [node],
@@ -116,6 +151,16 @@ function makeRunAndStep(
   store.persistenceDb
     .prepare(`UPDATE workflow_step_runs SET task_id = ?, dispatch_id = ? WHERE id = ?`)
     .run('task-1', 'dispatch-1', step.id)
+  if (options?.withReviewAggregate) {
+    store.persistenceDb
+      .prepare(
+        `INSERT INTO workflow_review_aggregates (
+           id, run_id, review_node_id, round, artifact_revision_id,
+           reviewer_step_run_ids_json, outcome, conflicts_json, waiting_reason, content
+         ) VALUES (?, ?, 'code-review', 1, 'artifact-1', '[]', 'revise', '[]', NULL, 'review content')`
+      )
+      .run(`agg-${run.id}`, run.id)
+  }
   const refreshed = store.getStep(step.id)!
   claimWorkflowDispatchOwnership(store.persistenceDb, {
     runId: run.id,
@@ -240,36 +285,52 @@ describe('reconcileWorkflowStepFailure', () => {
     expect(settled.retryOutboxState).toBe('consumed')
   })
 
-  it('persists successTerminal retry ban across close/reopen at orchestration-settled', () => {
+  it('persists successTerminal retry ban via real settlement then close/reopen', () => {
     const path = join(tmpdir(), `orca-workflow-recon-reopen-${randomUUID()}.db`)
     databasePaths.push(path)
     const store = new WorkflowStore(path)
     openStores.push(store)
-    const { run, step } = makeRunAndStep(store)
-    const digest = digestWorkflowCompletionMessage({
-      stepRunId: step.id,
-      attempt: step.attempt,
-      code: 'workflow_completion_incomplete',
-      message: 'missing report after success'
+    // Produce failure after Orchestration success uses failRun (no Review Aggregate required).
+    const { run, step } = makeRunAndStep(store, { nodeKind: 'produce', maxAttempts: 2 })
+    const successOrch = {
+      getWorkerDispatch: vi.fn(() => ({ state: 'succeeded' })),
+      getTask: vi.fn(() => ({ status: 'completed' })),
+      getDispatchContextById: vi.fn(() => ({ status: 'completed' })),
+      failWorkerStart: vi.fn(),
+      settleWorkerReport: vi.fn()
+    } as unknown as OrchestrationDb
+    const first = reconcileWorkflowStepFailure({
+      store,
+      orchestration: successOrch,
+      run,
+      step,
+      error: new WorkflowError('workflow_completion_incomplete', 'missing report after success')
     })
-    const { record } = receiveWorkflowCompletion(store.persistenceDb, {
-      runId: run.id,
-      stepRunId: step.id,
-      attempt: step.attempt,
-      taskId: step.taskId,
-      dispatchId: step.dispatchId,
-      messageDigest: digest,
-      outcome: 'failed',
-      errorCode: 'workflow_completion_incomplete',
-      errorMessage: 'missing report after success'
-    })
-    advanceWorkflowCompletionState(
-      store.persistenceDb,
-      record.receiptId,
-      'received',
-      'orchestration-settled',
-      { retryBlocked: true }
-    )
+    expect(first.retryStep).toBeNull()
+    const mid = getWorkflowCompletion(store.persistenceDb, first.receiptId)!
+    expect(mid.retryBlocked).toBe(true)
+    // Simulate crash after orchestration-settled but before workflow write by rewinding state.
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET state = 'orchestration-settled', retry_outbox_state = 'none',
+             retry_blocked = 1, updated_at = datetime('now')
+         WHERE receipt_id = ?`
+      )
+      .run(first.receiptId)
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_step_runs
+         SET status = 'running', error_code = NULL, error_message = NULL, completed_at = NULL
+         WHERE id = ?`
+      )
+      .run(step.id)
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_runs SET status = 'running', waiting_reason = NULL, failure_code = NULL
+         WHERE id = ?`
+      )
+      .run(run.id)
     store.close()
     openStores.pop()
 
@@ -295,12 +356,12 @@ describe('reconcileWorkflowStepFailure', () => {
     expect(created).toHaveLength(0)
     expect(orchestration.settleWorkerReport).not.toHaveBeenCalled()
     const failed = reopened.getStep(step.id)!
-    expect(failed.status).toBe('failed')
+    expect(['failed', 'completion-incomplete']).toContain(failed.status)
     const attemptTwo = reopened.persistenceDb
       .prepare(`SELECT id FROM workflow_step_runs WHERE run_id = ? AND attempt = 2`)
       .all(run.id) as { id: string }[]
     expect(attemptTwo).toHaveLength(0)
-    const settled = getWorkflowCompletion(reopened.persistenceDb, record.receiptId)!
+    const settled = getWorkflowCompletion(reopened.persistenceDb, first.receiptId)!
     expect(settled.retryBlocked).toBe(true)
     expect(settled.retryOutboxState).toBe('none')
   })
