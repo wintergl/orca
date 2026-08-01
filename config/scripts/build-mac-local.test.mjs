@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createLocalBuildVersion } from './build-mac-local.mjs'
+import { createLocalBuildVersion, localMacBuilderArgs } from './build-mac-local.mjs'
 
 describe('createLocalBuildVersion', () => {
   it('creates unique valid prerelease versions without changing the release base', () => {
@@ -11,5 +11,26 @@ describe('createLocalBuildVersion', () => {
 
   it('sanitizes commit identifiers', () => {
     expect(createLocalBuildVersion('1.0.0', 1, 'abc/def')).toBe('1.0.0-local.1.abcdef')
+  })
+
+  it('packages only the current architecture app bundle', () => {
+    expect(localMacBuilderArgs('arm64')).toEqual([
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac',
+      'dir',
+      '--arm64'
+    ])
+    expect(localMacBuilderArgs('x64')).toEqual([
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac',
+      'dir',
+      '--x64'
+    ])
   })
 })

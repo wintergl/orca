@@ -283,6 +283,8 @@ module.exports = {
   },
   mac: {
     icon: 'resources/build/icon.icns',
+    // Why: local test packages must not depend on Apple's timestamp service; release signing still timestamps.
+    timestamp: isMacLocalBuild ? 'none' : undefined,
     entitlements: 'resources/build/entitlements.mac.plist',
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
     extendInfo: {
@@ -345,16 +347,24 @@ module.exports = {
         to: 'MacOS/orca-notification-status'
       }
     ],
-    target: [
-      {
-        target: 'dmg',
-        arch: ['x64', 'arm64']
-      },
-      {
-        target: 'zip',
-        arch: ['x64', 'arm64']
-      }
-    ]
+    // Local test builds stop at the .app bundle; release builds still emit updater archives.
+    target: isMacLocalBuild
+      ? [
+          {
+            target: 'dir',
+            arch: ['x64', 'arm64']
+          }
+        ]
+      : [
+          {
+            target: 'dmg',
+            arch: ['x64', 'arm64']
+          },
+          {
+            target: 'zip',
+            arch: ['x64', 'arm64']
+          }
+        ]
   },
   // Why: release builds should fail if signing is unavailable instead of
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.

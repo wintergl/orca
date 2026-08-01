@@ -65,6 +65,7 @@ function isPackagedExternalSpecifier(specifier) {
     !specifier.startsWith('.') &&
     !specifier.startsWith('/') &&
     specifier !== 'electron' &&
+    !specifier.startsWith('node:') &&
     !NODE_BUILTINS.has(specifier)
   )
 }
@@ -304,6 +305,18 @@ function prunePackagedNodePty(resourcesDir, electronPlatformName, electronArch) 
   const nodePtyDir = join(resourcesDir, 'node_modules', 'node-pty')
   if (!existsSync(nodePtyDir)) {
     return
+  }
+  const releaseDir = join(nodePtyDir, 'build', 'Release')
+  // Why: compiler intermediates can look signable to electron-builder but are never loaded at runtime.
+  for (const name of ['.deps', '.forge-meta', 'obj', 'obj.target']) {
+    rmSync(join(releaseDir, name), { recursive: true, force: true })
+  }
+  if (existsSync(releaseDir)) {
+    for (const entry of readdirSync(releaseDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith('node-addon-api@')) {
+        rmSync(join(releaseDir, entry.name), { recursive: true, force: true })
+      }
+    }
   }
 
   const allowedPrebuildPrefix = NODE_PTY_PREBUILD_PREFIX_BY_PLATFORM[electronPlatformName]

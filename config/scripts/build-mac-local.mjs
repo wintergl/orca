@@ -28,19 +28,31 @@ export function getLocalBuildIdentity() {
   }
 }
 
+export function localMacBuilderArgs(arch) {
+  if (!['arm64', 'x64'].includes(arch)) {
+    throw new Error(`Unsupported local macOS architecture: ${arch}`)
+  }
+  return [
+    'exec',
+    'electron-builder',
+    '--config',
+    'config/electron-builder.config.cjs',
+    '--mac',
+    'dir',
+    `--${arch}`
+  ]
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const identity = getLocalBuildIdentity()
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
   console.log(`[build:mac] local update version ${identity.version}`)
-  execFileSync(
-    process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac'],
-    {
-      env: {
-        ...process.env,
-        ORCA_BUILD_COMMIT: identity.commit,
-        ORCA_LOCAL_BUILD_VERSION: identity.version
-      },
-      stdio: 'inherit'
-    }
-  )
+  execFileSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', localMacBuilderArgs(arch), {
+    env: {
+      ...process.env,
+      ORCA_BUILD_COMMIT: identity.commit,
+      ORCA_LOCAL_BUILD_VERSION: identity.version
+    },
+    stdio: 'inherit'
+  })
 }

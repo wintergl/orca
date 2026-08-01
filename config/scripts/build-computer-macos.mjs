@@ -22,22 +22,29 @@ const bundleId =
 const displayName = isMacLocalBuild ? 'Orca Dev Computer Use' : 'Orca Computer Use'
 const signingIdentity = resolveSigningIdentity()
 const universalTriples = ['arm64-apple-macosx', 'x86_64-apple-macosx']
+const buildTriples = process.argv.includes('--single-arch')
+  ? [process.arch === 'arm64' ? universalTriples[0] : universalTriples[1]]
+  : universalTriples
 
 if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
-buildUniversalBinary()
+buildBinary()
 chmodSync(binaryPath, 0o755)
 createHelperApp()
 
-function buildUniversalBinary() {
-  const builtBinaries = universalTriples.map((triple) => {
+function buildBinary() {
+  const builtBinaries = buildTriples.map((triple) => {
     run('swift', ['build', '-c', 'release', '--package-path', packagePath, '--triple', triple])
     return path.join(packagePath, '.build', triple, 'release', 'orca-computer-use-macos')
   })
   mkdirSync(path.dirname(binaryPath), { recursive: true })
-  run('lipo', ['-create', ...builtBinaries, '-output', binaryPath])
+  if (builtBinaries.length === 1) {
+    copyFileSync(builtBinaries[0], binaryPath)
+  } else {
+    run('lipo', ['-create', ...builtBinaries, '-output', binaryPath])
+  }
 }
 
 function createHelperApp() {

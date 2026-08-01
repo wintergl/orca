@@ -11,6 +11,7 @@ const packageJson = require('../../package.json')
 const {
   createPackagedRuntimeNodeModuleResources,
   findAsarEntry,
+  isPackagedExternalSpecifier,
   prunePackagedNodePty,
   prunePackagedParcelWatcher,
   prunePackagedSherpaOnnx,
@@ -37,6 +38,8 @@ describe('electron-builder config', () => {
       const localConfig = require('../electron-builder.config.cjs')
       expect(localConfig.appId).toBe('com.stablyai.orca.dev')
       expect(localConfig.productName).toBe('Orca Dev')
+      expect(localConfig.mac.timestamp).toBe('none')
+      expect(localConfig.mac.target).toEqual([{ target: 'dir', arch: ['x64', 'arm64'] }])
       expect(localConfig.dmg.artifactName).toBe('orca-macos-dev-${arch}.${ext}')
 
       delete require.cache[configPath]
@@ -44,6 +47,10 @@ describe('electron-builder config', () => {
       const releaseConfig = require('../electron-builder.config.cjs')
       expect(releaseConfig.appId).toBe('com.stablyai.orca')
       expect(releaseConfig.productName).toBe('Orca')
+      expect(releaseConfig.mac.target).toEqual([
+        { target: 'dmg', arch: ['x64', 'arm64'] },
+        { target: 'zip', arch: ['x64', 'arm64'] }
+      ])
       expect(releaseConfig.dmg.artifactName).toBe('orca-macos-${arch}.${ext}')
     } finally {
       if (originalLocalBuild === undefined) {
@@ -308,6 +315,12 @@ describe('electron-builder config', () => {
     expect(findAsarEntry(['/out/main/index.js'], 'out/main/index.js')).toBe('/out/main/index.js')
   })
 
+  it('treats node-prefixed built-ins as internal across build Node versions', () => {
+    expect(isPackagedExternalSpecifier('node:sqlite')).toBe(false)
+    expect(isPackagedExternalSpecifier('node:fs')).toBe(false)
+    expect(isPackagedExternalSpecifier('sqlite')).toBe(true)
+  })
+
   it('prunes non-target node-pty prebuilds from packaged runtime resources', async () => {
     const resourcesDir = await mkdtemp(join(tmpdir(), 'orca-node-pty-prune-'))
     try {
@@ -322,6 +335,13 @@ describe('electron-builder config', () => {
       await mkdir(join(resourcesDir, 'node_modules', 'node-pty', 'deps', 'winpty'), {
         recursive: true
       })
+      const releaseDir = join(resourcesDir, 'node_modules', 'node-pty', 'build', 'Release')
+      await mkdir(join(releaseDir, 'obj.target', 'pty'), { recursive: true })
+      await mkdir(join(releaseDir, '.deps'), { recursive: true })
+      await mkdir(join(releaseDir, 'node-addon-api@7.1.1'), { recursive: true })
+      await writeFile(join(releaseDir, 'pty.node'), 'runtime addon', 'utf8')
+      await writeFile(join(releaseDir, 'spawn-helper'), 'runtime helper', 'utf8')
+      await writeFile(join(releaseDir, '.forge-meta'), 'build metadata', 'utf8')
 
       prunePackagedNodePty(resourcesDir, 'darwin')
 
@@ -335,6 +355,10 @@ describe('electron-builder config', () => {
       await expect(
         readdir(join(resourcesDir, 'node_modules', 'node-pty', 'deps'))
       ).resolves.toEqual([])
+      await expect(readdir(releaseDir).then((entries) => entries.sort())).resolves.toEqual([
+        'pty.node',
+        'spawn-helper'
+      ])
     } finally {
       await rm(resourcesDir, { recursive: true, force: true })
     }
