@@ -7,6 +7,7 @@ type AssertTerminalAgentSendableOptions = {
   runtime: OrcaRuntimeService
   handle: string
   assertWritable: () => void
+  requireIdle?: boolean
 }
 
 export async function assertTerminalAgentSendable(
@@ -28,6 +29,9 @@ export async function assertTerminalAgentSendable(
     if (agentStatus.isRunningAgent) {
       if (agentStatus.status === 'permission') {
         throw new Error('terminal_guard_permission')
+      }
+      if (options.requireIdle && agentStatus.status !== 'idle') {
+        throw new Error('terminal_guard_not_idle')
       }
       return
     }

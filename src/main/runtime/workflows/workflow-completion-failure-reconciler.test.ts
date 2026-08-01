@@ -48,7 +48,9 @@ function decideNode(maxAttempts = 2) {
     id: 'code-decide',
     name: 'Decide',
     type: 'decide' as const,
-    retryPolicy: { maxAttempts, backoffMs: 0 },
+    roleSlotIds: ['primary'],
+    promptTemplateKey: 'builtin.spec.decide.v1' as const,
+    retryPolicy: { maxAttempts, backoffMs: 0, onExhausted: 'wait-human' as const },
     promptRules: {
       rules: [
         {
@@ -60,9 +62,8 @@ function decideNode(maxAttempts = 2) {
       ],
       completionCriteria: 'done'
     },
-    inputBindings: [] as string[],
-    assignmentPolicy: { mode: 'single' as const, minAgents: 1, maxAgents: 1 },
-    timeoutMs: 60_000,
+    inputBindings: [],
+    mode: 'rules' as const,
     outputSchema: 'workflow.decision/v1' as const
   }
 }
@@ -100,7 +101,9 @@ function makeRunAndStep(
       agentLifecycleId: 'life-1',
       paneKey: 'pane-1',
       worktreeId: 'ws-1',
-      executionHostId: 'local'
+      executionHostId: 'local',
+      providerSessionId: null,
+      runtimeAgent: null
     },
     'artifact-1',
     'running',

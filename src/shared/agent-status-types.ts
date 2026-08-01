@@ -111,7 +111,7 @@ export type AgentStatusEntry = {
   executionHostId?: ExecutionHostId
   /** Tab attribution from the hook IPC payload, when available. */
   tabId?: string
-  /** Immutable terminal-agent lifetime identity assigned by the renderer. */
+  /** Immutable terminal-agent lifetime identity observed by main. */
   agentLifecycleId?: string
   /** Timestamp at which agentLifecycleId was created. */
   agentSessionStartedAt?: number
@@ -187,6 +187,8 @@ export type ParsedAgentStatusPayload = Omit<AgentStatusPayload, 'prompt'> & { pr
  */
 export type AgentStatusIpcPayload = ParsedAgentStatusPayload & {
   paneKey: string
+  /** Main-process observation of the current pane/process/session authority. */
+  agentLifecycleId?: string
   launchToken?: string
   terminalHandle?: string
   tabId?: string

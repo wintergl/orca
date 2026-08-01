@@ -3,6 +3,11 @@ import type { TuiAgent } from './types'
 
 export type AgentPermissionMode = 'yolo' | 'manual' | 'mixed'
 
+export type TuiAgentPermissionLaunch = {
+  agentArgs: string
+  agentEnv: Record<string, string>
+}
+
 export const YOLO_TUI_AGENT_ARGS: Partial<Record<TuiAgent, string>> = {
   claude: '--dangerously-skip-permissions',
   'claude-agent-teams': '--dangerously-skip-permissions',
@@ -46,6 +51,32 @@ export const YOLO_TUI_AGENT_ENV: Partial<Record<TuiAgent, Record<string, string>
 const PERMISSION_AGENT_IDS = Object.keys(TUI_AGENT_CONFIG).filter(
   (agent): agent is TuiAgent => agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
 )
+
+export function supportsTuiAgentPermissionMode(agent: TuiAgent): boolean {
+  return agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
+}
+
+export function resolveTuiAgentPermissionLaunch(args: {
+  agent: TuiAgent
+  mode: Exclude<AgentPermissionMode, 'mixed'>
+  agentArgs: string
+  agentEnv: Record<string, string>
+}): TuiAgentPermissionLaunch {
+  return {
+    agentArgs:
+      args.agent in YOLO_TUI_AGENT_ARGS
+        ? args.mode === 'yolo'
+          ? (YOLO_TUI_AGENT_ARGS[args.agent] ?? '')
+          : ''
+        : args.agentArgs,
+    agentEnv:
+      args.agent in YOLO_TUI_AGENT_ENV
+        ? args.mode === 'yolo'
+          ? { ...YOLO_TUI_AGENT_ENV[args.agent] }
+          : {}
+        : { ...args.agentEnv }
+  }
+}
 
 function normalizeArgs(value: string | null | undefined): string {
   return value?.trim() ?? ''

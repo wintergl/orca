@@ -87,6 +87,8 @@ docs/**
 !docs/assets/**
 !docs/readme/
 !docs/readme/**
+!docs/spec/
+!docs/spec/**
 !docs/STYLEGUIDE.md
 !docs/mobile-terminal-shortcut-bar.md
 !docs/reference/

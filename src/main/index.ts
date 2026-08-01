@@ -1300,9 +1300,11 @@ function openMainWindow(): BrowserWindow {
       maybeAutoRenameBranchOnFirstWorkFromHook({ paneKey, tabId, worktreeId, payload, isReplay })
       const orchestration = runtime?.getAgentStatusOrchestrationContextForPaneKey(paneKey)
       const terminalHandle = runtime?.getAgentStatusTerminalHandleForPaneKey(paneKey)
+      const agentLifecycleId = runtime?.getAgentLifecycleAuthorityIdForPaneKey(paneKey)
       mainWindow?.webContents.send('agentStatus:set', {
         ...payload,
         paneKey,
+        ...(agentLifecycleId ? { agentLifecycleId } : {}),
         ...(launchToken ? { launchToken } : {}),
         ...(terminalHandle ? { terminalHandle } : {}),
         tabId,
@@ -2180,6 +2182,30 @@ app.whenReady().then(async () => {
     orchestrationEnvironmentTransport
   })
   runtime = runtimeService
+  const workflowEngine = runtimeService.getWorkflowEngine()
+  agentHookServer.subscribeEnrichedStatus((enriched) => {
+    if (enriched.providerSessionOnly) {
+      return
+    }
+    const orchestration = runtimeService.getAgentStatusOrchestrationContextForPaneKey(
+      enriched.paneKey
+    )
+    const agentLifecycleId = runtimeService.getAgentLifecycleAuthorityIdForPaneKey(enriched.paneKey)
+    if (!orchestration || !agentLifecycleId) {
+      return
+    }
+    void workflowEngine
+      .handleAgentStatus({
+        ...enriched.payload,
+        paneKey: enriched.paneKey,
+        worktreeId: enriched.worktreeId,
+        agentLifecycleId,
+        taskId: orchestration.taskId,
+        dispatchId: orchestration.dispatchId,
+        receivedAt: enriched.receivedAt
+      })
+      .catch((error) => console.warn('[workflow] Agent status hook failed', error))
+  })
   publishProviderSessionChanges(agentHookServer.getProviderSessionIdentities())
   browserManager.setBrowserGuestStateChangedListener((worktreeId) => {
     runtimeService.notifyMobileSessionTabsChanged(worktreeId)

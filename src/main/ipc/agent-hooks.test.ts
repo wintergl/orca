@@ -171,6 +171,7 @@ describe('agentStatus:getSnapshot IPC', () => {
       getAgentStatusTerminalHandleForPaneKey: vi.fn((paneKey: string) =>
         paneKey === PANE_KEY ? 'term-parent' : paneKey === CHILD_PANE_KEY ? 'term-child' : undefined
       ),
+      getAgentLifecycleAuthorityIdForPaneKey: vi.fn(() => null),
       getAgentStatusOrchestrationContextForPaneKey: vi.fn((paneKey: string) =>
         paneKey === CHILD_PANE_KEY
           ? {

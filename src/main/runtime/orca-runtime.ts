@@ -97,6 +97,8 @@ import { resolveWorktreeCreateBase } from '../worktree-create-base'
 import { resolveWorktreeAddBaseRef } from '../../shared/worktree-base-ref'
 import { OrchestrationDb } from './orchestration/db'
 import { OrchestrationError } from './orchestration/orchestration-error'
+import { WorkflowStore } from './workflows/workflow-store'
+import { WorkflowEngine } from './workflows/workflow-engine'
 import {
   buildObservedSetupCommand,
   createSetupCompletionScanner
@@ -297,6 +299,7 @@ import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
 } from '../../shared/tui-agent-launch-defaults'
+import { resolveTuiAgentPermissionLaunch } from '../../shared/tui-agent-permissions'
 import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-terminal-shell'
 import {
   getTuiAgentLaunchCommand,
@@ -2587,6 +2590,17 @@ export class OrcaRuntimeService {
   private ptyForegroundAgentRefreshes = new Map<string, PtyForegroundAgentRefresh>()
   private ptyDelayedForegroundSnapshotTitleObservations = new Map<string, number>()
   private _orchestrationDb: OrchestrationDb | null = null
+  private _workflowStore: WorkflowStore | null = null
+  private _workflowEngine: WorkflowEngine | null = null
+  private agentLifecycleAuthorityByPaneKey = new Map<
+    string,
+    {
+      id: string
+      handle: string
+      processIncarnation: string
+      providerSessionId: string | null
+    }
+  >()
   private messageWaitersByHandle = new Map<string, Set<MessageWaiter>>()
   // Why: mobile clients subscribe to terminal output via terminal.subscribe.
   // These listeners fire on every onPtyData call, enabling real-time streaming
@@ -3473,6 +3487,35 @@ export class OrcaRuntimeService {
 
   setOrchestrationDb(db: OrchestrationDb): void {
     this._orchestrationDb = db
+  }
+
+  getWorkflowStore(): WorkflowStore {
+    if (!this._workflowStore) {
+      const { app } = require('electron')
+      const dbPath = join(app.getPath('userData'), 'orchestration.db')
+      this._workflowStore = new WorkflowStore(dbPath)
+    }
+    return this._workflowStore
+  }
+
+  setWorkflowStore(store: WorkflowStore): void {
+    this._workflowEngine?.stop()
+    this._workflowEngine = null
+    this._workflowStore = store
+  }
+
+  getWorkflowEngine(): WorkflowEngine {
+    if (!this._workflowEngine) {
+      this._workflowEngine = new WorkflowEngine(
+        this,
+        this.getWorkflowStore(),
+        this.getOrchestrationDb()
+      )
+      void this._workflowEngine.recoverAll().catch((error) => {
+        console.error('[workflow] recovery failed', error)
+      })
+    }
+    return this._workflowEngine
   }
 
   setAutomationService(service: AutomationService): void {
@@ -13821,6 +13864,51 @@ export class OrcaRuntimeService {
     })
   }
 
+  getAgentLifecycleAuthorityIdForPaneKey(paneKey: string): string | null {
+    const handle = this.getTerminalHandleForPaneKey(paneKey)
+    if (!handle) {
+      return null
+    }
+    const processIncarnation = this.getTerminalProcessIncarnation(handle)
+    if (!processIncarnation) {
+      return null
+    }
+    const providerSessionId =
+      this.getExactWorkerProviderSession(handle, 0)?.providerSession.id ?? null
+    const current = this.agentLifecycleAuthorityByPaneKey.get(paneKey)
+    if (
+      current?.handle === handle &&
+      current.processIncarnation === processIncarnation &&
+      (providerSessionId === null ||
+        current.providerSessionId === null ||
+        current.providerSessionId === providerSessionId)
+    ) {
+      // Why: a Provider Session can first become observable after the Agent starts working.
+      current.providerSessionId ??= providerSessionId
+      return current.id
+    }
+    const digest = createHash('sha256')
+      .update(
+        [
+          this.runtimeId,
+          paneKey,
+          handle,
+          processIncarnation,
+          providerSessionId ?? '',
+          current?.id ?? ''
+        ].join('\0')
+      )
+      .digest('base64url')
+    const id = `agent-lifecycle-${digest}`
+    this.agentLifecycleAuthorityByPaneKey.set(paneKey, {
+      id,
+      handle,
+      processIncarnation,
+      providerSessionId
+    })
+    return id
+  }
+
   validateOrchestrationAgentLauncher(agent: TuiAgent): void {
     const settings = this.store?.getSettings()
     if (!settings) {
@@ -14115,7 +14203,7 @@ export class OrcaRuntimeService {
 
     const isRunningAgent = await this.isTerminalRunningAgent(handle)
     this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
-    return { handle, isRunningAgent, status: null }
+    return { handle, isRunningAgent, status: isRunningAgent ? 'idle' : null }
   }
 
   private getTerminalAgentStatusPtyId(handle: string): string {
@@ -21962,6 +22050,8 @@ export class OrcaRuntimeService {
         JSON.stringify([
           request.worktree,
           request.agent,
+          request.agentCommand ?? null,
+          request.permissionMode ?? null,
           request.prompt ?? null,
           request.promptDelivery ?? null,
           request.agentArgs ?? null,
@@ -22028,6 +22118,8 @@ export class OrcaRuntimeService {
           JSON.stringify([
             workspace.id,
             request.agent,
+            request.agentCommand ?? null,
+            request.permissionMode ?? null,
             request.prompt ?? null,
             request.promptDelivery ?? null,
             request.agentArgs ?? null,
@@ -22056,14 +22148,29 @@ export class OrcaRuntimeService {
         isRemote,
         terminalWindowsShell: settings.terminalWindowsShell
       })
+      const configuredAgentArgs = resolveTuiAgentLaunchArgs(
+        request.agent,
+        settings.agentDefaultArgs
+      )
+      const configuredAgentEnv = resolveTuiAgentLaunchEnv(request.agent, settings.agentDefaultEnv)
+      const permissionLaunch = request.permissionMode
+        ? resolveTuiAgentPermissionLaunch({
+            agent: request.agent,
+            mode: request.permissionMode,
+            agentArgs: configuredAgentArgs,
+            agentEnv: configuredAgentEnv
+          })
+        : null
       const startupArgs = {
         agent: request.agent,
-        cmdOverrides: settings.agentCmdOverrides ?? {},
+        cmdOverrides: request.agentCommand
+          ? { ...settings.agentCmdOverrides, [request.agent]: request.agentCommand }
+          : (settings.agentCmdOverrides ?? {}),
         agentArgs:
           request.agentArgs !== undefined
             ? request.agentArgs
-            : resolveTuiAgentLaunchArgs(request.agent, settings.agentDefaultArgs),
-        agentEnv: resolveTuiAgentLaunchEnv(request.agent, settings.agentDefaultEnv),
+            : (permissionLaunch?.agentArgs ?? configuredAgentArgs),
+        agentEnv: permissionLaunch?.agentEnv ?? configuredAgentEnv,
         sessionOptions: this.toAgentSessionOptions(request.launchPreferences),
         platform,
         shell,

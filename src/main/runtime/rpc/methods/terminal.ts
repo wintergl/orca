@@ -327,10 +327,15 @@ async function commitMobileInputFloorClaim(claim: MobileInputFloorClaimHolder): 
   }
 }
 
-function getTerminalSendGuardRefusedReason(error: unknown): 'no-agent' | 'permission' | undefined {
+function getTerminalSendGuardRefusedReason(
+  error: unknown
+): 'no-agent' | 'permission' | 'not-idle' | undefined {
   const message = error instanceof Error ? error.message : String(error)
   if (message.includes('terminal_guard_permission')) {
     return 'permission'
+  }
+  if (message.includes('terminal_guard_not_idle')) {
+    return 'not-idle'
   }
   if (message.includes('terminal_guard_no_agent')) {
     return 'no-agent'
@@ -796,7 +801,7 @@ const TerminalSend = TerminalHandle.extend({
   text: OptionalString,
   enter: z.unknown().optional(),
   interrupt: z.unknown().optional(),
-  requireAgentStatus: z.enum(['sendable']).optional(),
+  requireAgentStatus: z.enum(['sendable', 'idle']).optional(),
   // Why: terminal-generated replies are valid input but must not transfer the shared terminal floor.
   inputKind: z.enum(['query-reply']).optional(),
   // Why: identifies the caller for the driver state machine; when absent (older clients) the server falls back to the most recent mobile actor (docs/mobile-presence-lock.md).
@@ -1174,7 +1179,7 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
       }
       const hasText = typeof params.text === 'string' && params.text.length > 0
       const hasSuffix = params.enter === true || params.interrupt === true
-      if (params.requireAgentStatus === 'sendable' && hasText && hasSuffix) {
+      if (params.requireAgentStatus !== undefined && hasText && hasSuffix) {
         // Why: guarded sends are two-phase; reject combined payload + submit so a guard flip can't cause partial delivery.
         return {
           send: {
@@ -1186,11 +1191,12 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
       }
       // Why: recheck permission/no-agent state immediately before accepting the PTY write.
       const assertSendPreconditions =
-        params.requireAgentStatus === 'sendable'
+        params.requireAgentStatus !== undefined
           ? async (ptyId?: string): Promise<void> => {
               await assertTerminalAgentSendable({
                 runtime,
                 handle: params.terminal,
+                requireIdle: params.requireAgentStatus === 'idle',
                 assertWritable: () => {
                   assertTerminalSendExactPtyBinding(runtime, params.terminal, ptyId)
                   if (ptyId && isTerminalInputLockedForClient(runtime, ptyId, params.client)) {
@@ -1200,7 +1206,7 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
               })
             }
           : undefined
-      if (params.requireAgentStatus === 'sendable') {
+      if (params.requireAgentStatus !== undefined) {
         try {
           await assertSendPreconditions?.(leaf?.ptyId ?? undefined)
         } catch (error) {

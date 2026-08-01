@@ -24,6 +24,7 @@ export async function readExactWorkerOutput(args: {
   source?: OrchestrationWorkerReadSource
   cursor?: string | number
   limit?: number
+  startAtBeginning?: boolean
 }): Promise<OrchestrationWorkerReadResult> {
   const source = args.source ?? 'auto'
   const cursor = decodeWorkerOutputCursor(args.cursor, args.dispatchId)
@@ -45,7 +46,8 @@ export async function readExactWorkerOutput(args: {
     agent: session.agent,
     sessionId: session.providerSession.id,
     transcriptPath: session.providerSession.transcriptPath,
-    offset: cursor?.source === 'transcript' ? cursor.position : undefined,
+    offset:
+      cursor?.source === 'transcript' ? cursor.position : args.startAtBeginning ? 0 : undefined,
     limit: args.limit
   })
   if (!transcript.ok) {

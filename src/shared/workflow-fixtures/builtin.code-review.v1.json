@@ -1,0 +1,180 @@
+{
+  "id": "builtin.code-review.v1",
+  "name": "代码实现与评审",
+  "scope": "built-in",
+  "version": 4,
+  "definition": {
+    "schemaVersion": 1,
+    "entryNodeId": "code-produce",
+    "defaults": {
+      "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" }
+    },
+    "roleSlots": [
+      {
+        "id": "implementer",
+        "label": "代码实现 Agent",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "code-reviewers",
+        "label": "代码评审 Agent",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 8,
+        "execution": "parallel",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "code-decider",
+        "label": "代码判定 Agent",
+        "required": false,
+        "minAgents": 0,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "code-produce",
+        "name": "代码实现",
+        "type": "produce",
+        "roleSlotIds": ["implementer"],
+        "promptTemplateKey": "builtin.code.produce.v1",
+        "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n已确认的 SPEC 或上游结果为：\n{{artifactRevision}}\n\n上游 Agent 的完成结论为：\n{{upstreamCompletion}}\n\n上一轮代码评审汇总为：\n{{reviewAggregate}}\n\n人工修改要求：\n{{humanInstructions}}\n\n请依据上述内容实现或修订代码。",
+        "inputBindings": [
+          "root-goal",
+          "upstream-completion",
+          "artifact-revision",
+          "review-aggregate"
+        ],
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "artifactKind": "code",
+        "outputSchema": "workflow.completion/v1"
+      },
+      {
+        "id": "code-review",
+        "name": "代码评审",
+        "type": "review",
+        "roleSlotIds": ["code-reviewers"],
+        "promptTemplateKey": "builtin.code.review.v1",
+        "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n上游 Agent 的完成结论为：\n{{upstreamCompletion}}\n\n本轮完成的代码为：\n{{artifactRevision}}\n\n请结合工作目标和冻结的代码评审此结果。",
+        "inputBindings": ["root-goal", "upstream-completion", "artifact-revision"],
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "reviewPolicy": {
+          "minReviewers": 1,
+          "completion": "all-required",
+          "onReviewerFailure": "wait-human",
+          "timeoutMs": 3600000,
+          "maxReviewRounds": 3
+        },
+        "outputSchema": "workflow.review-result/v1"
+      },
+      {
+        "id": "code-decide",
+        "name": "代码判定",
+        "type": "decide",
+        "roleSlotIds": ["code-decider"],
+        "promptTemplateKey": "builtin.code.decide.v1",
+        "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n本轮完成的代码为：\n{{artifactRevision}}\n\n评审汇总为：\n{{reviewAggregate}}\n\n请判断该实现应通过、修改或请求人工处理。",
+        "inputBindings": ["root-goal", "artifact-revision", "review-aggregate"],
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "mode": "rules-then-agent",
+        "outputSchema": "workflow.decision/v1"
+      },
+      {
+        "id": "code-human",
+        "name": "代码人工决定",
+        "type": "human-gate",
+        "roleSlotIds": [],
+        "promptTemplateKey": null,
+        "promptInstructions": null,
+        "inputBindings": ["artifact-revision", "review-aggregate", "decision"],
+        "retryPolicy": { "maxAttempts": 0, "backoffMs": 0, "onExhausted": "wait-human" },
+        "waitingReasons": [
+          "review-request-human",
+          "review-revision-required",
+          "review-conflict",
+          "review-limit-reached",
+          "decision-invalid"
+        ],
+        "allowedActions": [
+          "view-evidence",
+          "approve",
+          "revise",
+          "continue-round",
+          "retry-step",
+          "end-workflow"
+        ],
+        "outputSchema": "workflow.human-resolution/v1"
+      },
+      {
+        "id": "complete",
+        "name": "完成",
+        "type": "complete",
+        "roleSlotIds": [],
+        "promptTemplateKey": null,
+        "promptInstructions": null,
+        "inputBindings": ["decision"],
+        "retryPolicy": { "maxAttempts": 0, "backoffMs": 0, "onExhausted": "fail-run" },
+        "outcome": "succeeded",
+        "outputSchema": null
+      }
+    ],
+    "transitions": [
+      {
+        "id": "code-produce-succeeded",
+        "from": "code-produce",
+        "when": "step:succeeded",
+        "to": "code-review"
+      },
+      {
+        "id": "code-review-succeeded",
+        "from": "code-review",
+        "when": "step:succeeded",
+        "to": "code-decide"
+      },
+      {
+        "id": "code-decision-approved",
+        "from": "code-decide",
+        "when": "decision:approve",
+        "to": "complete"
+      },
+      {
+        "id": "code-decision-revise",
+        "from": "code-decide",
+        "when": "decision:revise",
+        "to": "code-produce"
+      },
+      {
+        "id": "code-decision-human",
+        "from": "code-decide",
+        "when": "decision:request-human",
+        "to": "code-human"
+      },
+      {
+        "id": "code-decision-limit",
+        "from": "code-decide",
+        "when": "decision:stop-at-review",
+        "to": "run:review-limit-reached"
+      },
+      {
+        "id": "code-human-approved",
+        "from": "code-human",
+        "when": "human:approve",
+        "to": "complete"
+      },
+      {
+        "id": "code-human-revise",
+        "from": "code-human",
+        "when": "human:revise",
+        "to": "code-produce"
+      },
+      { "id": "code-human-end", "from": "code-human", "when": "human:end", "to": "run:cancelled" }
+    ]
+  }
+}

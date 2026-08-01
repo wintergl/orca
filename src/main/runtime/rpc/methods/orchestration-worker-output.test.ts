@@ -163,6 +163,40 @@ describe('exact orchestration worker output', () => {
     })
   })
 
+  it('paginates from the transcript beginning when exact completion needs every page', async () => {
+    await writeFile(
+      transcriptA,
+      `${Array.from({ length: 55 }, (_, index) =>
+        codexMessage(`message-${index}`, `message ${index}`)
+      ).join('\n')}\n`
+    )
+
+    const first = await read({ source: 'transcript', startAtBeginning: true, limit: 50 })
+    if (first.source !== 'transcript') {
+      throw new Error('Expected transcript output')
+    }
+    const second = await read({ source: 'transcript', cursor: first.cursor, limit: 50 })
+
+    expect(first.transcript).toMatchObject({
+      returnedMessageCount: 50,
+      limited: true
+    })
+    expect(second).toMatchObject({
+      source: 'transcript',
+      transcript: {
+        returnedMessageCount: 5,
+        limited: false
+      }
+    })
+    if (second.source !== 'transcript') {
+      throw new Error('Expected transcript output')
+    }
+    expect(second.transcript.messages[0]).toMatchObject({
+      id: 'message-50',
+      blocks: [{ type: 'text', text: 'message 50' }]
+    })
+  })
+
   it('uses a labeled terminal fallback and keeps its cursor pinned', async () => {
     providerSession = null
     const fallback = await read()

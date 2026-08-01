@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY,
+  AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY,
   AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY,
   MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
   RUNTIME_CAPABILITIES,
@@ -38,6 +39,26 @@ function runtimeStub() {
 }
 
 describe('agent session RPC methods', () => {
+  it('accepts one-session command and permission overrides for a fresh Agent', async () => {
+    const runtime = runtimeStub()
+    const dispatcher = new RpcDispatcher({
+      runtime: runtime as unknown as OrcaRuntimeService,
+      methods: AGENT_SESSION_METHODS
+    })
+    const params = {
+      clientOperationId: `${Date.now()}-0123456789abcdef0123456789abcdef`,
+      worktree: 'id:worktree-1',
+      agent: 'codex',
+      agentCommand: 'codex --profile review',
+      permissionMode: 'yolo'
+    }
+
+    const response = await dispatcher.dispatch(request('terminal.createAgentSession', params))
+
+    expect(response).toMatchObject({ ok: true, result: { disposition: 'created' } })
+    expect(runtime.createAgentSession).toHaveBeenCalledWith(params, {})
+  })
+
   it('dispatches an explicit structured resume without an authoritative command', async () => {
     const runtime = runtimeStub()
     const dispatcher = new RpcDispatcher({
@@ -370,6 +391,7 @@ describe('agent session RPC methods', () => {
     expect(RUNTIME_PROTOCOL_VERSION).toBe(3)
     expect(MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION).toBe(2)
     expect(RUNTIME_CAPABILITIES).toContain(AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY)
+    expect(RUNTIME_CAPABILITIES).toContain(AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY)
     expect(RUNTIME_CAPABILITIES).toContain(AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY)
   })
 })

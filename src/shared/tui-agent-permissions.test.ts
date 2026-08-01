@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyAgentPermissionMode,
   resolveAgentPermissionModeSummary,
+  resolveTuiAgentPermissionLaunch,
   resolveTuiAgentPermissionMode,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
@@ -84,5 +85,27 @@ describe('tui agent permissions', () => {
         agentEnv: YOLO_TUI_AGENT_ENV.goose
       })
     ).toBe('yolo')
+  })
+
+  it('builds a one-session manual launch without replacing unrelated environment', () => {
+    expect(
+      resolveTuiAgentPermissionLaunch({
+        agent: 'codex',
+        mode: 'manual',
+        agentArgs: '--dangerously-bypass-approvals-and-sandbox',
+        agentEnv: { CODEX_HOME: '/tmp/codex' }
+      })
+    ).toEqual({ agentArgs: '', agentEnv: { CODEX_HOME: '/tmp/codex' } })
+  })
+
+  it('builds env-driven YOLO mode for one Goose session', () => {
+    expect(
+      resolveTuiAgentPermissionLaunch({
+        agent: 'goose',
+        mode: 'yolo',
+        agentArgs: '--profile review',
+        agentEnv: {}
+      })
+    ).toEqual({ agentArgs: '--profile review', agentEnv: { GOOSE_MODE: 'auto' } })
   })
 })

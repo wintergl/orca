@@ -589,7 +589,7 @@ export type RuntimeTerminalSend = {
   handle: string
   accepted: boolean
   bytesWritten: number
-  refusedReason?: 'no-agent' | 'permission'
+  refusedReason?: 'no-agent' | 'permission' | 'not-idle'
 }
 
 export type RuntimeTerminalAgentStatusState = 'working' | 'permission' | 'idle' | null

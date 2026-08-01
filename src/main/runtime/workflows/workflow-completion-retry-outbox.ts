@@ -18,12 +18,7 @@ type WorkflowMutationHost = {
   getStep(stepRunId: string): WorkflowStepRunRecord | null
   insertStep: WorkflowRuntimePersistence['insertStep']
   insertEvent: WorkflowRuntimePersistence['insertEvent']
-  db?: Database.Database
-  persistenceDb?: Database.Database
-}
-
-function hostDb(store: WorkflowMutationHost): Database.Database {
-  return store.persistenceDb ?? store.db!
+  persistenceDb: Database.Database
 }
 
 /**
@@ -42,7 +37,7 @@ export function consumeWorkflowRetryOutbox(
     return null
   }
   return store.transaction(() => {
-    const db = hostDb(store)
+    const db = store.persistenceDb
     const current = db
       .prepare(
         `SELECT retry_outbox_state, retry_step_run_id FROM workflow_completion_reconciliations

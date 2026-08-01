@@ -7,6 +7,7 @@ import {
 import type { RuntimeTerminalCreate, RuntimeTerminalPresentation } from './runtime-types'
 import { isTerminalLeafId } from './stable-pane-id'
 import { isValidTerminalTabId } from './terminal-tab-id'
+import type { AgentPermissionMode } from './tui-agent-permissions'
 import type { TuiAgent } from './types'
 
 export { AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY as AGENT_SESSION_HOST_AUTHORITY_CAPABILITY } from './protocol-version'
@@ -125,6 +126,8 @@ export type RuntimeCreateAgentSessionRequest = {
   clientOperationId: string
   worktree: string
   agent: TuiAgent
+  agentCommand?: string
+  permissionMode?: Exclude<AgentPermissionMode, 'mixed'>
   prompt?: string
   promptDelivery?: AgentPromptDelivery
   /** Explicit client override. Omission keeps launch defaults host-owned. */

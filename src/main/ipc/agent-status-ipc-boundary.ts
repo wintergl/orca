@@ -4,7 +4,9 @@ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 
 export type AgentStatusRuntimeEnrichment = Pick<
   OrcaRuntimeService,
-  'getAgentStatusTerminalHandleForPaneKey' | 'getAgentStatusOrchestrationContextForPaneKey'
+  | 'getAgentStatusTerminalHandleForPaneKey'
+  | 'getAgentStatusOrchestrationContextForPaneKey'
+  | 'getAgentLifecycleAuthorityIdForPaneKey'
 >
 
 const MAX_AGENT_STATUS_DROP_TAB_ID_LENGTH = 160
@@ -18,8 +20,10 @@ export function enrichAgentStatusIpcPayload(
   }
   const terminalHandle = runtime.getAgentStatusTerminalHandleForPaneKey(data.paneKey)
   const orchestration = runtime.getAgentStatusOrchestrationContextForPaneKey(data.paneKey)
+  const agentLifecycleId = runtime.getAgentLifecycleAuthorityIdForPaneKey(data.paneKey)
   return {
     ...data,
+    ...(agentLifecycleId ? { agentLifecycleId } : {}),
     ...(terminalHandle ? { terminalHandle } : {}),
     ...(orchestration ? { orchestration } : {})
   }

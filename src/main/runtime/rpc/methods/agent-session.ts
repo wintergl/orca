@@ -24,6 +24,7 @@ const MAX_WORKTREE_SELECTOR_LENGTH = 32_768
 const MAX_TRANSCRIPT_PATH_BYTES = 16 * 1024
 const MAX_PROMPT_BYTES = 256 * 1024
 const MAX_AGENT_ARGS_BYTES = 16 * 1024
+const MAX_AGENT_COMMAND_BYTES = 16 * 1024
 const MAX_LAUNCH_PREFERENCE_LENGTH = 512
 
 const StrictNonEmptyString = (max: number, message: string) =>
@@ -166,6 +167,8 @@ export const CreateAgentSessionParams: z.ZodType<RuntimeCreateAgentSessionReques
       ),
     worktree: WorktreeSelector,
     agent: z.string().refine(isTuiAgent, 'Unknown agent preset'),
+    agentCommand: StrictNonEmptyString(MAX_AGENT_COMMAND_BYTES, 'Invalid agent command').optional(),
+    permissionMode: z.enum(['yolo', 'manual']).optional(),
     prompt: z
       .string()
       .refine(
@@ -183,6 +186,13 @@ export const CreateAgentSessionParams: z.ZodType<RuntimeCreateAgentSessionReques
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.permissionMode !== undefined && value.agentArgs !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['agentArgs'],
+        message: 'Agent arguments and permission mode cannot both override one launch'
+      })
+    }
     if (value.promptDelivery === 'draft' && !value.prompt?.trim()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

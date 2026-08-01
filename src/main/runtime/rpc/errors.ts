@@ -94,7 +94,16 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   'answer_conflict',
   'stale_delivery',
   'waiter_exists',
-  'invalid_argument'
+  'invalid_argument',
+  'workflow_not_found',
+  'workflow_forbidden',
+  'workflow_name_conflict',
+  'workflow_version_conflict',
+  'workflow_definition_invalid',
+  'workflow_archived',
+  'workflow_context_mismatch',
+  'workflow_agent_unavailable',
+  'workflow_preflight_failed'
 ])
 
 export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknown): RpcFailure {

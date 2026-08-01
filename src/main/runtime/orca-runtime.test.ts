@@ -20,7 +20,10 @@ import type {
   WorkspaceLineage,
   WorkspaceSessionState
 } from '../../shared/types'
-import { AGENT_STATUS_STALE_AFTER_MS } from '../../shared/agent-status-types'
+import {
+  AGENT_STATUS_STALE_AFTER_MS,
+  type AgentStatusIpcPayload
+} from '../../shared/agent-status-types'
 import {
   reviewHeadRemoteRefComponent,
   REVIEW_HEAD_FETCH_TIMEOUT_MS
@@ -10950,7 +10953,7 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
-  it('reports recognized foreground agents with unknown status as running with null status', async () => {
+  it('treats a recognized foreground Agent without busy evidence as idle', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
       spawn: vi.fn().mockResolvedValue({ id: 'pty-1' }),
@@ -10986,7 +10989,7 @@ describe('OrcaRuntimeService', () => {
     await expect(runtime.getTerminalAgentStatus(terminal.handle)).resolves.toEqual({
       handle: terminal.handle,
       isRunningAgent: true,
-      status: null
+      status: 'idle'
     })
   })
 
@@ -17475,6 +17478,60 @@ describe('OrcaRuntimeService', () => {
     runtime.markGraphUnavailable(1)
 
     expect(runtime.getTerminalProcessIncarnation(handle)).toBe(incarnation)
+  })
+
+  it('keeps Agent lifecycle identity stable when a Provider Session appears later', async () => {
+    let statuses: AgentStatusIpcPayload[] = []
+    const runtime = new OrcaRuntimeService(store, undefined, {
+      getAgentStatusSnapshot: () => statuses
+    })
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({
+        id: 'pty-lifecycle',
+        incarnationId: 'incarnation-lifecycle'
+      }),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const created = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+      tabId: 'lifecycle-tab',
+      leafId: HEADLESS_LEAF_ID,
+      title: 'Terminal'
+    })
+    const paneKey = created.paneKey
+    if (!paneKey) {
+      throw new Error('expected stable pane identity')
+    }
+    const before = runtime.getAgentLifecycleAuthorityIdForPaneKey(paneKey)
+    const now = Date.now()
+    statuses = [
+      {
+        paneKey,
+        connectionId: null,
+        receivedAt: now,
+        stateStartedAt: now,
+        state: 'done',
+        prompt: '',
+        agentType: 'claude',
+        providerSession: { key: 'session_id', id: 'session-late' }
+      }
+    ]
+
+    expect(runtime.getExactWorkerProviderSession(created.handle, 0)?.providerSession.id).toBe(
+      'session-late'
+    )
+    expect(runtime.getAgentLifecycleAuthorityIdForPaneKey(paneKey)).toBe(before)
+
+    statuses = [
+      {
+        ...statuses[0]!,
+        receivedAt: now + 1,
+        stateStartedAt: now + 1,
+        providerSession: { key: 'session_id', id: 'session-replacement' }
+      }
+    ]
+    expect(runtime.getAgentLifecycleAuthorityIdForPaneKey(paneKey)).not.toBe(before)
   })
 
   it('preserves PTY process identity while a renderer surface detaches and reattaches', async () => {
