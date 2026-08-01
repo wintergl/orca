@@ -143,6 +143,7 @@ import {
 } from './terminal-pane/use-manual-terminal-worktree-parking'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
+const WorkflowsPage = lazy(() => import('./workflows/WorkflowsPage'))
 
 // Why: gate handler runs after a dialog advances so a stray carry-over click can't act on the next dialog; ~200ms absorbs a physical double-click while staying responsive.
 const CLOSE_DIALOG_DEBOUNCE_MS = 200
@@ -269,6 +270,11 @@ function Terminal(): React.JSX.Element | null {
     getResolvedExecutionHostIdForWorktree(s, renderedActiveWorktreeId)
   )
   const activeView = useAppStore((s) => s.activeView)
+  const setActiveView = useAppStore((s) => s.setActiveView)
+  const openWorkflowsPage = useAppStore((s) => s.openWorkflowsPage)
+  const closeWorkflowsPage = useAppStore((s) => s.closeWorkflowsPage)
+  const workflowTabOpen = useAppStore((s) => s.workflowTabOpen)
+  const workflowViewActive = activeView === 'workflows'
   const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
   const pendingStartupByTabId = useAppStore((s) => s.pendingStartupByTabId)
   const terminalParkingEnabled = useAppStore((s) => s.settings?.terminalHiddenViewParking !== false)
@@ -858,7 +864,9 @@ function Terminal(): React.JSX.Element | null {
         terminalWorktreeHiddenSinceRef.current.delete(worktreeId)
         continue
       }
-      const isVisible = activeView === 'terminal' && renderedActiveWorktreeId === worktreeId
+      const isVisible =
+        (activeView === 'terminal' || activeView === 'workflows') &&
+        renderedActiveWorktreeId === worktreeId
       const shouldMeasureHiddenWorktree =
         !isVisible && measurableBackgroundWorktreeIdsRef.current.has(worktreeId)
       const hasActivityTerminalPortal = portalWorktreeIds.has(worktreeId)
@@ -1058,7 +1066,12 @@ function Terminal(): React.JSX.Element | null {
   )
   const desiredPresentedWorktree = useMemo(
     () =>
-      new Map([['terminal-worktree', activeView === 'terminal' ? renderedActiveWorktreeId : null]]),
+      new Map([
+        [
+          'terminal-worktree',
+          activeView === 'terminal' || activeView === 'workflows' ? renderedActiveWorktreeId : null
+        ]
+      ]),
     [activeView, renderedActiveWorktreeId]
   )
   const availablePresentedWorktreeIds = useMemo(
@@ -1097,7 +1110,9 @@ function Terminal(): React.JSX.Element | null {
       const parkedTabIds = new Set<string>()
       let deferredTabIds: ReadonlySet<string> | null = null
       if (!anyMountedWorktreeHasLayout && mountedWorktreeIdsRef.current.has(workspace.id)) {
-        const isVisible = activeView === 'terminal' && workspace.id === renderedActiveWorktreeId
+        const isVisible =
+          (activeView === 'terminal' || activeView === 'workflows') &&
+          workspace.id === renderedActiveWorktreeId
         const shouldMeasureHiddenWorktree =
           !isVisible && measurableBackgroundWorktreeIdsRef.current.has(workspace.id)
         const parked =
@@ -1583,6 +1598,7 @@ function Terminal(): React.JSX.Element | null {
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
+      setActiveView('terminal')
       const runtimeEnvironmentId = getActiveWorktreeRuntimeEnvironmentId(activeWorktreeId)
       if (activeWorktreeId && isWebRuntimeSessionActive(runtimeEnvironmentId)) {
         void activateWebRuntimeSessionTab({
@@ -1594,7 +1610,7 @@ function Terminal(): React.JSX.Element | null {
       setActiveTab(tabId)
       setActiveTabType('terminal')
     },
-    [activeWorktreeId, setActiveTab, setActiveTabType]
+    [activeWorktreeId, setActiveTab, setActiveTabType, setActiveView]
   )
 
   const handleTogglePaneExpand = useCallback(
@@ -1613,6 +1629,7 @@ function Terminal(): React.JSX.Element | null {
 
   const handleActivateBrowserTab = useCallback(
     (tabId: string) => {
+      setActiveView('terminal')
       const state = useAppStore.getState()
       const runtimeEnvironmentId = getActiveWorktreeRuntimeEnvironmentId(activeWorktreeId)
       if (
@@ -1629,7 +1646,7 @@ function Terminal(): React.JSX.Element | null {
       setActiveBrowserTab(tabId)
       setActiveTabType('browser')
     },
-    [activeWorktreeId, setActiveBrowserTab, setActiveTabType]
+    [activeWorktreeId, setActiveBrowserTab, setActiveTabType, setActiveView]
   )
 
   // Keyboard shortcuts
@@ -1821,7 +1838,9 @@ function Terminal(): React.JSX.Element | null {
         }
         e.preventDefault()
         notifyTerminalCapture('tab.close')
-        if (state.activeTabType === 'editor' && state.activeFileId) {
+        if (state.activeView === 'workflows') {
+          state.closeWorkflowsPage()
+        } else if (state.activeTabType === 'editor' && state.activeFileId) {
           handleCloseFile(state.activeFileId)
         } else if (state.activeTabType === 'browser' && state.activeBrowserTabId) {
           handleCloseBrowserTab(state.activeBrowserTabId)
@@ -2055,12 +2074,34 @@ function Terminal(): React.JSX.Element | null {
             onCloseOthers={handleCloseOthers}
             onCloseToRight={handleCloseTabsToRight}
             onCloseToLeft={handleCloseTabsToLeft}
-            onNewTerminalTab={() => handleNewTab()}
-            onNewTerminalWithShell={handleNewTab}
-            onNewBrowserTab={handleNewBrowserTab}
-            onNewSimulatorTab={mobileEmulatorEnabled ? handleNewSimulatorTab : undefined}
-            onOpenEntry={handleOpenEntry}
-            onNewFileTab={handleNewFile}
+            onNewTerminalTab={() => {
+              setActiveView('terminal')
+              handleNewTab()
+            }}
+            onNewTerminalWithShell={(shell) => {
+              setActiveView('terminal')
+              handleNewTab(shell)
+            }}
+            onNewBrowserTab={() => {
+              setActiveView('terminal')
+              handleNewBrowserTab()
+            }}
+            onNewSimulatorTab={
+              mobileEmulatorEnabled
+                ? () => {
+                    setActiveView('terminal')
+                    handleNewSimulatorTab()
+                  }
+                : undefined
+            }
+            onOpenEntry={async (args) => {
+              setActiveView('terminal')
+              await handleOpenEntry(args)
+            }}
+            onNewFileTab={() => {
+              setActiveView('terminal')
+              void handleNewFile()
+            }}
             onSetCustomTitle={setTabCustomTitle}
             onSetTabColor={setTabColor}
             expandedPaneByTabId={expandedPaneByTabId}
@@ -2076,6 +2117,7 @@ function Terminal(): React.JSX.Element | null {
             }
             activeTabType={activeTabType}
             onActivateFile={(fileId) => {
+              setActiveView('terminal')
               const unifiedTabs =
                 useAppStore.getState().unifiedTabsByWorktree[renderedActiveWorktreeId ?? ''] ?? []
               const unifiedTab = unifiedTabs.find((tab) => tab.id === fileId)
@@ -2095,6 +2137,10 @@ function Terminal(): React.JSX.Element | null {
             onMakePreviewFilePermanent={makePreviewFilePermanent}
             onPinFile={pinFile}
             tabBarOrder={tabBarOrder}
+            showWorkflowTab={workflowTabOpen}
+            workflowTabActive={workflowViewActive}
+            onActivateWorkflow={openWorkflowsPage}
+            onCloseWorkflow={closeWorkflowsPage}
           />,
           titlebarTabsTarget
         )}
@@ -2113,6 +2159,10 @@ function Terminal(): React.JSX.Element | null {
               if (!layout) {
                 return null
               }
+              // Why: workflows overlays the same worktree; keep surface live for light tab hide.
+              const worktreeSurfaceLive =
+                (activeView === 'terminal' || activeView === 'workflows') &&
+                workspace.id === renderedActiveWorktreeId
               // Why: strict '=== terminal' (not !== settings) so the terminal/browser surface hides on the tasks page too.
               const isVisible =
                 activeView === 'terminal' && workspace.id === renderedActiveWorktreeId
@@ -2130,6 +2180,8 @@ function Terminal(): React.JSX.Element | null {
                   focusedGroupId={activeGroupIdByWorktree[workspace.id]}
                   isVisible={isVisible}
                   isPresented={isPresented}
+                  worktreeSurfaceLive={worktreeSurfaceLive}
+                  showWorkspacePanes={activeView === 'terminal'}
                   shouldMeasureHiddenWorktree={shouldMeasureHiddenWorktree}
                   shouldColdParkTerminalPanes={shouldColdParkTerminalPanes}
                   activityTerminalPortals={activityTerminalPortals}
@@ -2148,11 +2200,25 @@ function Terminal(): React.JSX.Element | null {
 
       {!effectiveActiveLayout && !anyMountedWorktreeHasLayout && (
         <>
+          {workflowViewActive ? (
+            <div className="flex min-h-0 min-w-0 flex-1" data-workflow-tab-surface="true">
+              <Suspense
+                fallback={
+                  <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                    {translate('workflows.page.loading', 'Loading Workflows…')}
+                  </div>
+                }
+              >
+                <WorkflowsPage />
+              </Suspense>
+            </div>
+          ) : null}
           {/* Why: render only one surface model — legacy panes mounted alongside split-group panes race two React trees over one PTY/webview; gate on !anyMountedWorktreeHasLayout too so shutdown-from-focused doesn't respawn PTYs and re-light the sidebar dot. */}
           {/* Terminal panes container - hidden when editor tab active */}
           <div
             className={`relative flex-1 min-h-0 overflow-hidden ${
               // Why: only hide the terminal when another tab type has content; else a stale activeTabType (e.g. 'editor' with no files after restore) blanks the screen.
+              workflowViewActive ||
               (activeTabType === 'editor' && worktreeFiles.length > 0) ||
               (activeTabType === 'browser' && worktreeBrowserTabs.length > 0) ||
               activeTabType === 'simulator'
@@ -2163,6 +2229,10 @@ function Terminal(): React.JSX.Element | null {
             {workspaceSurfaces
               .filter((workspace) => mountedWorktreeIdsRef.current.has(workspace.id))
               .map((workspace) => {
+                // Why: workflows overlays the same worktree; keep surface live for light tab hide.
+                const worktreeSurfaceLive =
+                  (activeView === 'terminal' || activeView === 'workflows') &&
+                  workspace.id === renderedActiveWorktreeId
                 // Why: strict '=== terminal' (not !== settings) so the terminal/browser surface hides on the tasks page too.
                 const isVisible =
                   activeView === 'terminal' && workspace.id === renderedActiveWorktreeId
@@ -2219,9 +2289,14 @@ function Terminal(): React.JSX.Element | null {
                               activityTerminalPortal?.active === true
                             }
                             // Why: keep isVisible true for the portaled tab so xterm fits/streams while the workspace surface stays hidden.
-                            isVisible={isPresentedTerminalTab || isActivityPortalTab}
-                            // Why: inactive tabs here are tab-hidden (not worktree-hidden), so they need the same light resume path as split-group overlays.
-                            isWorktreeActive={isVisible || isPresented || isActivityPortalTab}
+                            isVisible={
+                              (isPresentedTerminalTab && activeView === 'terminal') ||
+                              isActivityPortalTab
+                            }
+                            // Why: workflows keeps surface live so hide/reveal stays light (tab), not suspendRendering.
+                            isWorktreeActive={
+                              worktreeSurfaceLive || isPresented || isActivityPortalTab
+                            }
                             // Why: isolate the portaled Activity leaf so split siblings stay hidden; workspace renders pass null.
                             isolatedPaneKey={activityTerminalPortal?.paneKey ?? null}
                             onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
@@ -2250,7 +2325,7 @@ function Terminal(): React.JSX.Element | null {
           {/* Browser panes: only the active pane mounts so inactive webviews park rather than keep hidden guest renderers alive. */}
           <div
             className={`relative flex-1 min-h-0 overflow-hidden ${
-              activeTabType !== 'browser' ? 'hidden' : ''
+              workflowViewActive || activeTabType !== 'browser' ? 'hidden' : ''
             }`}
           >
             {workspaceSurfaces.map((workspace) => {
@@ -2288,17 +2363,20 @@ function Terminal(): React.JSX.Element | null {
             })}
           </div>
 
-          {renderedActiveWorktreeId && activeTabType === 'editor' && worktreeFiles.length > 0 && (
-            <Suspense
-              fallback={
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                  {translate('auto.components.Terminal.5c1d2a32bb', 'Loading editor...')}
-                </div>
-              }
-            >
-              <EditorPanel />
-            </Suspense>
-          )}
+          {!workflowViewActive &&
+            renderedActiveWorktreeId &&
+            activeTabType === 'editor' &&
+            worktreeFiles.length > 0 && (
+              <Suspense
+                fallback={
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                    {translate('auto.components.Terminal.5c1d2a32bb', 'Loading editor...')}
+                  </div>
+                }
+              >
+                <EditorPanel />
+              </Suspense>
+            )}
         </>
       )}
 
@@ -2401,6 +2479,8 @@ const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   focusedGroupId,
   isVisible,
   isPresented,
+  worktreeSurfaceLive,
+  showWorkspacePanes,
   shouldMeasureHiddenWorktree,
   shouldColdParkTerminalPanes,
   activityTerminalPortals,
@@ -2414,6 +2494,9 @@ const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   focusedGroupId?: string
   isVisible: boolean
   isPresented: boolean
+  /** True while the worktree is the active workspace surface (terminal or workflows overlay). */
+  worktreeSurfaceLive: boolean
+  showWorkspacePanes: boolean
   shouldMeasureHiddenWorktree: boolean
   shouldColdParkTerminalPanes: boolean
   activityTerminalPortals: ActivityTerminalPortalTarget[]
@@ -2456,8 +2539,9 @@ const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
       <TerminalPaneOverlayLayer
         worktreeId={worktreeId}
         worktreePath={worktreePath}
-        isWorktreeActive={isVisible}
-        isWorktreePresented={isPresented}
+        isWorktreeActive={worktreeSurfaceLive}
+        isWorktreePresented={worktreeSurfaceLive && isPresented}
+        showWorkspacePanes={showWorkspacePanes}
         coldParkTerminalPanes={shouldColdParkTerminalPanes}
         shouldMeasureHiddenWorktree={shouldMeasureHiddenWorktree}
         activityTerminalPortals={activityTerminalPortals}
@@ -2469,15 +2553,15 @@ const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
         <>
           <BrowserPaneOverlayLayer
             worktreeId={worktreeId}
-            isWorktreeActive={isVisible || isPresented}
+            isWorktreeActive={showWorkspacePanes && (isVisible || isPresented)}
           />
           <EmulatorPaneOverlayLayer
             worktreeId={worktreeId}
-            isWorktreeActive={isVisible || isPresented}
+            isWorktreeActive={showWorkspacePanes && (isVisible || isPresented)}
           />
         </>
       ) : null}
-      <AiVaultSessionDropLayer worktreeId={worktreeId} enabled={isVisible} />
+      <AiVaultSessionDropLayer worktreeId={worktreeId} enabled={showWorkspacePanes && isVisible} />
     </div>
   )
 })

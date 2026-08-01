@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import {
+  hideTerminalVisibility,
   recoverVisibleTerminalWindowWake,
   resumeTerminalVisibility
 } from './terminal-visibility-resume'
@@ -20,12 +21,6 @@ vi.mock('./pane-helpers', () => ({
   fitAndFocusPanes: vi.fn(),
   fitPanes: vi.fn(),
   focusActivePane: vi.fn()
-}))
-const scheduleTabRevealWebglAtlasRecovery = vi.fn()
-vi.mock('./terminal-webgl-atlas-recovery', () => ({
-  // Why: the light-tab reveal must recover the atlas immediately, decoupled from
-  // the terminal-output debounce (which a background stream could otherwise defer).
-  scheduleTabRevealWebglAtlasRecovery: () => scheduleTabRevealWebglAtlasRecovery()
 }))
 const resetTerminalLinkifierHoverState = vi.fn()
 const isTerminalLinkifierHoverActive = vi.fn((_terminal: unknown) => false)
@@ -67,23 +62,59 @@ function resumeArgs(manager: FakeManager, shouldUseLightTabResume: boolean) {
   }
 }
 
+describe('hideTerminalVisibility', () => {
+  it('uses light tab hide when the worktree surface stays live (workflows overlay)', () => {
+    const suspendRendering = vi.fn()
+    const manager = {
+      ...createManager(),
+      suspendRendering
+    }
+    const result = hideTerminalVisibility({
+      manager: manager as never as PaneManager,
+      wasVisible: true,
+      wasWorktreeActive: true,
+      isWorktreeActive: true,
+      hasCompletedVisibleResume: true,
+      captureViewportPositions: vi.fn(() => new Map())
+    })
+    expect(result).toEqual({ hiddenReason: 'tab', renderingSuspended: false })
+    expect(suspendRendering).not.toHaveBeenCalled()
+  })
+
+  it('suspends rendering when the worktree surface itself leaves', () => {
+    const suspendRendering = vi.fn()
+    const manager = {
+      ...createManager(),
+      suspendRendering
+    }
+    const result = hideTerminalVisibility({
+      manager: manager as never as PaneManager,
+      wasVisible: true,
+      wasWorktreeActive: true,
+      isWorktreeActive: false,
+      hasCompletedVisibleResume: true,
+      captureViewportPositions: vi.fn(() => new Map())
+    })
+    expect(result).toEqual({ hiddenReason: 'surface', renderingSuspended: true })
+    expect(suspendRendering).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('resumeTerminalVisibility reveal repaint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('schedules a pane-scoped repaint on a light tab reveal', () => {
+  it('presents only the revealed panes on a light tab reveal', () => {
     // The light path is the "click the tab that was not open" gesture: it has
-    // no rendering resume or fit, so without this repaint a hidden-while-
-    // working pane keeps compositing pre-hide pixels.
+    // no rendering resume or fit. A target-only present restores hidden pixels
+    // without invalidating the glyph atlas shared by sibling terminals.
     const manager = createManager()
     resumeTerminalVisibility(resumeArgs(manager, true))
 
-    expect(manager.scheduleRevealRepaint).toHaveBeenCalledTimes(1)
+    expect(manager.scheduleRevealPresent).toHaveBeenCalledTimes(1)
+    expect(manager.scheduleRevealRepaint).not.toHaveBeenCalled()
     expect(manager.resumeRendering).not.toHaveBeenCalled()
-    // Reveal recovery is immediate (not the terminal-output debounce), so a
-    // background stream in another pane cannot defer this tab's atlas rebuild.
-    expect(scheduleTabRevealWebglAtlasRecovery).toHaveBeenCalledTimes(1)
   })
 
   it('captures native trim movement before enforcing viewport intent', async () => {

@@ -12,6 +12,7 @@ import {
   type OpenCheckRunDetailsState
 } from '@/components/editor/check-run-details-tab'
 import { openHttpLink, type HttpLinkSourceOwner } from '@/lib/http-link-routing'
+import { activateWorkspaceSurface } from '@/lib/workspace-surface-activation'
 import { getConnectionIdForFileFromState } from '@/lib/connection-owner-resolution'
 import { isLocalPathOpenBlocked, showLocalPathOpenBlockedToast } from '@/lib/local-path-open-guard'
 import { detectLanguage } from '@/lib/language-detect'
@@ -738,6 +739,7 @@ function openWorkspaceEditorItem(
     if (existing) {
       // Why: sidebar preview reopens focus the tab without promoting it; explicit activation still promotes previews by default.
       state.activateTab?.(existing.id, { preservePreview: isPreview })
+      activateWorkspaceSurface(state)
       return existing.id
     }
   }
@@ -747,6 +749,7 @@ function openWorkspaceEditorItem(
     isPreview,
     ...(resolvedGroupId ? { targetGroupId: resolvedGroupId } : {})
   })
+  activateWorkspaceSurface(state)
   return created?.id ?? fileId
 }
 
