@@ -14,7 +14,6 @@ import {
   resetTerminalLinkifierHoverState
 } from '@/lib/pane-manager/terminal-linkifier-hover-reset'
 import { focusActivePane } from './pane-helpers'
-import { scheduleTabRevealWebglAtlasRecovery } from './terminal-webgl-atlas-recovery'
 
 const VISIBLE_RESUME_FLUSH_CHARS = 256 * 1024
 const WINDOW_WAKE_FLUSH_CHARS = 64 * 1024
@@ -77,14 +76,10 @@ export function resumeTerminalVisibility({
   withSuppressedScrollTracking(() => {
     if (shouldUseLightTabResume) {
       // Why: intra-worktree tab switches only toggle the overlay. Keeping
-      // synchronous drain and atlas rebuilds off this path avoids racing the
+      // synchronous drain and shared-atlas resets off this path avoids racing the
       // overlay's delayed geometry fit. Still request hidden-output recovery:
       // agent TUIs can suppress hidden bytes until the pane is foregrounded.
       requestLightTabBacklogRecovery(manager)
-      // Why: reveal recovery must be immediate, not the terminal-output debounce
-      // — a background agent streaming in another pane must not defer this tab's
-      // atlas rebuild.
-      scheduleTabRevealWebglAtlasRecovery()
       if (isActive) {
         focusActivePane(manager)
       }
@@ -93,7 +88,9 @@ export function resumeTerminalVisibility({
     }
     enforceTerminalViewportIntents(manager)
     if (shouldUseLightTabResume) {
-      manager.scheduleRevealRepaint()
+      // Why: the glyph atlas is shared by same-config terminals. Clearing it
+      // here invalidates hidden siblings; present only the revealed panes.
+      manager.scheduleRevealPresent()
     }
   })
   if (shouldUseLightTabResume) {

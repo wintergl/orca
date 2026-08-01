@@ -5,7 +5,6 @@ import {
 } from '@/lib/pane-manager/pane-manager-registry'
 import {
   scheduleImagePasteWebglAtlasRecovery,
-  scheduleTabRevealWebglAtlasRecovery,
   scheduleTerminalWebglAtlasRecovery,
   TERMINAL_OUTPUT_RECOVERY_QUIET_MS
 } from './terminal-webgl-atlas-recovery'
@@ -149,32 +148,6 @@ describe('terminal WebGL atlas recovery', () => {
     expect(healthyManager.resetWebglTextureAtlases).toHaveBeenCalledTimes(3)
     expect(healthyManager.refreshAllPanes).toHaveBeenCalledTimes(3)
     expect(manager.refreshAllPanes).not.toHaveBeenCalled()
-  })
-
-  it('recovers immediately on a tab reveal, not through the streaming debounce', () => {
-    // Regression guard (STA-1365 review): reveal recovery must stay immediate so a
-    // background agent streaming in another pane cannot defer a revealed tab's
-    // atlas rebuild. It shares the paste path's immediate burst, not the debounce.
-    vi.useFakeTimers()
-    const rafCallbacks: FrameRequestCallback[] = []
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn((callback: FrameRequestCallback) => {
-        rafCallbacks.push(callback)
-        return rafCallbacks.length
-      })
-    )
-    const manager = registerManager()
-
-    scheduleTabRevealWebglAtlasRecovery()
-    // First burst leg fires on the next frame — no 200ms debounce wait.
-    rafCallbacks[0]?.(0)
-    expect(manager.resetWebglTextureAtlases).toHaveBeenCalledTimes(1)
-    expect(manager.refreshAllPanes).toHaveBeenCalledTimes(1)
-    vi.advanceTimersByTime(120)
-    vi.advanceTimersByTime(380)
-    expect(manager.resetWebglTextureAtlases).toHaveBeenCalledTimes(3)
-    expect(manager.refreshAllPanes).toHaveBeenCalledTimes(3)
   })
 
   it('does not recover mid-stream while terminal output keeps arriving', () => {

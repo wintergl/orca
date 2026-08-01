@@ -1,6 +1,7 @@
 import type { ManagedPaneInternal } from './pane-manager-types'
 import { reattachWebglIfNeeded } from './pane-webgl-reattach'
 import { resetWebglTextureAtlas } from './pane-webgl-renderer'
+import { forceRepaintThroughRenderPause } from './terminal-render-pause-release'
 import { releaseAbandonedSynchronizedOutput } from './terminal-synchronized-output-release'
 
 function scheduleSettledFrame(callback: () => void): void {
@@ -49,14 +50,11 @@ export function schedulePaneRevealRepaint(getPanes: () => Iterable<ManagedPaneIn
 }
 
 /**
- * Presents already-visible panes without clearing the shared glyph atlas.
+ * Presents revealed panes without clearing the shared glyph atlas.
  *
- * Why: a plain window refocus never hid its panes, so their WebGL model is
- * already current — a `refresh` re-presents the live buffer (covering a
- * compositor that dropped frames while occluded). Using the atlas-clearing
- * reveal repaint here would wipe the atlas shared by every same-config pane and
- * re-arm the mid-stream page-merge garble race (xterm.js issue 4480); this path
- * must stay texture-atlas-preserving.
+ * Why: a light tab reveal or plain window refocus keeps its WebGL model current.
+ * A full refresh re-presents that buffer while preserving the atlas shared by
+ * same-config panes, avoiding the page-merge garble race (xterm.js issue 4480).
  */
 export function schedulePaneRevealPresent(getPanes: () => Iterable<ManagedPaneInternal>): void {
   forEachPaneOnSettledFrame(getPanes, (pane) => {
@@ -65,7 +63,7 @@ export function schedulePaneRevealPresent(getPanes: () => Iterable<ManagedPaneIn
     // latched, RenderService buffers refreshes instead of rendering them, so
     // this present would paint nothing. See terminal-synchronized-output-release.
     releaseAbandonedSynchronizedOutput(pane.terminal)
-    if (pane.terminal.rows > 0) {
+    if (pane.terminal.rows > 0 && !forceRepaintThroughRenderPause(pane.terminal)) {
       pane.terminal.refresh(0, pane.terminal.rows - 1)
     }
   })

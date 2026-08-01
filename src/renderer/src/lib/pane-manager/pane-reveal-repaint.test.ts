@@ -171,5 +171,27 @@ describe('schedulePaneRevealRepaint', () => {
       expect(pane.webglAddon).not.toBeNull()
       expect(pane.terminal.refresh).toHaveBeenCalled()
     })
+
+    it('forces a full present when xterm still considers the revealed pane paused', () => {
+      const refreshRows = vi.fn()
+      const pane = createPane({ webglAddon: { clearTextureAtlas: vi.fn() } })
+      const renderService = {
+        _isPaused: true,
+        _needsFullRefresh: true,
+        refreshRows
+      }
+      Object.assign(pane.terminal, {
+        _core: { _renderService: renderService }
+      })
+
+      schedulePaneRevealPresent(() => [pane])
+      flushFrame()
+      flushFrame()
+
+      expect(renderService._isPaused).toBe(false)
+      expect(renderService._needsFullRefresh).toBe(false)
+      expect(refreshRows).toHaveBeenCalledWith(0, 23, true)
+      expect(pane.terminal.refresh).not.toHaveBeenCalled()
+    })
   })
 })

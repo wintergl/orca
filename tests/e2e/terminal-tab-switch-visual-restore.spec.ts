@@ -20,6 +20,7 @@ import {
   waitForActiveTerminalManager
 } from './helpers/terminal'
 import { compareTerminalScreenshots } from './terminal-screenshot-diff'
+import { installTabRecoveryProbe, readTabRecoveryProbe } from './terminal-tab-recovery-probe'
 import { captureStableTabScreenshot } from './terminal-tab-screenshot'
 
 const SILENT_FOREGROUND_COMMAND = 'node -e "setInterval(() => {}, 1000)"\r'
@@ -109,11 +110,9 @@ async function ensureTwoTerminalTabs(
 ): Promise<{ firstTabId: string; secondTabId: string }> {
   const worktreeId = (await getActiveWorktreeId(page))!
   if ((await page.locator('[data-testid="sortable-tab"]').count()) < 2) {
-    await page.getByRole('button', { name: 'New tab' }).click({ force: true })
-    await page
-      .getByRole('menuitem', { name: /New Terminal/i })
-      .first()
-      .click({ force: true })
+    await page.evaluate((id) => {
+      window.__store?.getState().createTab(id, undefined, undefined, { activate: false })
+    }, worktreeId)
     await expect
       .poll(() => page.locator('[data-testid="sortable-tab"]').count(), { timeout: 5_000 })
       .toBeGreaterThanOrEqual(2)
@@ -834,13 +833,14 @@ test.describe('Terminal tab switch visual restore', () => {
     await resetAtlasOnTab(orcaPage, firstTabId)
     await orcaPage.waitForTimeout(800)
     const baseline = await captureStableTabScreenshot(orcaPage, firstTabId)
+    await installTabRecoveryProbe(orcaPage)
 
     const screenshotMismatches: string[] = []
     for (let cycle = 0; cycle < 8; cycle += 1) {
       await activateTerminalTab(orcaPage, secondTabId)
       // Why: do not write into the hidden tab here — new bytes would change the
-      // screenshot even when rendering is healthy. This cycle only exercises the
-      // suspend/resume + atlas reset path on unchanged content.
+      // screenshot even when rendering is healthy. This cycle exercises the
+      // target-only reveal present on unchanged content.
       await activateTerminalTab(orcaPage, firstTabId)
       await orcaPage.waitForTimeout(100)
       const afterReturn = await captureStableTabScreenshot(orcaPage, firstTabId)
@@ -855,8 +855,17 @@ test.describe('Terminal tab switch visual restore', () => {
         })
       }
     }
+    const recoveryProbe = await readTabRecoveryProbe(orcaPage)
 
     await testInfo.attach('baseline', { body: baseline, contentType: 'image/png' })
+    expect(
+      recoveryProbe?.revealPresents,
+      'light tab switches skipped the reveal present'
+    ).toBeGreaterThanOrEqual(16)
+    expect(
+      recoveryProbe?.atlasResets,
+      'light tab switches must not invalidate the glyph atlas shared by hidden siblings'
+    ).toBe(0)
     expect(
       screenshotMismatches,
       screenshotMismatches.length > 0
