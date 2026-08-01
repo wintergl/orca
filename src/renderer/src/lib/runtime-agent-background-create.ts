@@ -3,6 +3,8 @@ import type { StartupCommandDelivery } from '../../../shared/codex-startup-deliv
 import type { SessionOptionValue } from '../../../shared/native-chat-session-options'
 import type { RuntimeTerminalCreate } from '../../../shared/runtime-types'
 import type { TuiAgent } from '../../../shared/types'
+import type { AgentPermissionMode } from '../../../shared/tui-agent-permissions'
+import { AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import {
   createAgentSessionCreateOperation,
   toAgentLaunchPreferences,
@@ -18,6 +20,8 @@ export async function createRuntimeAgentBackgroundTerminal(args: {
   tabId: string
   leafId: string
   agent: TuiAgent
+  agentCommand?: string
+  permissionMode?: Exclude<AgentPermissionMode, 'mixed'>
   prompt?: string
   sessionOptions?: Record<string, SessionOptionValue>
   legacy: {
@@ -33,6 +37,9 @@ export async function createRuntimeAgentBackgroundTerminal(args: {
   const launchPreferences = toAgentLaunchPreferences(args.sessionOptions)
   return await runRemoteAgentSessionLaunch({
     environmentId: args.environmentId,
+    ...(args.agentCommand || args.permissionMode
+      ? { hostAuthorityCapability: AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY }
+      : {}),
     hostAuthority: () =>
       operation.run((clientOperationId) =>
         callRuntimeRpc<{ terminal: RuntimeTerminalCreate }>(
@@ -42,6 +49,8 @@ export async function createRuntimeAgentBackgroundTerminal(args: {
             {
               worktree: toRuntimeWorktreeSelector(args.worktreeId),
               agent: args.agent,
+              ...(args.agentCommand ? { agentCommand: args.agentCommand } : {}),
+              ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
               ...(args.prompt
                 ? { prompt: args.prompt, promptDelivery: 'auto-submit' as const }
                 : {}),

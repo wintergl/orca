@@ -462,6 +462,12 @@ describe('AgentsPane', () => {
     expect(markup).not.toContain('aria-label="Disable Claude"')
   })
 
+  it('shows a direct create action beside the installed Agent catalog', () => {
+    const markup = renderPane(getDefaultSettings('/tmp'))
+
+    expect(markup).toContain('Create Agent')
+  })
+
   it('only toggles agent availability when the segmented value changes', () => {
     const onSetEnabled = vi.fn()
     const control = AgentAvailabilityControl({
@@ -483,6 +489,18 @@ describe('AgentsPane', () => {
 
     props.onChange('disabled')
     expect(onSetEnabled).toHaveBeenCalledWith(false)
+  })
+
+  it('disables both availability choices while the setting is being saved', () => {
+    const control = AgentAvailabilityControl({
+      label: 'Claude',
+      isEnabled: true,
+      disabled: true,
+      onSetEnabled: vi.fn()
+    })
+    const props = control.props as { options: { disabled?: boolean }[] }
+
+    expect(props.options.every((option) => option.disabled)).toBe(true)
   })
 
   it('clears the default agent when disabling that agent', () => {

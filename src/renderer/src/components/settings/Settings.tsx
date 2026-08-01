@@ -1182,7 +1182,7 @@ function Settings(): React.JSX.Element {
                   {isSectionMounted('agents') ? (
                     <AgentsPane
                       settings={settings}
-                      updateSettings={updateSettings}
+                      updateSettings={updateSettingsOrThrow}
                       wslSupportedPlatform={wslSupportedPlatform}
                       wslAvailable={windowsTerminalCapabilities.wslAvailable}
                       wslDistros={windowsTerminalCapabilities.wslDistros}

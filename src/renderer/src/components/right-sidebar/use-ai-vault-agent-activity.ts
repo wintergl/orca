@@ -33,6 +33,7 @@ export function useAiVaultAgentActivity(args: UseAiVaultAgentActivityArgs): Agen
       ptyIdsByTabId: state.ptyIdsByTabId,
       terminalLayoutsByTabId: state.terminalLayoutsByTabId,
       runtimeAgentOrchestrationByPaneKey: state.runtimeAgentOrchestrationByPaneKey,
+      generatedTitlesEnabled: state.settings?.tabAutoGenerateTitle === true,
       agentStatusEpoch: state.agentStatusEpoch
     }))
   )
@@ -68,6 +69,7 @@ export function useAiVaultAgentActivity(args: UseAiVaultAgentActivityArgs): Agen
       ptyIdsByTabId: inputs.ptyIdsByTabId,
       terminalLayoutsByTabId: inputs.terminalLayoutsByTabId,
       runtimeAgentOrchestrationByPaneKey: inputs.runtimeAgentOrchestrationByPaneKey,
+      generatedTitlesEnabled: inputs.generatedTitlesEnabled,
       now: Date.now()
     })
   }, [

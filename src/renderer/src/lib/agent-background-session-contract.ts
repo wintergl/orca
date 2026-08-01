@@ -1,5 +1,6 @@
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
 import type { LaunchSource } from '../../../shared/telemetry-events'
+import type { AgentPermissionMode } from '../../../shared/tui-agent-permissions'
 import type { TuiAgent } from '../../../shared/types'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import type { AutomationTerminalOwnership } from '@/lib/automation-terminal-ownership'
@@ -7,6 +8,8 @@ import type { AutomationTerminalOwnership } from '@/lib/automation-terminal-owne
 export type LaunchAgentBackgroundSessionArgs = {
   agent: TuiAgent
   worktreeId: string
+  agentCommand?: string
+  permissionMode?: Exclude<AgentPermissionMode, 'mixed'>
   prompt?: string
   launchSource?: LaunchSource
   title?: string

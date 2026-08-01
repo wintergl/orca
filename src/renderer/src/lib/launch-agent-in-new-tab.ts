@@ -30,6 +30,7 @@ import { translate } from '@/i18n/i18n'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import { resolveNativeChatSessionOptionDefaults } from '../../../shared/native-chat-session-option-defaults'
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
+import { getAgentLabel } from '@/lib/agent-catalog'
 
 export type LaunchAgentInNewTabArgs = {
   agent: TuiAgent
@@ -233,6 +234,9 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
     quickCommandLabel,
     ...initialViewModeProps
   })
+  if (!quickCommandLabel?.trim()) {
+    store.setTabCustomTitle(tab.id, getAgentLabel(agent), { recordInteraction: false })
+  }
   seedNativeChatAppliedSessionOptions(tab.id, agent, startupPlan.sessionOptions)
   if (initialCwd?.trim()) {
     // Why: queue before mount so local, WSL, and SSH continuations preserve their subdirectory.

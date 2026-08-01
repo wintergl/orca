@@ -1,11 +1,7 @@
 import { buildWorktreeAgentRows } from '@/components/sidebar/worktree-agent-rows'
 import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
-import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
 import { TUI_AGENT_CONFIG } from '../../../../shared/tui-agent-config'
-import {
-  AGENT_STATUS_STALE_AFTER_MS,
-  type AgentStatusEntry
-} from '../../../../shared/agent-status-types'
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { TuiAgent } from '../../../../shared/types'
 import type {
   AgentActivityKind,
@@ -113,30 +109,21 @@ export function buildAgentActivitySources(args: BuildAgentActivityArgs): AgentAc
   return sources
 }
 
-export function getCurrentAgentActivityKind(
-  source: AgentActivitySource,
-  now: number
-): AgentActivityKind | null {
+export function getCurrentAgentActivityKind(source: AgentActivitySource): AgentActivityKind | null {
   if (source.lifecycle?.phase === 'transport-disconnected') {
     return null
   }
-  if (source.rowSource === 'title') {
-    if (source.rowState === 'waiting' || source.rowState === 'blocked') {
+  switch (source.rowState) {
+    case 'waiting':
+    case 'blocked':
       return 'attention'
-    }
-    if (source.rowState === 'working') {
+    case 'working':
       return 'working'
-    }
-    return source.rowState === 'idle' ? 'idle' : null
+    case 'idle':
+      return 'idle'
+    case 'done':
+      return source.foreground?.agent && !source.foreground.shellForeground ? 'idle' : null
   }
-  const fresh = isExplicitAgentStatusFresh(source.entry, now, AGENT_STATUS_STALE_AFTER_MS)
-  if (fresh && (source.entry.state === 'waiting' || source.entry.state === 'blocked')) {
-    return 'attention'
-  }
-  if (fresh && source.entry.state === 'working') {
-    return 'working'
-  }
-  return source.foreground?.agent && !source.foreground.shellForeground ? 'idle' : null
 }
 
 export function isNormalAgentCompletion(entry: AgentStatusEntry): boolean {

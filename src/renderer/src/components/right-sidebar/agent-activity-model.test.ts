@@ -67,6 +67,7 @@ function baseArgs(overrides: Partial<BuildAgentActivityArgs> = {}): BuildAgentAc
     workspaceInfoById: new Map([
       ['wt-1', { id: 'wt-1', title: 'Feature branch', projectKey: null, executionHostId: 'local' }]
     ]),
+    generatedTitlesEnabled: false,
     now: NOW,
     ...overrides
   }
@@ -106,6 +107,55 @@ describe('buildAgentActivity', () => {
     expect(model.counts.idle).toBe(1)
     expect(model.counts.completed).toBe(0)
     expect(model.idle[0]?.completionMessage).toBe('Finished.')
+  })
+
+  it('uses the Agent custom title in the activity list', () => {
+    const paneKey = `tab-1:${LEAF_1}`
+    const model = buildAgentActivity(
+      baseArgs({
+        agentStatusByPaneKey: { [paneKey]: entry(paneKey) },
+        tabsByWorktree: {
+          'wt-1': [{ ...tab('tab-1'), customTitle: 'Review Agent' }]
+        }
+      })
+    )
+
+    expect(model.working[0]?.title).toBe('Review Agent')
+  })
+
+  it('reuses the Agent row decayed idle state instead of reclassifying it', () => {
+    const paneKey = `tab-1:${LEAF_1}`
+    const model = buildAgentActivity(
+      baseArgs({
+        agentStatusByPaneKey: {
+          [paneKey]: entry(paneKey, { updatedAt: NOW - 31 * 60_000 })
+        },
+        paneForegroundAgentByPaneKey: {
+          [paneKey]: { agent: 'codex', shellForeground: false }
+        }
+      })
+    )
+
+    expect(model.counts.idle).toBe(1)
+    expect(model.counts.working).toBe(0)
+  })
+
+  it('shows a newly launched foreground Agent at its prompt as idle', () => {
+    const model = buildAgentActivity(
+      baseArgs({
+        tabsByWorktree: {
+          'wt-1': [{ ...tab('tab-1'), title: 'repo terminal' }]
+        },
+        ptyIdsByTabId: { 'tab-1': ['pty-1'] },
+        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) },
+        paneForegroundAgentByPaneKey: {
+          [`tab-1:${LEAF_1}`]: { agent: 'codex', shellForeground: false }
+        }
+      })
+    )
+
+    expect(model.counts.idle).toBe(1)
+    expect(model.counts.working).toBe(0)
   })
 
   it('suppresses a retained completion when the same provider session is current', () => {
@@ -161,10 +211,59 @@ describe('buildAgentActivity', () => {
       terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
     })
 
-    expect(buildAgentActivity(args).working[0]?.navigationTarget).not.toBeNull()
+    expect(buildAgentActivity(args).working[0]?.navigationTarget).toMatchObject({
+      ptyId: 'pty-1'
+    })
     expect(
       buildAgentActivity({ ...args, terminalLayoutsByTabId: {} }).working[0]?.navigationTarget
     ).toBeNull()
+  })
+
+  it('keeps live completed rows addressable while retained history stays non-navigable', () => {
+    const paneKey = `tab-1:${LEAF_1}`
+    const lifecycle = {
+      id: 'lifecycle-1',
+      startedAt: NOW - 1,
+      paneKey,
+      executionHostId: 'local' as const,
+      connectionId: null,
+      ptyId: 'pty-1',
+      runtimeAgent: 'codex' as const,
+      providerSessionId: null,
+      launchToken: null,
+      phase: 'active' as const,
+      authorityRevision: 1
+    }
+    const done = entry(paneKey, {
+      state: 'done',
+      lastAssistantMessage: 'Finished.',
+      agentLifecycleId: lifecycle.id
+    })
+    const live = buildAgentActivity(
+      baseArgs({
+        agentStatusByPaneKey: { [paneKey]: done },
+        paneAgentLifecycleByPaneKey: { [paneKey]: lifecycle },
+        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
+      })
+    )
+    const retained = buildAgentActivity(
+      baseArgs({
+        retainedAgentsByPaneKey: {
+          [paneKey]: {
+            entry: done,
+            worktreeId: 'wt-1',
+            tab: tab('tab-1'),
+            agentType: 'codex',
+            startedAt: NOW - 1
+          }
+        },
+        paneAgentLifecycleByPaneKey: { [paneKey]: lifecycle },
+        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
+      })
+    )
+
+    expect(live.completed[0]?.navigationTarget).toMatchObject({ ptyId: 'pty-1' })
+    expect(retained.completed[0]?.navigationTarget).toBeNull()
   })
 
   it('sorts waiting attention ahead of blocked attention before timestamp ties', () => {

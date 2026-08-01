@@ -48,7 +48,8 @@ function hasCompatibleAuthority(
     compatibleKnownValue(current.ptyId, normalizedValue(input.ptyId)) &&
     compatibleAgent(current.runtimeAgent, input.runtimeAgent) &&
     compatibleKnownValue(current.providerSessionId, normalizedValue(input.providerSessionId)) &&
-    compatibleKnownValue(current.launchToken, normalizedValue(input.launchToken))
+    compatibleKnownValue(current.launchToken, normalizedValue(input.launchToken)) &&
+    (!input.observedLifecycleId || current.id === input.observedLifecycleId)
   )
 }
 
@@ -63,7 +64,8 @@ function canReattach(current: PaneAgentLifecycle, input: PaneAgentLifecycleObser
     current.ptyId === ptyId &&
     compatibleAgent(current.runtimeAgent, input.runtimeAgent) &&
     compatibleKnownValue(current.providerSessionId, normalizedValue(input.providerSessionId)) &&
-    compatibleKnownValue(current.launchToken, normalizedValue(input.launchToken))
+    compatibleKnownValue(current.launchToken, normalizedValue(input.launchToken)) &&
+    (!input.observedLifecycleId || current.id === input.observedLifecycleId)
   )
 }
 
@@ -72,7 +74,7 @@ function lifecycleFromObservation(
   observedAt: number
 ): PaneAgentLifecycle {
   return {
-    id: createLifecycleId(),
+    id: input.observedLifecycleId ?? createLifecycleId(),
     startedAt: observedAt,
     paneKey: input.paneKey,
     executionHostId: input.executionHostId,

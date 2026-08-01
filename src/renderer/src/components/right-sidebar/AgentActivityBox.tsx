@@ -5,13 +5,16 @@ import { AgentActivityCurrentRow } from './AgentActivityCurrentRow'
 import type { AgentActivityModel } from './agent-activity-model'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { translate } from '@/i18n/i18n'
+import type { WorkflowAgentDisplayContext } from '../workflows/workflow-renderer-state'
 
 export function AgentActivityBox({
   model,
+  workflowContextByLifecycleId,
   getOriginalPaneTarget,
   onOpenOriginalPane
 }: {
   model: AgentActivityModel
+  workflowContextByLifecycleId: ReadonlyMap<string, WorkflowAgentDisplayContext>
   getOriginalPaneTarget: (session: AiVaultSession) => unknown
   onOpenOriginalPane: (session: AiVaultSession) => void
 }): React.JSX.Element | null {
@@ -66,13 +69,25 @@ export function AgentActivityBox({
         </div>
         <div className="divide-y divide-sidebar-border/70">
           {model.attention.map((item) => (
-            <AgentActivityCurrentRow key={item.id} item={item} />
+            <AgentActivityCurrentRow
+              key={item.id}
+              item={item}
+              workflowContext={workflowContextByLifecycleId.get(item.agentLifecycleId ?? '')}
+            />
           ))}
           {model.working.map((item) => (
-            <AgentActivityCurrentRow key={item.id} item={item} />
+            <AgentActivityCurrentRow
+              key={item.id}
+              item={item}
+              workflowContext={workflowContextByLifecycleId.get(item.agentLifecycleId ?? '')}
+            />
           ))}
           {idle.map((item) => (
-            <AgentActivityCurrentRow key={item.id} item={item} />
+            <AgentActivityCurrentRow
+              key={item.id}
+              item={item}
+              workflowContext={workflowContextByLifecycleId.get(item.agentLifecycleId ?? '')}
+            />
           ))}
           {model.counts.idle > 3 ? (
             <button

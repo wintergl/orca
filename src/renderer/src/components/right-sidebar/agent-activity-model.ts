@@ -2,6 +2,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { toAiVaultAgent, type AiVaultSession } from '../../../../shared/ai-vault-types'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalPaneLayoutNode } from '../../../../shared/types'
+import { resolveTerminalTabTitle } from '../../../../shared/tab-title-resolution'
 import { buildAgentActivityIdentity, encodeAgentActivityDisplayId } from './agent-activity-identity'
 import {
   buildAgentActivitySources,
@@ -71,6 +72,22 @@ function hasAvailableCurrentPane(args: {
   return layoutHasLeaf(args.filters.terminalLayoutsByTabId[pane.tabId]?.root, pane.leafId)
 }
 
+function getAgentTabTitle(
+  source: AgentActivitySource,
+  filters: BuildAgentActivityArgs
+): string | null {
+  const pane = parsePaneKey(source.paneKey)
+  if (!pane) {
+    return null
+  }
+  const tab = (filters.tabsByWorktree[source.worktreeId] ?? []).find(
+    (candidate) => candidate.id === pane.tabId
+  )
+  return tab
+    ? resolveTerminalTabTitle(tab, filters.generatedTitlesEnabled, tab.defaultTitle ?? 'Agent')
+    : null
+}
+
 function buildItem(args: {
   source: AgentActivitySource
   kind: AgentActivityKind
@@ -101,16 +118,14 @@ function buildItem(args: {
       })
     : null
   const paneAvailable = hasAvailableCurrentPane({ source, workspace, filters: args.filters })
-  const canNavigate =
-    kind !== 'completed' &&
-    Boolean(
-      executionHostId &&
-      lifecycleId &&
-      activityIdentity &&
-      source.rowSource !== 'retained' &&
-      source.lifecycle?.phase !== 'transport-disconnected' &&
-      paneAvailable
-    )
+  const canNavigate = Boolean(
+    executionHostId &&
+    lifecycleId &&
+    activityIdentity &&
+    source.rowSource !== 'retained' &&
+    source.lifecycle?.phase !== 'transport-disconnected' &&
+    paneAvailable
+  )
   const navigationUnavailableReason: AgentActivityNavigationUnavailableReason | null = canNavigate
     ? null
     : source.lifecycle?.phase === 'transport-disconnected'
@@ -120,7 +135,12 @@ function buildItem(args: {
         : !lifecycleId
           ? 'lifecycle-missing'
           : 'pane-unavailable'
-  const title = workspace?.title ?? matchedSession?.title ?? source.entry.terminalTitle ?? 'Agent'
+  const title =
+    getAgentTabTitle(source, args.filters) ??
+    workspace?.title ??
+    matchedSession?.title ??
+    source.entry.terminalTitle ??
+    'Agent'
   const completionMessage = isNormalAgentCompletion(source.entry)
     ? source.entry.lastAssistantMessage?.trim() || null
     : null
@@ -182,6 +202,7 @@ function buildItem(args: {
             normalizedVaultAgent: vaultAgent,
             providerSessionId,
             agentLifecycleId: lifecycleId,
+            ptyId: source.lifecycle?.ptyId ?? null,
             activityIdentity
           }
         : null,
@@ -208,7 +229,7 @@ export function buildAgentActivity(args: BuildAgentActivityArgs): AgentActivityM
 
   for (const source of buildAgentActivitySources(args)) {
     const workspace = args.workspaceInfoById.get(source.worktreeId)
-    const kind = getCurrentAgentActivityKind(source, args.now)
+    const kind = getCurrentAgentActivityKind(source)
     if (kind) {
       const item = buildItem({ source, kind, workspace, sessionByProviderKey, filters: args })
       if (visibleInAgentVault({ item, workspace, filters: args, enabledVaultAgents })) {

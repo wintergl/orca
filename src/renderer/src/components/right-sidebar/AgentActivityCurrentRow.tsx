@@ -1,12 +1,19 @@
 import type React from 'react'
+import { GripVertical } from 'lucide-react'
 import { AgentStateDot, agentStateLabel, type AgentDotState } from '@/components/AgentStateDot'
 import { AgentIcon, getAgentLabel } from '@/lib/agent-catalog'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import { AgentActivityConclusionCopyButton } from './AgentActivityConclusionCopyButton'
+import { AgentActivityHiButton } from './AgentActivityHiButton'
 import { aiVaultAgentLabel } from '../../../../shared/ai-vault-types'
 import { navigateToAgentActivity } from './agent-activity-navigation'
 import type { AgentActivityItem } from './agent-activity-model'
+import {
+  startWorkflowAgentMouseDrag,
+  writeWorkflowAgentDrag
+} from '../workflows/workflow-agent-drag'
+import type { WorkflowAgentDisplayContext } from '../workflows/workflow-renderer-state'
 
 function dotState(item: AgentActivityItem): AgentDotState {
   return item.state
@@ -117,8 +124,15 @@ function unavailableReason(item: AgentActivityItem): string {
   }
 }
 
-export function AgentActivityCurrentRow({ item }: { item: AgentActivityItem }): React.JSX.Element {
+export function AgentActivityCurrentRow({
+  item,
+  workflowContext
+}: {
+  item: AgentActivityItem
+  workflowContext?: WorkflowAgentDisplayContext
+}): React.JSX.Element {
   const stateTime = stateChangedLabel(item)
+  const workflowAssignable = item.kind === 'idle' && item.navigationTarget !== null
   const content = (
     <>
       <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
@@ -146,13 +160,29 @@ export function AgentActivityCurrentRow({ item }: { item: AgentActivityItem }): 
         <span className="mt-0.5 block truncate text-[11px] text-sidebar-foreground/90">
           {summary(item)}
         </span>
+        {workflowContext ? (
+          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+            {translate('workflows.activity.agentContext', '{{workflow}} · {{node}} · R{{round}}', {
+              workflow: workflowContext.workflowName,
+              node: workflowContext.nodeName,
+              round: workflowContext.round
+            })}
+            {workflowContext.sentToNodeName
+              ? ` · ${translate(
+                  'auto.components.right.sidebar.AgentActivityCurrentRow.sentToNode',
+                  'sent to {{node}}',
+                  { node: workflowContext.sentToNodeName }
+                )}`
+              : ''}
+          </span>
+        ) : null}
       </span>
     </>
   )
   if (!item.navigationTarget) {
     return (
       <div
-        className="flex min-w-0 items-start gap-2 px-2 py-1.5"
+        className="group/agent-row flex min-w-0 items-start gap-2 px-2 py-1.5"
         aria-label={translate(
           'auto.components.right.sidebar.AgentActivityCurrentRow.paneUnavailableAria',
           'Agent pane unavailable'
@@ -162,6 +192,7 @@ export function AgentActivityCurrentRow({ item }: { item: AgentActivityItem }): 
         {item.completionMessage ? (
           <AgentActivityConclusionCopyButton conclusion={item.completionMessage} />
         ) : null}
+        <AgentActivityHiButton key={`${item.id}:${item.kind}`} item={item} />
         <span className="shrink-0 pt-0.5 text-[10px] text-muted-foreground">
           {unavailableReason(item)}
         </span>
@@ -169,20 +200,39 @@ export function AgentActivityCurrentRow({ item }: { item: AgentActivityItem }): 
     )
   }
   return (
-    <div className="flex min-w-0 items-start gap-1.5 px-2 py-1.5 hover:bg-sidebar-accent/60">
+    <div className="group/agent-row flex min-w-0 items-start gap-1.5 px-2 py-1.5 hover:bg-sidebar-accent/60">
       <button
         type="button"
         className={cn(
           'flex min-w-0 flex-1 items-start gap-2 text-left',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring'
         )}
+        draggable={workflowAssignable}
+        onDragStart={(event) => writeWorkflowAgentDrag(event, item)}
         onClick={() => navigateToAgentActivity(item)}
       >
         {content}
       </button>
+      {workflowAssignable ? (
+        <span
+          className="mt-0.5 flex size-5 shrink-0 cursor-grab items-center justify-center rounded-sm text-muted-foreground hover:bg-sidebar-accent active:cursor-grabbing"
+          onMouseDown={(event) => startWorkflowAgentMouseDrag(event, item)}
+          aria-label={translate(
+            'auto.components.right.sidebar.AgentActivityCurrentRow.dragIdleAgent',
+            'Drag idle Agent'
+          )}
+          title={translate(
+            'auto.components.right.sidebar.AgentActivityCurrentRow.dragIdleAgent',
+            'Drag idle Agent'
+          )}
+        >
+          <GripVertical className="size-3.5" />
+        </span>
+      ) : null}
       {item.completionMessage ? (
         <AgentActivityConclusionCopyButton conclusion={item.completionMessage} />
       ) : null}
+      <AgentActivityHiButton key={`${item.id}:${item.kind}`} item={item} />
     </div>
   )
 }

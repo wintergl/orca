@@ -8,9 +8,11 @@ import {
   ChevronDown,
   ExternalLink,
   Info,
+  Plus,
   RefreshCw,
   Terminal
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { GlobalSettings, TuiAgent } from '../../../../shared/types'
 import { getAgentCatalog, AgentIcon } from '@/lib/agent-catalog'
 import { useDetectedAgents, type AgentDetectionTarget } from '@/hooks/useDetectedAgents'
@@ -49,13 +51,16 @@ import {
 } from '../../../../shared/tui-agent-launch-defaults'
 import {
   applyAgentPermissionMode,
+  resolveTuiAgentPermissionMode,
   resolveAgentPermissionModeSummary,
+  supportsTuiAgentPermissionMode,
   type AgentPermissionMode
 } from '../../../../shared/tui-agent-permissions'
 import { getSettingOwnershipSummary } from './setting-ownership'
 import { translate } from '@/i18n/i18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { parseAgentDefaultEnvDraft, stringifyAgentDefaultEnvDraft } from './agent-default-env-draft'
+import { AgentCreationDialog } from './AgentCreationDialog'
 
 export { getAgentsPaneSearchEntries } from './agents-search'
 
@@ -94,6 +99,7 @@ type AgentRowProps = {
   onSaveOverride: (value: string) => void
   onSaveArgs: (value: string) => void
   onSaveEnv: (value: Record<string, string>) => void
+  availabilitySaving?: boolean
   /** Codex-only: current runtime scope label + persisted history-source override. */
   sessionSourceHome?: AgentSessionSourceHomeControl
 }
@@ -121,6 +127,7 @@ type AgentAvailability = 'enabled' | 'disabled'
 type AgentAvailabilityControlProps = {
   label: string
   isEnabled: boolean
+  disabled?: boolean
   onSetEnabled: (enabled: boolean) => void
 }
 
@@ -171,6 +178,7 @@ const enqueueAgentAvailabilityUpdate = createAgentAvailabilityUpdateQueue()
 export function AgentAvailabilityControl({
   label,
   isEnabled,
+  disabled = false,
   onSetEnabled
 }: AgentAvailabilityControlProps): React.JSX.Element {
   const value: AgentAvailability = isEnabled ? 'enabled' : 'disabled'
@@ -192,11 +200,13 @@ export function AgentAvailabilityControl({
       options={[
         {
           value: 'enabled',
-          label: translate('auto.components.settings.AgentsPane.d4d2a45d63', 'Enabled')
+          label: translate('auto.components.settings.AgentsPane.d4d2a45d63', 'Enabled'),
+          disabled
         },
         {
           value: 'disabled',
-          label: translate('auto.components.settings.AgentsPane.8dc0192e48', 'Disabled')
+          label: translate('auto.components.settings.AgentsPane.8dc0192e48', 'Disabled'),
+          disabled
         }
       ]}
     />
@@ -496,7 +506,8 @@ function AgentRow({
   onSaveOverride,
   onSaveArgs,
   onSaveEnv,
-  sessionSourceHome
+  sessionSourceHome,
+  availabilitySaving = false
 }: AgentRowProps): React.JSX.Element {
   const envSummary = stringifyAgentDefaultEnvDraft(envOverride)
   const defaultEnvSummary = stringifyAgentDefaultEnvDraft(defaultEnv)
@@ -538,6 +549,7 @@ function AgentRow({
           <AgentAvailabilityControl
             label={label}
             isEnabled={isEnabled}
+            disabled={availabilitySaving}
             onSetEnabled={onSetEnabled}
           />
 
@@ -687,6 +699,10 @@ export function AgentsPane({
   wslDistros,
   wslCapabilitiesLoading
 }: AgentsPaneProps): React.JSX.Element {
+  const [agentCreationOpen, setAgentCreationOpen] = useState(false)
+  const [availabilitySaving, setAvailabilitySaving] = useState<ReadonlySet<TuiAgent>>(
+    () => new Set()
+  )
   // Why: the Active Server routes agent launches and provider checks through
   // that server, so this pane must list what THAT host can launch — detecting
   // on the client showed a Windows machine's agents while paired to a Linux
@@ -738,14 +754,37 @@ export function AgentsPane({
     updateSettings({ defaultTuiAgent: id })
   }
 
-  const setAgentEnabled = (id: TuiAgent, enabled: boolean): void => {
-    void enqueueAgentAvailabilityUpdate({
-      getSettings: () => useAppStore.getState().settings,
-      fallbackSettings: settings,
-      updateSettings,
-      agentId: id,
-      enabled
-    })
+  const setAgentEnabled = async (id: TuiAgent, enabled: boolean): Promise<void> => {
+    setAvailabilitySaving((current) => new Set(current).add(id))
+    try {
+      await enqueueAgentAvailabilityUpdate({
+        getSettings: () => useAppStore.getState().settings,
+        fallbackSettings: settings,
+        updateSettings,
+        agentId: id,
+        enabled
+      })
+      toast.success(
+        enabled
+          ? translate('auto.components.settings.AgentsPane.agentEnabled', 'Agent enabled.')
+          : translate('auto.components.settings.AgentsPane.agentDisabled', 'Agent disabled.')
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : translate(
+              'auto.components.settings.AgentsPane.availabilitySaveFailed',
+              'Could not save Agent availability.'
+            )
+      )
+    } finally {
+      setAvailabilitySaving((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
+    }
   }
 
   const saveOverride = (id: TuiAgent, value: string): void => {
@@ -794,6 +833,18 @@ export function AgentsPane({
   const enabledDetectedAgents = detectedAgents.filter((agent) =>
     isTuiAgentEnabled(agent.id, disabledAgents)
   )
+  const creatableAgents = enabledDetectedAgents.map((agent) => {
+    const agentArgs = resolveTuiAgentLaunchArgs(agent.id, settings.agentDefaultArgs)
+    const agentEnv = resolveTuiAgentLaunchEnv(agent.id, settings.agentDefaultEnv)
+    return {
+      id: agent.id,
+      label: agent.label,
+      commandHint: settings.agentCmdOverrides?.[agent.id]?.trim() || agent.cmd,
+      supportsYolo: supportsTuiAgentPermissionMode(agent.id),
+      defaultYolo:
+        resolveTuiAgentPermissionMode({ agent: agent.id, agentArgs, agentEnv }) !== 'manual'
+    }
+  })
   const undetectedAgents = getAgentCatalog().filter(
     (a) => detectedIds !== null && !detectedIds.has(a.id)
   )
@@ -893,30 +944,43 @@ export function AgentsPane({
               </span>
             }
             action={
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                title={
-                  activeServerEnvironmentId
-                    ? translate(
-                        'auto.components.settings.AgentsPane.25a41a9aad',
-                        'Re-detect agents installed on the active server'
-                      )
-                    : translate(
-                        'auto.components.settings.AgentsPane.13647f9f80',
-                        'Re-read your shell PATH and re-detect installed agents'
-                      )
-                }
-                className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <RefreshCw className={cn('size-3', isRefreshing && 'animate-spin')} />
-                {isRefreshing
-                  ? translate('auto.components.settings.AgentsPane.c9b33eb5c0', 'Refreshing…')
-                  : translate('auto.components.settings.AgentsPane.0d9e293a02', 'Refresh')}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setAgentCreationOpen(true)}
+                  disabled={creatableAgents.length === 0}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  <Plus className="size-3" />
+                  {translate('auto.components.settings.AgentsPane.createAgent', 'Create Agent')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  title={
+                    activeServerEnvironmentId
+                      ? translate(
+                          'auto.components.settings.AgentsPane.25a41a9aad',
+                          'Re-detect agents installed on the active server'
+                        )
+                      : translate(
+                          'auto.components.settings.AgentsPane.13647f9f80',
+                          'Re-read your shell PATH and re-detect installed agents'
+                        )
+                  }
+                  className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <RefreshCw className={cn('size-3', isRefreshing && 'animate-spin')} />
+                  {isRefreshing
+                    ? translate('auto.components.settings.AgentsPane.c9b33eb5c0', 'Refreshing…')
+                    : translate('auto.components.settings.AgentsPane.0d9e293a02', 'Refresh')}
+                </Button>
+              </div>
             }
           />
 
@@ -937,7 +1001,8 @@ export function AgentsPane({
                 argsOverride={resolveTuiAgentLaunchArgs(agent.id, agentDefaultArgs)}
                 envOverride={resolveTuiAgentLaunchEnv(agent.id, agentDefaultEnv)}
                 onSetDefault={() => setDefault(agent.id)}
-                onSetEnabled={(enabled) => setAgentEnabled(agent.id, enabled)}
+                onSetEnabled={(enabled) => void setAgentEnabled(agent.id, enabled)}
+                availabilitySaving={availabilitySaving.has(agent.id)}
                 onSaveOverride={(v) => saveOverride(agent.id, v)}
                 onSaveArgs={(v) => saveAgentArgs(agent.id, v)}
                 onSaveEnv={(v) => saveAgentEnv(agent.id, v)}
@@ -951,6 +1016,13 @@ export function AgentsPane({
           </div>
         </section>
       )}
+
+      <AgentCreationDialog
+        open={agentCreationOpen}
+        agents={creatableAgents}
+        detecting={detectedIds === null}
+        onOpenChange={setAgentCreationOpen}
+      />
 
       {undetectedAgents.length > 0 && (
         <section className="space-y-3">
@@ -986,7 +1058,8 @@ export function AgentsPane({
                 argsOverride={resolveTuiAgentLaunchArgs(agent.id, agentDefaultArgs)}
                 envOverride={resolveTuiAgentLaunchEnv(agent.id, agentDefaultEnv)}
                 onSetDefault={() => {}}
-                onSetEnabled={(enabled) => setAgentEnabled(agent.id, enabled)}
+                onSetEnabled={(enabled) => void setAgentEnabled(agent.id, enabled)}
+                availabilitySaving={availabilitySaving.has(agent.id)}
                 onSaveOverride={() => {}}
                 onSaveArgs={(v) => saveAgentArgs(agent.id, v)}
                 onSaveEnv={(v) => saveAgentEnv(agent.id, v)}

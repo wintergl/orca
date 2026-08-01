@@ -64,6 +64,7 @@ function item(providerSessionId: string | null = null): AgentActivityItem {
       normalizedVaultAgent: 'codex',
       providerSessionId,
       agentLifecycleId: 'lifecycle-current',
+      ptyId: 'pty-current',
       activityIdentity: {
         canonicalKey: 'local:wt-1:tab-1:codexdb:lifecycle-current',
         aliases: new Set()

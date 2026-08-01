@@ -380,6 +380,29 @@ describe('launchAgentBackgroundSession remote runtime and SSH startup delivery',
     })
   })
 
+  it('sends one-session command and permission overrides only to capable runtimes', async () => {
+    useRemoteAgentBackgroundRuntime(state)
+    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+
+    await launchAgentBackgroundSession({
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      agentCommand: 'codex --profile review',
+      permissionMode: 'manual'
+    })
+
+    expect(mockRuntimeEnvironmentCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'terminal.createAgentSession',
+        params: expect.objectContaining({
+          agent: 'codex',
+          agentCommand: 'codex --profile review',
+          permissionMode: 'manual'
+        })
+      })
+    )
+  })
+
   it('preserves the legacy background spawn on an old remote host', async () => {
     useRemoteAgentBackgroundRuntime(state)
     mockRuntimeEnvironmentTransportCall.mockImplementation((request: { method: string }) => {

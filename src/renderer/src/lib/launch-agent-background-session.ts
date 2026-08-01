@@ -7,10 +7,6 @@ import type {
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
 import { scheduleAgentBackgroundDraft } from '@/lib/agent-background-draft-delivery'
 import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
-import {
-  resolveTuiAgentLaunchArgs,
-  resolveTuiAgentLaunchEnv
-} from '../../../shared/tui-agent-launch-defaults'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { resolveAgentBackgroundLaunchHost } from '@/lib/agent-background-session-launch-host'
 import { makePaneKey } from '../../../shared/stable-pane-id'
@@ -40,6 +36,7 @@ import {
 } from '@/lib/adopt-agent-background-session-tab'
 import { createBackgroundAgentStatusConsumer } from '@/lib/background-agent-status-consumer'
 import { isWslUncPath } from '../../../shared/wsl-paths'
+import { resolveAgentBackgroundLaunchConfiguration } from '@/lib/agent-background-launch-configuration'
 
 export async function launchAgentBackgroundSession(
   args: LaunchAgentBackgroundSessionArgs
@@ -52,9 +49,12 @@ export async function launchAgentBackgroundSession(
   if (!worktree) {
     throw new Error('The target workspace is no longer available.')
   }
-  const cmdOverrides = store.settings?.agentCmdOverrides ?? {}
-  const agentArgs = resolveTuiAgentLaunchArgs(agent, store.settings?.agentDefaultArgs)
-  const agentEnv = resolveTuiAgentLaunchEnv(agent, store.settings?.agentDefaultEnv)
+  const launchOverrides = resolveAgentBackgroundLaunchConfiguration({
+    agent,
+    agentCommand: args.agentCommand,
+    permissionMode: args.permissionMode,
+    settings: store.settings
+  })
   // Folder launch ownership cannot be derived from a repo row (#2989).
   const launchHost = resolveAgentBackgroundLaunchHost({
     store,
@@ -88,9 +88,9 @@ export async function launchAgentBackgroundSession(
   const startupPlan = buildAgentStartupPlan({
     agent,
     prompt: hasPrompt && !isFollowupPath ? trimmedPrompt : '',
-    cmdOverrides,
-    agentArgs,
-    agentEnv,
+    cmdOverrides: launchOverrides.cmdOverrides,
+    agentArgs: launchOverrides.agentArgs,
+    agentEnv: launchOverrides.agentEnv,
     platform: launchPlatform,
     shell: startupShell,
     isRemote,
@@ -179,6 +179,8 @@ export async function launchAgentBackgroundSession(
         tabId: reservedTabId,
         leafId,
         agent,
+        agentCommand: launchOverrides.agentCommand,
+        permissionMode: launchOverrides.permissionMode,
         ...(hasPrompt && !isFollowupPath ? { prompt: trimmedPrompt } : {}),
         ...(startupPlan.sessionOptions ? { sessionOptions: startupPlan.sessionOptions } : {}),
         legacy: {

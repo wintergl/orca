@@ -6,6 +6,7 @@ const mockQueueTabStartupCommand = vi.fn()
 const mockSetActiveTabType = vi.fn()
 const mockSetTabBarOrder = vi.fn()
 const mockSetAgentStatus = vi.fn()
+const mockSetTabCustomTitle = vi.fn()
 const mockPasteDraftWhenAgentReady = vi.fn()
 const mockSeedNativeChatLaunchPrompt = vi.fn()
 const mockMarkNativeChatLaunchPromptFailed = vi.fn()
@@ -79,6 +80,7 @@ const store = {
   setActiveTabType: mockSetActiveTabType,
   setTabBarOrder: mockSetTabBarOrder,
   setAgentStatus: mockSetAgentStatus,
+  setTabCustomTitle: mockSetTabCustomTitle,
   seedNativeChatLaunchPrompt: mockSeedNativeChatLaunchPrompt,
   markNativeChatLaunchPromptFailed: mockMarkNativeChatLaunchPromptFailed
 }
@@ -176,6 +178,9 @@ describe('launchAgentInNewTab', () => {
 
     expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
       launchAgent: 'codex'
+    })
+    expect(mockSetTabCustomTitle).toHaveBeenCalledWith('tab-1', 'Codex', {
+      recordInteraction: false
     })
   })
 

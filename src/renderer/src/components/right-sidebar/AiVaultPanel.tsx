@@ -43,6 +43,7 @@ import {
 import { usePersistedAiVaultViewOptions } from './use-persisted-ai-vault-view-options'
 import { AgentSessionContinuationDialog } from '@/components/agent-session-continuation/AgentSessionContinuationDialog'
 import { AiVaultAgentActivitySection } from './AiVaultAgentActivitySection'
+import { WorkflowActivityBox } from '../workflows/WorkflowActivityBox'
 export default function AiVaultPanel(): React.JSX.Element {
   const activeWorktreeId = useActiveWorktreeId()
   const activeWorktree = useActiveWorktree()
@@ -328,6 +329,7 @@ export default function AiVaultPanel(): React.JSX.Element {
           )}
         </div>
       ) : null}
+      <WorkflowActivityBox />
       <AiVaultAgentActivitySection
         activity={{
           activeProjectKey,

@@ -63,12 +63,14 @@ describe('AgentActivityCurrentRow', () => {
     toastMocks.error.mockReset()
   })
 
-  it('renders an unavailable current pane as a static row instead of a button', () => {
+  it('renders an unavailable current pane as a static row with a disabled Hi action', () => {
     render(<AgentActivityCurrentRow item={unavailableItem()} />)
 
     expect(screen.getByLabelText('Agent pane unavailable')).toBeTruthy()
     expect(screen.getByLabelText('Working')).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send Hi' }).getAttribute('aria-disabled')).toBe(
+      'true'
+    )
     expect(screen.getByText('Agent pane is unavailable')).toBeTruthy()
   })
 
@@ -103,5 +105,55 @@ describe('AgentActivityCurrentRow', () => {
 
     await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith('Finished safely.'))
     expect(toastMocks.success).toHaveBeenCalledWith('Conclusion copied')
+  })
+
+  it('provides a dedicated idle Agent drag handle', () => {
+    const { container } = render(
+      <AgentActivityCurrentRow
+        item={{
+          ...unavailableItem(),
+          kind: 'idle',
+          state: 'idle',
+          navigationTarget: {} as AgentActivityItem['navigationTarget'],
+          navigationUnavailableReason: null
+        }}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /Codex/ }).getAttribute('draggable')).toBe('true')
+    expect(container.querySelector('[aria-label="Drag idle Agent"]')).toBeTruthy()
+  })
+
+  it('does not make a working Agent draggable', () => {
+    const { container } = render(
+      <AgentActivityCurrentRow
+        item={{
+          ...unavailableItem(),
+          navigationTarget: {} as AgentActivityItem['navigationTarget'],
+          navigationUnavailableReason: null
+        }}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /Codex/ }).getAttribute('draggable')).toBe('false')
+    expect(container.querySelector('[aria-label="Drag idle Agent"]')).toBeNull()
+  })
+
+  it('shows the persisted Workflow node, round, and handoff target', () => {
+    render(
+      <AgentActivityCurrentRow
+        item={{ ...unavailableItem(), agentLifecycleId: 'producer' }}
+        workflowContext={{
+          workflowName: 'Code review',
+          nodeName: 'Produce',
+          round: 1,
+          status: 'succeeded',
+          sentToNodeName: 'Review'
+        }}
+      />
+    )
+
+    expect(screen.getByText('Code review · Produce · R1', { exact: false })).toBeTruthy()
+    expect(screen.getByText('sent to Review', { exact: false })).toBeTruthy()
   })
 })

@@ -14,13 +14,41 @@ describe('pane agent lifecycle', () => {
         undefined,
         { updatedAt: 10 },
         undefined,
-        { providerSession: { key: 'session_id', id: 'session-1' } }
+        {
+          providerSession: { key: 'session_id', id: 'session-1' },
+          agentLifecycleId: 'agent-lifecycle-main'
+        }
       )
 
     const status = store.getState().agentStatusByPaneKey[paneKey]
-    expect(status?.agentLifecycleId).toBeDefined()
+    expect(status?.agentLifecycleId).toBe('agent-lifecycle-main')
     expect(status?.agentSessionStartedAt).toBe(10)
     expect(store.getState().paneAgentLifecycleByPaneKey[paneKey]?.id).toBe(status?.agentLifecycleId)
+  })
+
+  it('replaces renderer lifecycle state when main observes a new authority', () => {
+    const store = createTestStore()
+    const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const first = store.getState().observePaneAgentLifecycle({
+      paneKey,
+      executionHostId: 'local',
+      runtimeAgent: 'codex',
+      providerSessionId: 'session-1',
+      observedLifecycleId: 'agent-lifecycle-first',
+      observedAt: 10
+    })
+    const replacement = store.getState().observePaneAgentLifecycle({
+      paneKey,
+      executionHostId: 'local',
+      runtimeAgent: 'codex',
+      providerSessionId: 'session-1',
+      observedLifecycleId: 'agent-lifecycle-replacement',
+      observedAt: 20
+    })
+
+    expect(first?.id).toBe('agent-lifecycle-first')
+    expect(replacement?.id).toBe('agent-lifecycle-replacement')
+    expect(replacement?.startedAt).toBe(20)
   })
 
   it('retains one identity for compatible evidence and replaces it after an identity change', () => {

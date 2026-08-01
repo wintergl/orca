@@ -172,6 +172,7 @@ export type AgentStatusSlice = {
       providerSession?: AgentProviderSessionMetadata
       launchConfig?: SleepingAgentLaunchConfig
       launchToken?: string
+      agentLifecycleId?: string
     }
   ) => void
 
@@ -1781,6 +1782,7 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
         runtimeAgent: (payload.agentType ?? prior?.agentType ?? null) as TuiAgent | null,
         providerSessionId: metadata?.providerSession?.id ?? prior?.providerSession?.id ?? null,
         launchToken: metadata?.launchToken ?? null,
+        observedLifecycleId: metadata?.agentLifecycleId,
         observedAt: updatedAt
       })
       let completionRefreshWorktreeId: string | null = null

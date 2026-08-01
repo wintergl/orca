@@ -29,6 +29,7 @@ export type AgentActivityNavigationTarget = {
   normalizedVaultAgent: AiVaultAgent | null
   providerSessionId: string | null
   agentLifecycleId: string
+  ptyId: string | null
   activityIdentity: AgentActivityIdentity
 }
 
@@ -96,6 +97,7 @@ export type BuildAgentActivityArgs = {
   activeProjectKey: string | null
   workspaceScopeIds: ReadonlySet<string>
   workspaceInfoById: ReadonlyMap<string, AgentActivityWorkspaceInfo>
+  generatedTitlesEnabled: boolean
   now: number
 }
 

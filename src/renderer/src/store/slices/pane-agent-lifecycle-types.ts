@@ -25,6 +25,7 @@ type PaneAgentLifecycleObservation = {
   runtimeAgent?: TuiAgent | null
   providerSessionId?: string | null
   launchToken?: string | null
+  observedLifecycleId?: string
   observedAt?: number
   authorityRevision?: number
   authorityLifecycleId?: string

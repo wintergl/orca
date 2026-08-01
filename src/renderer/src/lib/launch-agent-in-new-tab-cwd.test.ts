@@ -20,6 +20,7 @@ const store = {
   createTab: vi.fn(() => ({ id: 'tab-1' })),
   queueTabInitialCwd: mockQueueTabInitialCwd,
   queueTabStartupCommand: vi.fn(),
+  setTabCustomTitle: vi.fn(),
   setActiveTabType: vi.fn(),
   setTabBarOrder: vi.fn()
 }

@@ -166,6 +166,28 @@ describe('launchAgentBackgroundSession', () => {
     expect(result).toMatchObject({ tabId, paneKey, ptyId: 'pty-1' })
   })
 
+  it('applies a one-session command override and manual permissions', async () => {
+    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+
+    await launchAgentBackgroundSession({
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      agentCommand: 'codex --profile review',
+      permissionMode: 'manual'
+    })
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'codex --profile review',
+        launchConfig: {
+          agentCommand: 'codex --profile review',
+          agentArgs: '',
+          agentEnv: {}
+        }
+      })
+    )
+  })
+
   it('does not create or mount the tab while the explicit PTY spawn is unresolved', async () => {
     let resolveSpawn!: (result: { id: string }) => void
     mockSpawn.mockReturnValueOnce(
