@@ -102,7 +102,6 @@ function makeRunAndStep(
     attempt?: number
     nodeKind?: 'decide' | 'produce'
     runId?: string
-    withReviewAggregate?: boolean
   }
 ): { run: WorkflowRunRecord; step: WorkflowStepRunRecord } {
   const nodeKind = options?.nodeKind ?? 'decide'
@@ -151,16 +150,6 @@ function makeRunAndStep(
   store.persistenceDb
     .prepare(`UPDATE workflow_step_runs SET task_id = ?, dispatch_id = ? WHERE id = ?`)
     .run('task-1', 'dispatch-1', step.id)
-  if (options?.withReviewAggregate) {
-    store.persistenceDb
-      .prepare(
-        `INSERT INTO workflow_review_aggregates (
-           id, run_id, review_node_id, round, artifact_revision_id,
-           reviewer_step_run_ids_json, outcome, conflicts_json, waiting_reason, content
-         ) VALUES (?, ?, 'code-review', 1, 'artifact-1', '[]', 'revise', '[]', NULL, 'review content')`
-      )
-      .run(`agg-${run.id}`, run.id)
-  }
   const refreshed = store.getStep(step.id)!
   claimWorkflowDispatchOwnership(store.persistenceDb, {
     runId: run.id,
@@ -310,11 +299,12 @@ describe('reconcileWorkflowStepFailure', () => {
     const mid = getWorkflowCompletion(store.persistenceDb, first.receiptId)!
     expect(mid.retryBlocked).toBe(true)
     // Simulate crash after orchestration-settled but before workflow write by rewinding state.
+    // Keep retry_blocked from the real settlement (do not rewrite it).
     store.persistenceDb
       .prepare(
         `UPDATE workflow_completion_reconciliations
          SET state = 'orchestration-settled', retry_outbox_state = 'none',
-             retry_blocked = 1, updated_at = datetime('now')
+             updated_at = datetime('now')
          WHERE receipt_id = ?`
       )
       .run(first.receiptId)
@@ -364,6 +354,26 @@ describe('reconcileWorkflowStepFailure', () => {
     const settled = getWorkflowCompletion(reopened.persistenceDb, first.receiptId)!
     expect(settled.retryBlocked).toBe(true)
     expect(settled.retryOutboxState).toBe('none')
+  })
+})
+
+describe('failWorkflowDecision aggregate invariant', () => {
+  it('throws and rolls back when Review Aggregate is missing', () => {
+    const store = createStore()
+    const { run, step } = makeRunAndStep(store, { maxAttempts: 1 })
+    expect(() =>
+      store.failDecision({
+        run,
+        step,
+        code: 'workflow_decision_invalid',
+        message: 'bad decision',
+        recovery: 'inspect',
+        skipRetry: true
+      })
+    ).toThrow('Decision failure cannot bind its Review Aggregate.')
+    const unchanged = store.getStep(step.id)!
+    expect(unchanged.status).toBe('running')
+    expect(unchanged.errorCode).toBeNull()
   })
 })
 

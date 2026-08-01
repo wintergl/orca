@@ -79,6 +79,34 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
     expect(orchestration.settleWorkerReport).not.toHaveBeenCalled()
   })
 
+  it('detects success on re-query when fail settlement loses the race', () => {
+    let afterSettle = false
+    const settleWorkerReport = vi.fn(() => {
+      afterSettle = true
+      return null
+    })
+    const orchestration = {
+      getWorkerDispatch: vi.fn(() => (afterSettle ? { state: 'succeeded' } : { state: 'ready' })),
+      getTask: vi.fn(() => (afterSettle ? { status: 'completed' } : { status: 'dispatched' })),
+      getDispatchContextById: vi.fn(() =>
+        afterSettle ? { status: 'completed' } : { status: 'dispatched' }
+      ),
+      failWorkerStart: vi.fn(),
+      settleWorkerReport
+    } as unknown as OrchestrationDb
+    const step = {
+      id: 'step-1',
+      taskId: 'task-1',
+      dispatchId: 'dispatch-1',
+      attempt: 1
+    } as WorkflowStepRunRecord
+
+    expect(
+      settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'timeout racing success')
+    ).toEqual({ settled: true, duplicate: true, successTerminal: true })
+    expect(settleWorkerReport).toHaveBeenCalledOnce()
+  })
+
   it('refuses to settle start_unknown so callers can wait for human recovery', () => {
     const settleWorkerReport = vi.fn()
     const orchestration = {
