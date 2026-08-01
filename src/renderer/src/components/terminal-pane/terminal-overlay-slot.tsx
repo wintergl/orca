@@ -1,7 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAppStore } from '../../store'
-import { SYNC_FIT_PANES_EVENT } from '@/constants/terminal'
+import { SYNC_FIT_PANES_EVENT } from '../../constants/terminal'
 import { tabGroupBodyAnchorName } from '../tab-group/tab-group-body-anchor'
 import type { ActivityTerminalPortalTarget } from '../activity/activity-terminal-portal'
 import TerminalPane from './TerminalPane'

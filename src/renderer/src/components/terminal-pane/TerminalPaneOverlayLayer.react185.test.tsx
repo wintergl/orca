@@ -19,7 +19,7 @@ vi.mock('../../store', () => ({
   })
 }))
 
-import { TerminalOverlaySlot } from './TerminalPaneOverlayLayer'
+import { TerminalOverlaySlot } from './terminal-overlay-slot'
 
 const GROUP_ID = 'group-react185'
 const TAB_ID = 'tab-react185'
@@ -73,6 +73,7 @@ function renderSlot(): void {
         groupId={GROUP_ID}
         isWorktreeActive
         isWorktreePresented
+        showWorkspacePanes
         isVisible
         isPresented
         isActive
