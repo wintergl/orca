@@ -43,9 +43,22 @@ export class WorkflowStepDispatcher {
     // Why: the Agent may be working before its delayed Hook promotes the delivered Step to running.
     const isAlreadyDispatched =
       existingDispatch?.status === 'dispatched' && existingWorker?.state === 'ready'
+    // Why: all fallible prechecks before creating external Orchestration identity.
     const target = await this.validateAssignment(run, step, {
       requireIdle: !isAlreadyDispatched
     })
+    if (isAlreadyDispatched) {
+      return
+    }
+    const prompt = this.buildPrompt(run, step)
+    const processIncarnation = this.runtime.getTerminalProcessIncarnation(target.handle)
+    if (!processIncarnation) {
+      throw new WorkflowError(
+        'workflow_agent_unavailable',
+        'The assigned Agent process identity is unavailable.'
+      )
+    }
+    await workflowReportPath(run.id, step.id)
     const orchestrationRunId =
       run.orchestrationRunId ??
       this.orchestration.createRun({
@@ -86,43 +99,43 @@ export class WorkflowStepDispatcher {
             taskTitle: step.nodeName,
             displayName: `${run.templateName} · ${step.nodeName}`
           })
-    const started =
-      existingDispatch && existingWorker
-        ? { dispatch: existingDispatch, worker: existingWorker }
-        : this.orchestration.createStartingWorkerDispatch({
-            taskId: task.id,
-            runtimeEpoch: this.runtime.getRuntimeId(),
-            startOptions: {
-              workflowRunId: run.id,
-              workflowStepRunId: step.id,
-              worktree: run.workspace.id,
-              terminal: target.handle,
-              setup: 'not_applicable'
-            }
-          })
-    bindWorkflowDispatchOwnershipIds(this.store.persistenceDb, {
-      logicalExecutionKey: buildWorkflowLogicalExecutionKey({
-        runId: run.id,
-        nodeId: step.nodeId,
-        round: step.round,
-        assignmentKey
-      }),
+    const started = this.orchestration.createStartingWorkerDispatch({
+      taskId: task.id,
+      runtimeEpoch: this.runtime.getRuntimeId(),
+      startOptions: {
+        workflowRunId: run.id,
+        workflowStepRunId: step.id,
+        worktree: run.workspace.id,
+        terminal: target.handle,
+        setup: 'not_applicable'
+      }
+    })
+    // Why: bind external IDs immediately so any later failure can settle precisely.
+    this.store.bindStepDispatchIdentity({
+      runId: run.id,
       stepRunId: step.id,
       taskId: task.id,
       dispatchId: started.dispatch.id
     })
-    if (started.dispatch.status === 'dispatched' && started.worker.state === 'ready') {
-      return
-    }
-    await workflowReportPath(run.id, step.id)
-    const prompt = this.buildPrompt(run, step)
-    const processIncarnation = this.runtime.getTerminalProcessIncarnation(target.handle)
-    if (!processIncarnation) {
+    if (
+      !bindWorkflowDispatchOwnershipIds(this.store.persistenceDb, {
+        logicalExecutionKey: buildWorkflowLogicalExecutionKey({
+          runId: run.id,
+          nodeId: step.nodeId,
+          round: step.round,
+          assignmentKey
+        }),
+        stepRunId: step.id,
+        taskId: task.id,
+        dispatchId: started.dispatch.id
+      })
+    ) {
       throw new WorkflowError(
-        'workflow_agent_unavailable',
-        'The assigned Agent process identity is unavailable.'
+        'workflow_delivery_uncertain',
+        'Failed to bind Dispatch ownership after external create.'
       )
     }
+    step = { ...step, taskId: task.id, dispatchId: started.dispatch.id, prompt }
     this.orchestration.prepareStartingWorkerAuthority({
       dispatchId: started.dispatch.id,
       handle: target.handle,
@@ -146,7 +159,6 @@ export class WorkflowStepDispatcher {
       dispatchId: started.dispatch.id,
       prompt
     })
-    step = { ...step, taskId: task.id, dispatchId: started.dispatch.id, prompt }
     const reviewGuardDigest =
       step.nodeType === 'review'
         ? await workspaceGuardDigest(this.store.getBaseline(run.id) as WorkflowWorkspaceBaseline)

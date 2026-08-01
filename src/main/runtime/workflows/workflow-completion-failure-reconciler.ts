@@ -29,6 +29,7 @@ export type WorkflowFailureReconcileResult = {
   retryStep: WorkflowStepRunRecord | null
   waitingHuman: boolean
   duplicate: boolean
+  conflict: boolean
 }
 
 /**
@@ -51,7 +52,13 @@ export function reconcileWorkflowStepFailure(params: {
       code === 'workflow_lifecycle_mismatch' ? 'lifecycle-mismatch' : 'delivery-uncertain',
       message
     )
-    return { receiptId: '', retryStep: null, waitingHuman: true, duplicate: false }
+    return {
+      receiptId: '',
+      retryStep: null,
+      waitingHuman: true,
+      duplicate: false,
+      conflict: false
+    }
   }
 
   const db = params.store.persistenceDb
@@ -61,7 +68,7 @@ export function reconcileWorkflowStepFailure(params: {
     code,
     message
   })
-  const { record, created } = receiveWorkflowCompletion(db, {
+  const received = receiveWorkflowCompletion(db, {
     runId: params.run.id,
     stepRunId: params.step.id,
     attempt: params.step.attempt,
@@ -72,16 +79,28 @@ export function reconcileWorkflowStepFailure(params: {
     errorCode: code,
     errorMessage: message
   })
-  if (!created && record.state === 'settled') {
+  if (received.conflict) {
+    // Success (or another outcome) already owns this attempt — stop failure path.
     return {
-      receiptId: record.receiptId,
-      retryStep: consumeWorkflowRetryOutbox(params.store, params.run, record),
+      receiptId: received.record.receiptId,
+      retryStep: null,
       waitingHuman: false,
-      duplicate: true
+      duplicate: true,
+      conflict: true
+    }
+  }
+  if (!received.created && received.record.state === 'settled') {
+    return {
+      receiptId: received.record.receiptId,
+      retryStep: consumeWorkflowRetryOutbox(params.store, params.run, received.record),
+      waitingHuman: false,
+      duplicate: true,
+      conflict: false
     }
   }
 
-  let current = getWorkflowCompletion(db, record.receiptId) ?? record
+  let current = getWorkflowCompletion(db, received.record.receiptId) ?? received.record
+  let blockTechnicalRetry = false
   if (current.state === 'received') {
     const settlement = settleWorkflowAttemptOrchestrationFailed(
       params.orchestration,
@@ -99,9 +118,12 @@ export function reconcileWorkflowStepFailure(params: {
         receiptId: current.receiptId,
         retryStep: null,
         waitingHuman: true,
-        duplicate: false
+        duplicate: false,
+        conflict: false
       }
     }
+    // Why: Orchestration success must not be flipped, and must not auto-retry.
+    blockTechnicalRetry = settlement.successTerminal
     terminalizeWorkflowStepOwnership(params.store, params.run, params.step)
     current =
       advanceWorkflowCompletionState(db, current.receiptId, 'received', 'orchestration-settled') ??
@@ -109,7 +131,7 @@ export function reconcileWorkflowStepFailure(params: {
   }
 
   if (current.state === 'orchestration-settled') {
-    applyWorkflowFailureWrite(params, code, message, current)
+    applyWorkflowFailureWrite(params, code, message, current, { allowRetry: !blockTechnicalRetry })
     current = getWorkflowCompletion(db, current.receiptId) ?? current
   }
 
@@ -126,7 +148,8 @@ export function reconcileWorkflowStepFailure(params: {
         ? consumeWorkflowRetryOutbox(params.store, params.run, current)
         : null,
     waitingHuman: false,
-    duplicate: !created
+    duplicate: !received.created,
+    conflict: false
   }
 }
 
@@ -142,6 +165,7 @@ export function resumeWorkflowCompletionReconciliations(params: {
     if (!step) {
       continue
     }
+    let blockTechnicalRetry = false
     if (record.state === 'received' && record.outcome === 'failed') {
       const settlement = settleWorkflowAttemptOrchestrationFailed(
         params.orchestration,
@@ -157,6 +181,7 @@ export function resumeWorkflowCompletionReconciliations(params: {
         )
         continue
       }
+      blockTechnicalRetry = settlement.successTerminal
       terminalizeWorkflowStepOwnership(params.store, params.run, step)
       advanceWorkflowCompletionState(db, record.receiptId, 'received', 'orchestration-settled')
     }
@@ -166,7 +191,8 @@ export function resumeWorkflowCompletionReconciliations(params: {
         { store: params.store, run: params.run, step },
         afterOrch.errorCode ?? 'workflow_agent_unavailable',
         afterOrch.errorMessage ?? 'recovery resume',
-        afterOrch
+        afterOrch,
+        { allowRetry: !blockTechnicalRetry }
       )
     }
     const afterWorkflow = getWorkflowCompletion(db, record.receiptId)
@@ -198,17 +224,19 @@ function applyWorkflowFailureWrite(
   },
   code: string,
   message: string,
-  record: WorkflowCompletionReconciliationRecord
+  record: WorkflowCompletionReconciliationRecord,
+  options: { allowRetry: boolean } = { allowRetry: true }
 ): void {
   const recovery = recoveryMessageForFailureCode(code)
   const decisionCode =
     code === 'workflow_completion_incomplete' ? 'workflow_decision_invalid' : code
   const shouldRetry =
-    params.step.nodeType === 'decide'
+    options.allowRetry &&
+    (params.step.nodeType === 'decide'
       ? decisionFailureCanRetry(params.run, params.step)
       : params.step.nodeType === 'review'
         ? reviewFailureCanRetry(params.run, params.step)
-        : false
+        : false)
 
   if (params.step.nodeType === 'review') {
     params.store.failReviewer({
@@ -217,7 +245,8 @@ function applyWorkflowFailureWrite(
       code,
       message,
       recovery,
-      deferRetry: true
+      deferRetry: options.allowRetry,
+      skipRetry: !options.allowRetry
     })
   } else if (params.step.nodeType === 'decide') {
     params.store.failDecision({
@@ -226,7 +255,8 @@ function applyWorkflowFailureWrite(
       code: decisionCode,
       message,
       recovery: 'Inspect the Decision output, then retry or decide manually.',
-      deferRetry: true
+      deferRetry: options.allowRetry,
+      skipRetry: !options.allowRetry
     })
   } else {
     params.store.failRun({

@@ -53,7 +53,7 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
       error_message TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(run_id, step_run_id, attempt, message_digest)
+      UNIQUE(run_id, step_run_id, attempt)
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_run
       ON workflow_completion_reconciliations(run_id, state, retry_outbox_state);
@@ -74,4 +74,67 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_workflow_dispatch_ownership_run
       ON workflow_dispatch_ownership(run_id, state);
   `)
+  migrateCompletionReconciliationAttemptUniqueness(db)
+}
+
+/** Older builds unique-keyed digests; attempt identity must be the sole winner. */
+function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database): void {
+  const sql = (
+    db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get('workflow_completion_reconciliations') as { sql: string } | undefined
+  )?.sql
+  if (!sql || !sql.includes('message_digest')) {
+    return
+  }
+  // Only rebuild when the composite unique still includes message_digest.
+  if (
+    !/UNIQUE\s*\(\s*run_id\s*,\s*step_run_id\s*,\s*attempt\s*,\s*message_digest\s*\)/i.test(sql)
+  ) {
+    return
+  }
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.exec(`
+      ALTER TABLE workflow_completion_reconciliations RENAME TO workflow_completion_reconciliations_legacy;
+      CREATE TABLE workflow_completion_reconciliations (
+        receipt_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        step_run_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        task_id TEXT,
+        dispatch_id TEXT,
+        message_digest TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK(outcome IN ('succeeded', 'failed')),
+        state TEXT NOT NULL CHECK(state IN (
+          'received', 'orchestration-settled', 'workflow-settled', 'settled'
+        )),
+        retry_outbox_state TEXT NOT NULL DEFAULT 'none'
+          CHECK(retry_outbox_state IN ('none', 'pending', 'consumed')),
+        retry_step_run_id TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(run_id, step_run_id, attempt)
+      );
+      INSERT OR IGNORE INTO workflow_completion_reconciliations (
+        receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
+        outcome, state, retry_outbox_state, retry_step_run_id, error_code, error_message,
+        created_at, updated_at
+      )
+      SELECT receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
+        outcome, state, retry_outbox_state, retry_step_run_id, error_code, error_message,
+        created_at, updated_at
+      FROM workflow_completion_reconciliations_legacy
+      ORDER BY created_at;
+      DROP TABLE workflow_completion_reconciliations_legacy;
+      CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_run
+        ON workflow_completion_reconciliations(run_id, state, retry_outbox_state);
+    `)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
 }

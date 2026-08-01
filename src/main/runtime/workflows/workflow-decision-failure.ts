@@ -15,6 +15,8 @@ export function failWorkflowDecision(
     recovery: string
     /** When true, only mark the step failed; retry is created by outbox consumer. */
     deferRetry?: boolean
+    /** When true, skip technical retry and enter waiting-human path. */
+    skipRetry?: boolean
   }
 ): WorkflowStepRunRecord | null {
   return store.transaction(() => {
@@ -33,6 +35,7 @@ export function failWorkflowDecision(
       (candidate) => candidate.id === current.nodeId && candidate.type === 'decide'
     )
     const canRetry =
+      !params.skipRetry &&
       node?.type === 'decide' &&
       Boolean(current.assignment) &&
       current.attempt < node.retryPolicy.maxAttempts

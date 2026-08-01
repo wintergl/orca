@@ -20,6 +20,7 @@ import { buildWorkflowResolutionOffers } from './workflow-resolution-offers'
 import { WorkflowRuntimeStore } from './workflow-runtime-store'
 import { WorkflowTemplateStore } from './workflow-template-store'
 import { hardenWorkflowDatabaseFiles } from './workflow-database-permissions'
+import { bindWorkflowStepDispatchIdentity } from './workflow-delivery-store'
 
 export class WorkflowStore {
   private readonly db: Database.Database
@@ -49,6 +50,19 @@ export class WorkflowStore {
   /** Exposed for durable completion reconciliation / ownership CAS. */
   get persistenceDb(): Database.Database {
     return this.db
+  }
+
+  transaction<T>(operation: () => T): T {
+    return this.runtime.transaction(operation)
+  }
+
+  bindStepDispatchIdentity(params: {
+    runId: string
+    stepRunId: string
+    taskId: string
+    dispatchId: string
+  }): void {
+    bindWorkflowStepDispatchIdentity(this.runtime, params)
   }
 
   listTemplates(...params: Parameters<WorkflowTemplateStore['list']>): WorkflowTemplateRecord[] {

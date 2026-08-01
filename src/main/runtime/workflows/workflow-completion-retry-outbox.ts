@@ -2,80 +2,250 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
+import type { WorkflowCompletionReconciliationRecord } from './workflow-completion-reconciliation-store'
 import {
-  markRetryOutboxConsumed,
-  type WorkflowCompletionReconciliationRecord
-} from './workflow-completion-reconciliation-store'
-import { terminalizeWorkflowDispatchOwnership } from './workflow-dispatch-ownership-store'
+  claimWorkflowDispatchOwnership,
+  terminalizeWorkflowDispatchOwnership
+} from './workflow-dispatch-ownership-store'
+import type Database from '../../sqlite/sync-database'
 import { WorkflowError } from './workflow-error'
+import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
+import { workflowRecordId } from './workflow-runtime-records'
 import type { WorkflowStore } from './workflow-store'
 
+type WorkflowMutationHost = {
+  transaction<T>(operation: () => T): T
+  getStep(stepRunId: string): WorkflowStepRunRecord | null
+  insertStep: WorkflowRuntimePersistence['insertStep']
+  insertEvent: WorkflowRuntimePersistence['insertEvent']
+  db?: Database.Database
+  persistenceDb?: Database.Database
+}
+
+function hostDb(store: WorkflowMutationHost): Database.Database {
+  return store.persistenceDb ?? store.db!
+}
+
+/**
+ * Atomically consume retry outbox: claim pending, insert step, mark consumed,
+ * write event — all in one Workflow DB transaction.
+ */
 export function consumeWorkflowRetryOutbox(
-  store: WorkflowStore,
+  store: WorkflowMutationHost,
   run: WorkflowRunRecord,
   record: WorkflowCompletionReconciliationRecord
 ): WorkflowStepRunRecord | null {
   if (record.retryOutboxState !== 'pending' || record.state !== 'settled') {
+    if (record.retryStepRunId) {
+      return store.getStep(record.retryStepRunId)
+    }
     return null
   }
-  const db = store.persistenceDb
-  const failed = store.getStep(record.stepRunId)
-  if (!failed || !failed.assignment) {
-    markRetryOutboxConsumed(db, record.receiptId, record.stepRunId)
-    return null
-  }
-  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === failed.nodeId)
-  if (!node || (node.type !== 'decide' && node.type !== 'review')) {
-    markRetryOutboxConsumed(db, record.receiptId, record.stepRunId)
-    return null
-  }
-  // CAS: only one consumer may create the successor attempt.
-  const claimed = db
-    .prepare(
-      `UPDATE workflow_completion_reconciliations
-       SET retry_outbox_state = 'consumed', updated_at = datetime('now')
-       WHERE receipt_id = ? AND state = 'settled' AND retry_outbox_state = 'pending'`
+  return store.transaction(() => {
+    const db = hostDb(store)
+    const current = db
+      .prepare(
+        `SELECT retry_outbox_state, retry_step_run_id FROM workflow_completion_reconciliations
+         WHERE receipt_id = ?`
+      )
+      .get(record.receiptId) as
+      | { retry_outbox_state: string; retry_step_run_id: string | null }
+      | undefined
+    if (!current) {
+      return null
+    }
+    if (current.retry_outbox_state === 'consumed' && current.retry_step_run_id) {
+      return store.getStep(current.retry_step_run_id)
+    }
+    if (current.retry_outbox_state !== 'pending') {
+      return null
+    }
+    const failed = store.getStep(record.stepRunId)
+    if (!failed?.assignment) {
+      db.prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET retry_outbox_state = 'consumed', updated_at = datetime('now')
+         WHERE receipt_id = ? AND retry_outbox_state = 'pending'`
+      ).run(record.receiptId)
+      return null
+    }
+    const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === failed.nodeId)
+    if (!node || (node.type !== 'decide' && node.type !== 'review')) {
+      db.prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET retry_outbox_state = 'consumed', updated_at = datetime('now')
+         WHERE receipt_id = ? AND retry_outbox_state = 'pending'`
+      ).run(record.receiptId)
+      return null
+    }
+    const retry = store.insertStep(
+      run.id,
+      node,
+      failed.assignment,
+      failed.inputArtifactRevisionId,
+      'queued',
+      failed.round,
+      failed.attempt + 1
     )
-    .run(record.receiptId)
-  if (claimed.changes !== 1) {
-    return null
-  }
-  const retry = store.insertStep(
-    run.id,
-    node,
-    failed.assignment,
-    failed.inputArtifactRevisionId,
-    'queued',
-    failed.round,
-    failed.attempt + 1
-  )
-  db.prepare(
-    `UPDATE workflow_completion_reconciliations
-     SET retry_step_run_id = ?, updated_at = datetime('now')
-     WHERE receipt_id = ?`
-  ).run(retry.id, record.receiptId)
-  store.insertEvent(run.id, node.type === 'review' ? 'review-fan-out' : 'step-retried', retry.id, {
-    retryOfStepRunId: failed.id,
-    attempt: retry.attempt,
-    receiptId: record.receiptId
+    const claimed = db
+      .prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET retry_outbox_state = 'consumed', retry_step_run_id = ?, updated_at = datetime('now')
+         WHERE receipt_id = ? AND state = 'settled' AND retry_outbox_state = 'pending'`
+      )
+      .run(retry.id, record.receiptId)
+    if (claimed.changes !== 1) {
+      // Lost race after insert — remove orphan and return winner if any.
+      db.prepare('DELETE FROM workflow_step_runs WHERE id = ?').run(retry.id)
+      const winner = db
+        .prepare(
+          `SELECT retry_step_run_id FROM workflow_completion_reconciliations WHERE receipt_id = ?`
+        )
+        .get(record.receiptId) as { retry_step_run_id: string | null } | undefined
+      return winner?.retry_step_run_id ? store.getStep(winner.retry_step_run_id) : null
+    }
+    store.insertEvent(
+      run.id,
+      node.type === 'review' ? 'review-fan-out' : 'step-retried',
+      retry.id,
+      {
+        retryOfStepRunId: failed.id,
+        attempt: retry.attempt,
+        receiptId: record.receiptId
+      }
+    )
+    return retry
   })
-  return retry
 }
 
 export function terminalizeWorkflowStepOwnership(
-  store: WorkflowStore,
+  store: WorkflowStore | WorkflowRuntimePersistence,
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord
-): void {
+): boolean {
   const assignmentKey = step.assignment
     ? `${step.assignment.slotId}:${step.assignment.agentLifecycleId}`
     : 'engine'
-  terminalizeWorkflowDispatchOwnership(store.persistenceDb, {
+  const db = 'persistenceDb' in store ? store.persistenceDb : store.db
+  return terminalizeWorkflowDispatchOwnership(db, {
     runId: run.id,
     nodeId: step.nodeId,
     round: step.round,
     assignmentKey,
     stepRunId: step.id
+  })
+}
+
+/**
+ * Fence old owner, force-terminalize running step under delivery-uncertain,
+ * and insert a successor attempt. Used by retry-with-duplicate-risk.
+ */
+export function retryWorkflowStepWithDuplicateRisk(
+  store: WorkflowRuntimePersistence,
+  run: WorkflowRunRecord,
+  stepRunId: string,
+  reason: string | null
+): WorkflowStepRunRecord {
+  return store.transaction(() => {
+    const step = store.getStep(stepRunId)
+    if (!step) {
+      throw new WorkflowError('workflow_action_forbidden', 'Step is not eligible for risk retry.')
+    }
+    if (
+      ![
+        'running',
+        'delivering',
+        'waiting-agent',
+        'failed',
+        'timed-out',
+        'completion-incomplete'
+      ].includes(step.status)
+    ) {
+      throw new WorkflowError(
+        'workflow_action_forbidden',
+        'Step is not eligible for risk retry in its current status.'
+      )
+    }
+    const assignmentKey = step.assignment
+      ? `${step.assignment.slotId}:${step.assignment.agentLifecycleId}`
+      : 'engine'
+    // Fence: terminalize ownership even if still active.
+    terminalizeWorkflowDispatchOwnership(store.db, {
+      runId: run.id,
+      nodeId: step.nodeId,
+      round: step.round,
+      assignmentKey,
+      stepRunId: step.id
+    })
+    // Force step terminal without waiting for orchestration certainty.
+    if (['running', 'delivering', 'waiting-agent'].includes(step.status)) {
+      store.db
+        .prepare(
+          `UPDATE workflow_step_runs
+           SET status = 'failed', error_code = 'workflow_delivery_uncertain',
+               error_message = ?, recovery = 'Duplicate-risk retry accepted by operator.',
+               completed_at = datetime('now'), updated_at = datetime('now')
+           WHERE id = ? AND status IN ('running', 'delivering', 'waiting-agent')`
+        )
+        .run(reason?.trim() || 'Operator accepted duplicate-risk retry.', step.id)
+    }
+    // Cancel unsettled reconciliations so they cannot create a second outbox retry.
+    store.db
+      .prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET state = 'settled', retry_outbox_state = CASE
+             WHEN retry_outbox_state = 'pending' THEN 'consumed' ELSE retry_outbox_state END,
+             updated_at = datetime('now')
+         WHERE run_id = ? AND step_run_id = ? AND attempt = ? AND state != 'settled'`
+      )
+      .run(run.id, step.id, step.attempt)
+    const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === step.nodeId)
+    if (!node) {
+      throw new WorkflowError('workflow_transition_invalid', 'Retry node is unavailable.')
+    }
+    const retry = store.insertStep(
+      run.id,
+      node,
+      step.assignment,
+      step.inputArtifactRevisionId,
+      'queued',
+      step.round,
+      step.attempt + 1
+    )
+    const ownership = claimWorkflowDispatchOwnership(store.db, {
+      runId: run.id,
+      nodeId: retry.nodeId,
+      round: retry.round,
+      assignmentKey,
+      stepRunId: retry.id,
+      attempt: retry.attempt,
+      taskId: null,
+      dispatchId: null
+    })
+    if (!ownership.claimed) {
+      throw new WorkflowError(
+        'workflow_delivery_uncertain',
+        'Could not claim ownership for duplicate-risk retry.'
+      )
+    }
+    store.db
+      .prepare(
+        `UPDATE workflow_runs
+         SET status = 'running', current_node_id = ?, waiting_reason = NULL,
+             resolution_context_json = NULL, failure_code = NULL, failure_message = NULL,
+             recovery = NULL, completed_at = NULL, version = version + 1,
+             updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(step.nodeId, run.id)
+    store.insertEvent(run.id, 'step-retried', retry.id, {
+      retryOfStepRunId: step.id,
+      attempt: retry.attempt,
+      round: retry.round,
+      reason,
+      duplicateRiskAccepted: true,
+      fenceId: workflowRecordId('workflow_fence')
+    })
+    return retry
   })
 }
 

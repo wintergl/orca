@@ -26,6 +26,13 @@ export type WorkflowCompletionReconciliationRecord = {
   errorMessage: string | null
 }
 
+export type ReceiveWorkflowCompletionResult = {
+  record: WorkflowCompletionReconciliationRecord
+  created: boolean
+  /** True when another outcome already owns this attempt. */
+  conflict: boolean
+}
+
 type ReconciliationRow = {
   receipt_id: string
   run_id: string
@@ -64,7 +71,10 @@ export function digestWorkflowCompletionMessage(parts: {
     .digest('hex')
 }
 
-/** Idempotent receipt: same identity returns the existing row without reprocessing. */
+/**
+ * Atomically claim one winner per attempt identity.
+ * Digest is diagnostic only and must not allow a second row for the same attempt.
+ */
 export function receiveWorkflowCompletion(
   db: Database.Database,
   params: {
@@ -78,24 +88,14 @@ export function receiveWorkflowCompletion(
     errorCode?: string | null
     errorMessage?: string | null
   }
-): { record: WorkflowCompletionReconciliationRecord; created: boolean } {
-  const existing = db
-    .prepare(
-      `SELECT * FROM workflow_completion_reconciliations
-       WHERE run_id = ? AND step_run_id = ? AND attempt = ? AND message_digest = ?`
-    )
-    .get(params.runId, params.stepRunId, params.attempt, params.messageDigest) as
-    | ReconciliationRow
-    | undefined
-  if (existing) {
-    return { record: toRecord(existing), created: false }
-  }
+): ReceiveWorkflowCompletionResult {
   const receiptId = workflowRecordId('workflow_completion')
   db.prepare(
     `INSERT INTO workflow_completion_reconciliations (
        receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id,
        message_digest, outcome, state, retry_outbox_state, error_code, error_message
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?)
+     ON CONFLICT(run_id, step_run_id, attempt) DO NOTHING`
   ).run(
     receiptId,
     params.runId,
@@ -108,7 +108,22 @@ export function receiveWorkflowCompletion(
     params.errorCode ?? null,
     params.errorMessage ?? null
   )
-  return { record: getWorkflowCompletion(db, receiptId)!, created: true }
+  const row = db
+    .prepare(
+      `SELECT * FROM workflow_completion_reconciliations
+       WHERE run_id = ? AND step_run_id = ? AND attempt = ?`
+    )
+    .get(params.runId, params.stepRunId, params.attempt) as ReconciliationRow
+  const record = toRecord(row)
+  const created = record.receiptId === receiptId
+  if (created) {
+    return { record, created: true, conflict: false }
+  }
+  return {
+    record,
+    created: false,
+    conflict: record.outcome !== params.outcome
+  }
 }
 
 export function advanceWorkflowCompletionState(
@@ -159,6 +174,19 @@ export function getWorkflowCompletion(
   return row ? toRecord(row) : null
 }
 
+export function getWorkflowCompletionByAttempt(
+  db: Database.Database,
+  params: { runId: string; stepRunId: string; attempt: number }
+): WorkflowCompletionReconciliationRecord | null {
+  const row = db
+    .prepare(
+      `SELECT * FROM workflow_completion_reconciliations
+       WHERE run_id = ? AND step_run_id = ? AND attempt = ?`
+    )
+    .get(params.runId, params.stepRunId, params.attempt) as ReconciliationRow | undefined
+  return row ? toRecord(row) : null
+}
+
 export function listPendingRetryOutbox(
   db: Database.Database,
   runId?: string
@@ -196,21 +224,6 @@ export function listUnsettledCompletions(
       )
       .all(runId) as ReconciliationRow[]
   ).map(toRecord)
-}
-
-export function markRetryOutboxConsumed(
-  db: Database.Database,
-  receiptId: string,
-  retryStepRunId: string
-): boolean {
-  const result = db
-    .prepare(
-      `UPDATE workflow_completion_reconciliations
-       SET retry_outbox_state = 'consumed', retry_step_run_id = ?, updated_at = datetime('now')
-       WHERE receipt_id = ? AND state = 'settled' AND retry_outbox_state = 'pending'`
-    )
-    .run(retryStepRunId, receiptId)
-  return result.changes === 1
 }
 
 function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecord {

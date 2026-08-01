@@ -49,7 +49,21 @@ function decideNode(maxAttempts = 2) {
     name: 'Decide',
     type: 'decide' as const,
     retryPolicy: { maxAttempts, backoffMs: 0 },
-    promptRules: { rules: [], completionCriteria: '' }
+    promptRules: {
+      rules: [
+        {
+          id: 'first',
+          name: 'first',
+          when: 'first-visit' as const,
+          template: 'decide'
+        }
+      ],
+      completionCriteria: 'done'
+    },
+    inputBindings: [] as string[],
+    assignmentPolicy: { mode: 'single' as const, minAgents: 1, maxAgents: 1 },
+    timeoutMs: 60_000,
+    outputSchema: 'workflow.decision/v1' as const
   }
 }
 

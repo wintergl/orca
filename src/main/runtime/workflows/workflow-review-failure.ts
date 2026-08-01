@@ -15,6 +15,8 @@ export function failWorkflowReviewer(
     timedOut?: boolean
     /** When true, only mark the step failed; retry is created by outbox consumer. */
     deferRetry?: boolean
+    /** When true, skip technical retry and enter waiting-human exhausted path. */
+    skipRetry?: boolean
   }
 ): WorkflowStepRunRecord | null {
   return store.transaction(() => {
@@ -43,7 +45,7 @@ export function failWorkflowReviewer(
       failReviewerRun(store, params)
       return null
     }
-    if (current.attempt < node.retryPolicy.maxAttempts) {
+    if (!params.skipRetry && current.attempt < node.retryPolicy.maxAttempts) {
       if (params.deferRetry) {
         return null
       }

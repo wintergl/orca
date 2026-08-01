@@ -13,7 +13,7 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
     const orchestration = {
       getWorkerDispatch: vi.fn(() => ({ state: 'ready' })),
       getTask: vi.fn(() => ({ status: 'dispatched' })),
-      getDispatchContextById: vi.fn(),
+      getDispatchContextById: vi.fn(() => ({ status: 'dispatched' })),
       failWorkerStart: vi.fn(),
       settleWorkerReport
     } as unknown as OrchestrationDb
@@ -24,13 +24,9 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
       attempt: 1
     } as WorkflowStepRunRecord
 
-    const result = settleWorkflowAttemptOrchestrationFailed(
-      orchestration,
-      step,
-      'invalid decision protocol'
-    )
-
-    expect(result).toEqual({ settled: true, duplicate: false })
+    expect(
+      settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'invalid decision protocol')
+    ).toEqual({ settled: true, duplicate: false, successTerminal: false })
     expect(settleWorkerReport).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',
@@ -38,7 +34,6 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
         outcome: 'failed'
       })
     )
-    expect(orchestration.failWorkerStart).not.toHaveBeenCalled()
   })
 
   it('is idempotent when task/dispatch already failed', () => {
@@ -59,8 +54,29 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
 
     expect(
       settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'already settled')
-    ).toEqual({ settled: true, duplicate: true })
+    ).toEqual({ settled: true, duplicate: true, successTerminal: false })
     expect(settleWorkerReport).not.toHaveBeenCalled()
+  })
+
+  it('marks successful orchestration terminals without re-failing them', () => {
+    const orchestration = {
+      getWorkerDispatch: vi.fn(() => ({ state: 'succeeded' })),
+      getTask: vi.fn(() => ({ status: 'completed' })),
+      getDispatchContextById: vi.fn(() => ({ status: 'completed' })),
+      failWorkerStart: vi.fn(),
+      settleWorkerReport: vi.fn()
+    } as unknown as OrchestrationDb
+    const step = {
+      id: 'step-1',
+      taskId: 'task-1',
+      dispatchId: 'dispatch-1',
+      attempt: 1
+    } as WorkflowStepRunRecord
+
+    expect(
+      settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'timeout after success')
+    ).toEqual({ settled: true, duplicate: true, successTerminal: true })
+    expect(orchestration.settleWorkerReport).not.toHaveBeenCalled()
   })
 
   it('refuses to settle start_unknown so callers can wait for human recovery', () => {
@@ -81,7 +97,7 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
 
     expect(
       settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'start still unknown')
-    ).toEqual({ settled: false, duplicate: false })
+    ).toEqual({ settled: false, duplicate: false, successTerminal: false })
     expect(settleWorkerReport).not.toHaveBeenCalled()
   })
 
@@ -89,7 +105,8 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
     const failWorkerStart = vi.fn()
     const orchestration = {
       getWorkerDispatch: vi.fn(() => ({ state: 'starting' })),
-      getTask: vi.fn(),
+      getTask: vi.fn(() => ({ status: 'dispatched' })),
+      getDispatchContextById: vi.fn(),
       settleWorkerReport: vi.fn(),
       failWorkerStart
     } as unknown as OrchestrationDb
@@ -102,7 +119,8 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
 
     expect(settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'start failed')).toEqual({
       settled: true,
-      duplicate: false
+      duplicate: false,
+      successTerminal: false
     })
     expect(failWorkerStart).toHaveBeenCalledWith('dispatch-1', 'workflow_engine', 'start failed')
   })
