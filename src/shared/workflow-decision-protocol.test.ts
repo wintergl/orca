@@ -27,6 +27,11 @@ describe('workflow decision protocol v1', () => {
     expect(() => parseWorkflowDecisionToken('不完成\n\n继续改')).toThrow(/must begin with/)
   })
 
+  it('accepts English verdict when body mentions 完成', () => {
+    expect(parseWorkflowDecisionToken('approve\n\n已完成全部检查')).toBe('approve')
+    expect(parseWorkflowDecisionToken('revise\n\n仍不完成验收')).toBe('revise')
+  })
+
   it('rejects aliases when allowAliases is false', () => {
     expect(() =>
       parseWorkflowDecisionToken('裁定：通过\n\n可以进入', { allowAliases: false })

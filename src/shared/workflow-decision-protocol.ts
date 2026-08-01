@@ -79,7 +79,9 @@ export function parseExplicitWorkflowDecision(
   value: string,
   options: { allowAliases: boolean; allowStopAtReview: boolean }
 ): WorkflowDecisionToken | null {
-  const firstLines = stripLeadingSystemReminders(value)
+  // Why: scan at most a few heading/verdict lines; never join body text so
+  // "approve\n已完成…" stays valid while a first-line “完成” still fails.
+  const verdictLines = stripLeadingSystemReminders(value)
     .split('\n')
     .map((line) =>
       line
@@ -89,17 +91,46 @@ export function parseExplicitWorkflowDecision(
     )
     .filter(Boolean)
     .slice(0, 4)
-    .join(' ')
-    .toLowerCase()
-  const labeled = /^(?:(?:裁定|结论|判定|verdict|decision)\s*[:：-]?\s*)?(.+)$/.exec(
-    firstLines
-  )?.[1]
-  if (!labeled) {
+    .map((line) => line.toLowerCase())
+  if (verdictLines.length === 0) {
     return null
   }
-  if (FORBIDDEN_V1_BINARY_TOKENS.some((token) => labeled.includes(token.toLowerCase()))) {
+  const firstLabeled = verdictPortion(verdictLines[0]!)
+  if (firstLabeled && isForbiddenV1BinaryVerdict(firstLabeled)) {
     return null
   }
+  for (const line of verdictLines) {
+    const labeled = verdictPortion(line)
+    if (!labeled) {
+      continue
+    }
+    const token = matchWorkflowDecisionToken(labeled, options)
+    if (token) {
+      return token
+    }
+  }
+  return null
+}
+
+function verdictPortion(line: string): string | null {
+  return /^(?:(?:裁定|结论|判定|verdict|decision)\s*[:：-]?\s*)?(.+)$/.exec(line)?.[1] ?? null
+}
+
+function isForbiddenV1BinaryVerdict(labeled: string): boolean {
+  const compact = labeled.replace(/[。.！!？?\s]+$/g, '').trim()
+  return FORBIDDEN_V1_BINARY_TOKENS.some(
+    (token) =>
+      compact === token ||
+      compact.startsWith(`${token} `) ||
+      compact.startsWith(`${token}：`) ||
+      compact.startsWith(`${token}:`)
+  )
+}
+
+function matchWorkflowDecisionToken(
+  labeled: string,
+  options: { allowAliases: boolean; allowStopAtReview: boolean }
+): WorkflowDecisionToken | null {
   if (/\brequest-human\b/.test(labeled)) {
     return 'request-human'
   }

@@ -18,17 +18,24 @@ export function settleWorkflowAttemptOrchestrationFailed(
     orchestration.failWorkerStart(step.dispatchId, 'workflow_engine', reason)
     return { settled: true, duplicate: false }
   }
+  // Why: start_unknown may still recover to ready; auto-retry would race the old agent.
+  if (worker && !['ready', 'failed', 'succeeded', 'stopped', 'abandoned'].includes(worker.state)) {
+    return { settled: false, duplicate: false }
+  }
   const task = orchestration.getTask(step.taskId)
   if (!task) {
     return { settled: false, duplicate: false }
   }
   if (task.status === 'failed') {
     const dispatch = orchestration.getDispatchContextById(step.dispatchId)
-    if (dispatch?.status === 'failed') {
+    if (dispatch?.status === 'failed' || worker?.state === 'failed') {
       return { settled: true, duplicate: true }
     }
   }
   if (task.status !== 'dispatched') {
+    return { settled: false, duplicate: false }
+  }
+  if (worker && worker.state !== 'ready') {
     return { settled: false, duplicate: false }
   }
   const result = JSON.stringify({
@@ -45,7 +52,7 @@ export function settleWorkflowAttemptOrchestrationFailed(
     outcome: 'failed',
     result
   })
-  if (settlement.action === 'settled') {
+  if (settlement?.action === 'settled') {
     return { settled: true, duplicate: settlement.duplicate }
   }
   return { settled: false, duplicate: false }

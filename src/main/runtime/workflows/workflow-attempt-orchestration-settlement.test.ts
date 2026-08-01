@@ -63,6 +63,28 @@ describe('settleWorkflowAttemptOrchestrationFailed', () => {
     expect(settleWorkerReport).not.toHaveBeenCalled()
   })
 
+  it('refuses to settle start_unknown so callers can wait for human recovery', () => {
+    const settleWorkerReport = vi.fn()
+    const orchestration = {
+      getWorkerDispatch: vi.fn(() => ({ state: 'start_unknown' })),
+      getTask: vi.fn(() => ({ status: 'dispatched' })),
+      getDispatchContextById: vi.fn(),
+      failWorkerStart: vi.fn(),
+      settleWorkerReport
+    } as unknown as OrchestrationDb
+    const step = {
+      id: 'step-1',
+      taskId: 'task-1',
+      dispatchId: 'dispatch-1',
+      attempt: 1
+    } as WorkflowStepRunRecord
+
+    expect(
+      settleWorkflowAttemptOrchestrationFailed(orchestration, step, 'start still unknown')
+    ).toEqual({ settled: false, duplicate: false })
+    expect(settleWorkerReport).not.toHaveBeenCalled()
+  })
+
   it('fails a starting worker without settleWorkerReport', () => {
     const failWorkerStart = vi.fn()
     const orchestration = {

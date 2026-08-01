@@ -15,21 +15,34 @@ export function failWorkflowEngineStep(
   error: unknown
 ): void {
   const message = error instanceof Error ? error.message : String(error)
-  const code =
-    error instanceof WorkflowError
-      ? error.code
-      : message.includes('workflow_delivery_uncertain')
-        ? 'workflow_delivery_uncertain'
-        : 'workflow_agent_unavailable'
-  // Why: old task/dispatch must be terminal before a retry attempt is created.
-  settleWorkflowAttemptOrchestrationFailed(orchestration, step, message)
+  const code = classifyWorkflowStepFailure(error, message)
+  // Why: never auto-retry when ownership/delivery cannot be closed cleanly.
+  if (isHumanWaitFailureCode(code)) {
+    store.markRecoveryWaiting(
+      run,
+      step,
+      code === 'workflow_lifecycle_mismatch' ? 'lifecycle-mismatch' : 'delivery-uncertain',
+      message
+    )
+    return
+  }
+  const settlement = settleWorkflowAttemptOrchestrationFailed(orchestration, step, message)
+  if (!settlement.settled) {
+    store.markRecoveryWaiting(
+      run,
+      step,
+      'delivery-uncertain',
+      `Could not settle Orchestration ownership before retry: ${message}`
+    )
+    return
+  }
   if (step.nodeType === 'review') {
     store.failReviewer({ run, step, code, message, recovery: recoveryFor(code) })
   } else if (step.nodeType === 'decide') {
     store.failDecision({
       run,
       step,
-      code: 'workflow_decision_invalid',
+      code: code === 'workflow_completion_incomplete' ? 'workflow_decision_invalid' : code,
       message,
       recovery: 'Inspect the Decision output, then retry or decide manually.'
     })
@@ -46,10 +59,33 @@ export function failWorkflowEngineStep(
   }
 }
 
+function classifyWorkflowStepFailure(error: unknown, message: string): string {
+  if (error instanceof WorkflowError) {
+    return error.code
+  }
+  if (message.includes('workflow_delivery_uncertain') || message.includes('delivery-uncertain')) {
+    return 'workflow_delivery_uncertain'
+  }
+  if (message.includes('lifecycle-mismatch') || message.includes('workflow_lifecycle_mismatch')) {
+    return 'workflow_lifecycle_mismatch'
+  }
+  return 'workflow_agent_unavailable'
+}
+
+function isHumanWaitFailureCode(code: string): boolean {
+  return (
+    code === 'workflow_delivery_uncertain' ||
+    code === 'workflow_lifecycle_mismatch' ||
+    code === 'workflow_transport_disconnected'
+  )
+}
+
 function recoveryFor(code: string): string {
   switch (code) {
     case 'workflow_delivery_uncertain':
       return 'Inspect the Dispatch before choosing any duplicate-risk retry.'
+    case 'workflow_lifecycle_mismatch':
+      return 'Inspect Agent lifecycle ownership before retrying or reassigning.'
     case 'workflow_artifact_drifted':
       return 'Regenerate the Artifact Revision before another Review.'
     case 'workflow_artifact_unavailable':

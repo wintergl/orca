@@ -51,7 +51,8 @@ describe('WorkflowEngine Agent status failure', () => {
       })),
       getStep: vi.fn(() => step),
       showRun: vi.fn(() => run),
-      failDecision
+      failDecision,
+      markRecoveryWaiting: vi.fn()
     } as unknown as WorkflowStore
     const orchestration = {
       getTask: vi.fn(() => ({ status: 'dispatched' })),
