@@ -12,6 +12,10 @@ import type {
   WorkflowResolutionContext,
   WorkflowReviewAggregate
 } from './workflow-review-types'
+import type {
+  WorkflowRunPolicyOverridesV1,
+  WorkflowRunPromptOverrides
+} from './workflow-run-lineage'
 
 export type WorkflowRunStatus =
   | 'draft'
@@ -152,6 +156,14 @@ export type WorkflowRunRecord = {
   resolutionOffers: WorkflowResolutionOffer[]
   reviewRoundsByNodeId: Record<string, number>
   reviewRoundExtensionsByNodeId: Record<string, number>
+  /** P1 lineage: null for ordinary root runs. */
+  parentRunId: string | null
+  rootRunId: string
+  lineageCycleBase: number
+  rerunReason: string | null
+  noAdditionalRequirements: boolean
+  policyOverrides: WorkflowRunPolicyOverridesV1 | null
+  promptOverrides: WorkflowRunPromptOverrides | null
   failureCode: string | null
   failureMessage: string | null
   recovery: string | null
@@ -192,6 +204,9 @@ export type WorkflowRunSummary = {
   objective: string
   currentNodeId: string | null
   waitingReason: WorkflowWaitingReason | null
+  parentRunId: string | null
+  rootRunId: string
+  isRerun: boolean
   startedAt: string | null
   completedAt: string | null
   createdAt: string

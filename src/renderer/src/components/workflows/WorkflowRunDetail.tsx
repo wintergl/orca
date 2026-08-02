@@ -15,19 +15,22 @@ import { exportWorkflowRun, listWorkflowRunEvents } from './workflow-runtime-cli
 import { setWorkflowSelectedStep } from './workflow-renderer-state'
 import { WorkflowReviewAggregatePanel } from './WorkflowReviewAggregatePanel'
 import { WorkflowResolutionPanel } from './WorkflowResolutionPanel'
+import { WorkflowRunRerunButton } from './WorkflowRunRerunButton'
 
 export function WorkflowRunDetail({
   run,
   target,
   selectedStepRunId,
   onBackToSetup,
-  onRunUpdated
+  onRunUpdated,
+  onRerunCreated
 }: {
   run: WorkflowRunRecord
   target: RuntimeClientTarget
   selectedStepRunId: string | null
   onBackToSetup: () => void
   onRunUpdated: (run: WorkflowRunRecord) => void
+  onRerunCreated?: (run: WorkflowRunRecord) => void
 }): React.JSX.Element {
   const [events, setEvents] = useState<WorkflowEventRecord[]>([])
   const selectedStep = useMemo(
@@ -155,6 +158,7 @@ export function WorkflowRunDetail({
               >
                 <Download /> {translate('workflows.export.json', 'JSON')}
               </Button>
+              <WorkflowRunRerunButton run={run} target={target} onRerunCreated={onRerunCreated} />
               {run.status === 'draft' || run.status === 'ready' ? (
                 <Button variant="outline" size="sm" onClick={onBackToSetup}>
                   {translate('workflows.page.runSetup', 'Run setup')}
@@ -162,6 +166,15 @@ export function WorkflowRunDetail({
               ) : null}
             </div>
           </header>
+          {run.parentRunId ? (
+            <p className="text-xs text-muted-foreground">
+              {translate(
+                'workflows.run.rerunBanner',
+                'Another round from {{parent}}. Re-executes from the template entry with read-only parent history — not a checkpoint resume.',
+                { parent: run.parentRunId }
+              )}
+            </p>
+          ) : null}
           {run.failureMessage ? (
             <section className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
               <h3 className="text-sm font-medium text-destructive">{run.failureMessage}</h3>

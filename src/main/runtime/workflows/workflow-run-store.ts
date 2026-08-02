@@ -28,6 +28,7 @@ import {
   upsertWorkflowAssignment
 } from './workflow-run-assignment-store'
 import { assertWorkflowRunConfigurable } from './workflow-run-configuration-guard'
+import { createWorkflowRunRerun } from './workflow-run-rerun'
 import { switchWorkflowRunTemplate } from './workflow-run-template-switch'
 
 export class WorkflowRunStore {
@@ -59,8 +60,9 @@ export class WorkflowRunStore {
         .prepare(
           `INSERT INTO workflow_runs (
              id, template_id, template_version, template_name, template_snapshot_json,
-             owner_identity, project_identity, workspace_kind, workspace_id, execution_host_id
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             owner_identity, project_identity, workspace_kind, workspace_id, execution_host_id,
+             root_run_id, lineage_cycle_base
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
         )
         .run(
           id,
@@ -72,7 +74,8 @@ export class WorkflowRunStore {
           params.projectIdentity,
           params.workspace.kind,
           params.workspace.id,
-          params.executionHostId
+          params.executionHostId,
+          id
         )
       insertWorkflowEvent(this.db, id, 'run-created', null, { status: 'draft' })
       insertWorkflowEvent(this.db, id, 'template-applied', null, {
@@ -81,6 +84,13 @@ export class WorkflowRunStore {
       })
       return this.show(id, mutation.callerIdentity)
     })
+  }
+
+  createRerun(
+    params: Parameters<typeof createWorkflowRunRerun>[2],
+    mutation: WorkflowMutation
+  ): WorkflowRunRecord {
+    return createWorkflowRunRerun(this.db, this, params, mutation)
   }
 
   show(runId: string, callerIdentity: string): WorkflowRunRecord {

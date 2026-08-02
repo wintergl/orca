@@ -60,6 +60,34 @@ export const runCreateParams = z
     executionHostId: id
   })
   .strict()
+
+const policyOverridesSchema = z
+  .object({
+    policyVersion: z.literal('v1-review-rounds'),
+    maxReviewRoundsByNodeId: z.record(z.string(), z.number().int().min(1).max(20))
+  })
+  .strict()
+
+const promptOverrideEntrySchema = z
+  .object({
+    firstVisit: z.string().max(20_000).optional(),
+    repeatVisit: z.string().max(20_000).optional()
+  })
+  .strict()
+
+export const runCreateRerunParams = z
+  .object({
+    ...mutationBase,
+    parentRunId: id,
+    rerunReason: z.string().trim().max(4_000).nullable().optional(),
+    noAdditionalRequirements: z.boolean().optional(),
+    objective: z.string().trim().max(20_000).optional(),
+    policyOverrides: policyOverridesSchema.nullable().optional(),
+    promptOverrides: z.record(z.string(), promptOverrideEntrySchema).nullable().optional(),
+    copyAssignments: z.boolean().optional()
+  })
+  .strict()
+
 const assignmentSchema = z
   .object({
     worktreeId: id,

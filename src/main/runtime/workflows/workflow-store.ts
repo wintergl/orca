@@ -94,6 +94,10 @@ export class WorkflowStore {
     return this.runs.create(...params)
   }
 
+  createRunRerun(...params: Parameters<WorkflowRunStore['createRerun']>): WorkflowRunRecord {
+    return this.runs.createRerun(...params)
+  }
+
   showRun(runId: string, callerIdentity: string): WorkflowRunRecord {
     const run = this.runs.show(runId, callerIdentity)
     const complete = {

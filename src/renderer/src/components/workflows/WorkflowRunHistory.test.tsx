@@ -54,11 +54,12 @@ describe('WorkflowRunHistory', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Opened SPEC Review')).toBeTruthy())
+    // Why: P1 defaults history to current Project (workspace remains optional).
     expect(listWorkflowRuns).toHaveBeenCalledWith(
       { kind: 'local' },
       expect.objectContaining({
         projectIdentity: 'project-a',
-        workspace: { kind: 'folder-workspace', id: 'folder-a' }
+        workspace: undefined
       })
     )
     fireEvent.click(screen.getByRole('button', { name: /Code Review/ }))
@@ -134,6 +135,9 @@ function summary(id: string, templateName: string): WorkflowRunSummary {
     objective: `${templateName} objective`,
     currentNodeId: null,
     waitingReason: null,
+    parentRunId: null,
+    rootRunId: id,
+    isRerun: false,
     startedAt: '2026-07-29T00:00:00.000Z',
     completedAt: '2026-07-29T00:01:00.000Z',
     createdAt: '2026-07-29T00:00:00.000Z',

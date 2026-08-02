@@ -8,7 +8,9 @@ type WorkflowReviewRoundState = Pick<
 >
 
 export function workflowReviewRoundLimit(
-  run: WorkflowReviewRoundState,
+  run: WorkflowReviewRoundState & {
+    policyOverrides?: { maxReviewRoundsByNodeId?: Record<string, number> } | null
+  },
   reviewNodeId: string
 ): number | null {
   const review = run.templateSnapshot.nodes.find(
@@ -17,9 +19,10 @@ export function workflowReviewRoundLimit(
   if (review?.type !== 'review') {
     return null
   }
-  return (
-    review.reviewPolicy.maxReviewRounds + (run.reviewRoundExtensionsByNodeId[reviewNodeId] ?? 0)
-  )
+  const initial =
+    run.policyOverrides?.maxReviewRoundsByNodeId?.[reviewNodeId] ??
+    review.reviewPolicy.maxReviewRounds
+  return initial + (run.reviewRoundExtensionsByNodeId[reviewNodeId] ?? 0)
 }
 
 export function workflowReviewRoundsRemaining(
@@ -32,7 +35,9 @@ export function workflowReviewRoundsRemaining(
 }
 
 export function workflowReviewExtensionForBudget(
-  run: WorkflowReviewRoundState,
+  run: WorkflowReviewRoundState & {
+    policyOverrides?: { maxReviewRoundsByNodeId?: Record<string, number> } | null
+  },
   reviewNodeId: string,
   completedRound: number,
   budget: number
@@ -43,5 +48,8 @@ export function workflowReviewExtensionForBudget(
   if (review?.type !== 'review') {
     throw new Error(`Review node ${reviewNodeId} is unavailable.`)
   }
-  return completedRound + budget - review.reviewPolicy.maxReviewRounds
+  const initial =
+    run.policyOverrides?.maxReviewRoundsByNodeId?.[reviewNodeId] ??
+    review.reviewPolicy.maxReviewRounds
+  return completedRound + budget - initial
 }

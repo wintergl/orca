@@ -98,6 +98,24 @@ export function createWorkflowRun(
   return callRuntimeRpc(target, 'workflow.runCreate', { requestId: requestId(), ...input })
 }
 
+export function createWorkflowRunRerun(
+  target: RuntimeClientTarget,
+  input: {
+    parentRunId: string
+    rerunReason?: string | null
+    noAdditionalRequirements?: boolean
+    objective?: string
+    policyOverrides?: {
+      policyVersion: 'v1-review-rounds'
+      maxReviewRoundsByNodeId: Record<string, number>
+    } | null
+    promptOverrides?: Record<string, { firstVisit?: string; repeatVisit?: string }> | null
+    copyAssignments?: boolean
+  }
+): Promise<WorkflowRunRecord> {
+  return callRuntimeRpc(target, 'workflow.runCreateRerun', { requestId: requestId(), ...input })
+}
+
 export function assignWorkflowAgent(
   target: RuntimeClientTarget,
   input: {

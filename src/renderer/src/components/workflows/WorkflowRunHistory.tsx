@@ -37,7 +37,7 @@ export function WorkflowRunHistory({
   onRunUpdated: (run: WorkflowRunRecord) => void
   onBackToSetup: () => void
 }): React.JSX.Element {
-  const [scope, setScope] = useState<HistoryScope>('workspace')
+  const [scope, setScope] = useState<HistoryScope>('project')
   const [status, setStatus] = useState<HistoryStatus>('all')
   const [templateId, setTemplateId] = useState('all')
   const [createdFrom, setCreatedFrom] = useState('')
@@ -211,6 +211,12 @@ export function WorkflowRunHistory({
                     <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted-foreground">
                       {run.objective || run.id}
                     </span>
+                    {run.isRerun ? (
+                      <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                        {translate('workflows.history.anotherRound', 'Another round')}
+                        {run.parentRunId ? ` · ${run.parentRunId.slice(-8)}` : ''}
+                      </span>
+                    ) : null}
                   </span>
                   <Badge variant="outline" className="shrink-0 text-[10px]">
                     {run.status}
@@ -235,6 +241,11 @@ export function WorkflowRunHistory({
             if (activeRun?.id === run.id) {
               onRunUpdated(run)
             }
+          }}
+          onRerunCreated={(child) => {
+            setSelectedRun(child)
+            onRunUpdated(child)
+            setLoadedRequestKey(null)
           }}
         />
       ) : (

@@ -97,19 +97,29 @@ function selectPromptTemplate(
   step: WorkflowStepRunRecord,
   node: NonNullable<WorkflowRunRecord['templateSnapshot']['nodes'][number]>
 ): string {
+  const repeated =
+    (run.lineageCycleBase ?? 0) > 0 ||
+    run.steps.some(
+      (candidate) =>
+        candidate.id !== step.id &&
+        candidate.nodeId === step.nodeId &&
+        candidate.round < step.round &&
+        candidate.status === 'succeeded'
+    )
+  const matchingCondition = repeated ? 'repeat-visit' : 'first-visit'
+  const override = run.promptOverrides?.[node.id]
+  if (override) {
+    const overridden =
+      matchingCondition === 'repeat-visit' ? override.repeatVisit : override.firstVisit
+    if (overridden?.trim()) {
+      return overridden
+    }
+  }
   if (!node.promptRules) {
     return (
       node.promptInstructions?.trim() || defaultWorkflowPromptInstructions(node.promptTemplateKey)
     )
   }
-  const repeated = run.steps.some(
-    (candidate) =>
-      candidate.id !== step.id &&
-      candidate.nodeId === step.nodeId &&
-      candidate.round < step.round &&
-      candidate.status === 'succeeded'
-  )
-  const matchingCondition = repeated ? 'repeat-visit' : 'first-visit'
   const rule =
     node.promptRules.rules.find((candidate) => candidate.when === matchingCondition) ??
     node.promptRules.rules.find((candidate) => candidate.when === 'always')

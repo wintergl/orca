@@ -16,6 +16,7 @@ import { WORKFLOW_CONTROL_METHODS } from './workflow-control'
 import {
   runAssignParams,
   runCreateParams,
+  runCreateRerunParams,
   runEventsParams,
   runExportParams,
   runListParams,
@@ -120,6 +121,14 @@ export const WORKFLOW_METHODS = [
       context.runtime
         .getWorkflowStore()
         .createRun(params, mutation(context, params, 'workflow.runCreate'))
+  }),
+  defineMethod({
+    name: 'workflow.runCreateRerun',
+    params: runCreateRerunParams,
+    handler: (params, context) =>
+      context.runtime
+        .getWorkflowStore()
+        .createRunRerun(params, mutation(context, params, 'workflow.runCreateRerun'))
   }),
   defineMethod({
     name: 'workflow.runAssign',

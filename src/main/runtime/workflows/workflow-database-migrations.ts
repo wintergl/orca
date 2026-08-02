@@ -12,6 +12,29 @@ export function migrateWorkflowRunTable(db: Database.Database): void {
     migrateLegacyWorkflowRunTable(db)
   }
   migrateWorkflowRunWaitingState(db)
+  migrateWorkflowRunLineageColumns(db)
+}
+
+/** P1 lineage + frozen run configuration columns. */
+function migrateWorkflowRunLineageColumns(db: Database.Database): void {
+  const columns = [
+    ['parent_run_id', 'TEXT'],
+    ['root_run_id', 'TEXT'],
+    ['lineage_cycle_base', 'INTEGER NOT NULL DEFAULT 0'],
+    ['rerun_reason', 'TEXT'],
+    ['no_additional_requirements', 'INTEGER NOT NULL DEFAULT 0'],
+    ['policy_overrides_json', 'TEXT'],
+    ['prompt_overrides_json', 'TEXT']
+  ] as const
+  for (const [name, type] of columns) {
+    if (!hasColumn(db, 'workflow_runs', name)) {
+      db.exec(`ALTER TABLE workflow_runs ADD COLUMN ${name} ${type}`)
+    }
+  }
+  // Why: root runs use self as root_run_id; backfill once after column add.
+  db.prepare(
+    `UPDATE workflow_runs SET root_run_id = id WHERE root_run_id IS NULL OR root_run_id = ''`
+  ).run()
 }
 
 function migrateLegacyWorkflowRunTable(db: Database.Database): void {
@@ -90,6 +113,13 @@ function workflowRunTableSql(): string {
     resolution_context_json TEXT,
     review_rounds_json TEXT NOT NULL DEFAULT '{}',
     review_round_extensions_json TEXT NOT NULL DEFAULT '{}',
+    parent_run_id TEXT,
+    root_run_id TEXT,
+    lineage_cycle_base INTEGER NOT NULL DEFAULT 0,
+    rerun_reason TEXT,
+    no_additional_requirements INTEGER NOT NULL DEFAULT 0,
+    policy_overrides_json TEXT,
+    prompt_overrides_json TEXT,
     baseline_json TEXT,
     failure_code TEXT,
     failure_message TEXT,

@@ -47,6 +47,7 @@ export function listWorkflowRunHistory(
 }
 
 function toWorkflowRunSummary(row: WorkflowRunRow): WorkflowRunSummary {
+  const rootRunId = row.root_run_id?.trim() || row.id
   return {
     id: row.id,
     status: row.status,
@@ -59,6 +60,9 @@ function toWorkflowRunSummary(row: WorkflowRunRow): WorkflowRunSummary {
     objective: row.objective,
     currentNodeId: row.current_node_id,
     waitingReason: row.waiting_reason,
+    parentRunId: row.parent_run_id ?? null,
+    rootRunId,
+    isRerun: Boolean(row.parent_run_id),
     startedAt: exposeTimestamp(row.started_at),
     completedAt: exposeTimestamp(row.completed_at),
     createdAt: exposeTimestamp(row.created_at)!,

@@ -10,6 +10,10 @@ import type {
   WorkflowTemplateScope,
   WorkflowWorkspaceRef
 } from '../../../shared/workflow-definition-types'
+import {
+  parseWorkflowRunPolicyOverrides,
+  parseWorkflowRunPromptOverrides
+} from '../../../shared/workflow-run-lineage'
 import { WorkflowError } from './workflow-error'
 
 export type WorkflowTemplateRow = {
@@ -46,6 +50,13 @@ export type WorkflowRunRow = {
   resolution_context_json: string | null
   review_rounds_json: string
   review_round_extensions_json: string
+  parent_run_id: string | null
+  root_run_id: string | null
+  lineage_cycle_base: number | null
+  rerun_reason: string | null
+  no_additional_requirements: number | null
+  policy_overrides_json: string | null
+  prompt_overrides_json: string | null
   baseline_json: string | null
   failure_code: string | null
   failure_message: string | null
@@ -132,6 +143,17 @@ export function toWorkflowRunRecord(
       string,
       number
     >,
+    parentRunId: row.parent_run_id ?? null,
+    rootRunId: row.root_run_id?.trim() || row.id,
+    lineageCycleBase: row.lineage_cycle_base ?? 0,
+    rerunReason: row.rerun_reason ?? null,
+    noAdditionalRequirements: Boolean(row.no_additional_requirements),
+    policyOverrides: parseWorkflowRunPolicyOverrides(
+      row.policy_overrides_json ? JSON.parse(row.policy_overrides_json) : null
+    ),
+    promptOverrides: parseWorkflowRunPromptOverrides(
+      row.prompt_overrides_json ? JSON.parse(row.prompt_overrides_json) : null
+    ),
     failureCode: row.failure_code,
     failureMessage: row.failure_message,
     recovery: row.recovery,
