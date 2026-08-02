@@ -33,6 +33,7 @@ import {
   terminalTabHasReconnectablePty
 } from './terminal-orphan-helpers'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { activateWorkspaceSurface } from '@/lib/workspace-surface-activation'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
@@ -691,6 +692,10 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
     if (init?.recordInteraction !== false) {
       get().recordFeatureInteraction?.('terminal-tabs')
     }
+    // Why: any activated workspace tab must leave Workflows surface so content is visible.
+    if (init?.activate ?? true) {
+      activateWorkspaceSurface(get())
+    }
     return created
   },
 
@@ -790,6 +795,9 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
     if (moved && init?.recordInteraction !== false) {
       get().recordFeatureInteraction?.('tab-splits')
     }
+    if (created && (init?.activate ?? true)) {
+      activateWorkspaceSurface(get())
+    }
     return created
   },
 
@@ -814,11 +822,13 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
     findTabByEntityInGroup(get().unifiedTabsByWorktree, worktreeId, groupId, entityId, contentType),
 
   activateTab: (tabId, opts) => {
+    let didActivate = false
     set((state) => {
       const found = findTabAndWorktree(state.unifiedTabsByWorktree, tabId)
       if (!found) {
         return {}
       }
+      didActivate = true
       const { tab, worktreeId } = found
       // Why: activating a terminal tab dismisses its tab-level bell — the user has moved their eyes here.
       // Why (activeWorktree guard below): only when the tab is in the active worktree, else the unseen signal is lost (mirrors focusGroup).
@@ -868,6 +878,9 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
           : {})
       }
     })
+    if (didActivate) {
+      activateWorkspaceSurface(get())
+    }
   },
 
   closeUnifiedTab: (tabId, opts) => {
