@@ -1,59 +1,42 @@
+import type { OrchestrationDb } from '../orchestration/db'
+import type { OrcaRuntimeService } from '../orca-runtime'
 import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import type {
-  WorkflowCompletionEnvelopeV1,
-  WorkflowDecisionV1,
-  WorkflowReviewResultV1
-} from '../../../shared/workflow-result-schema'
-import { freezeWorkflowArtifact } from './workflow-artifact-store'
-import type { WorkflowCollectedResult } from './workflow-completion-collector'
+import {
+  assertPreparedCompletionReady,
+  type WorkflowPreparedCompletion
+} from './workflow-completion-prepare'
+import { reconcileWorkflowStepSuccess } from './workflow-completion-success-reconciler'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowStore } from './workflow-store'
-import type { WorkflowWorkspaceBaseline } from './workflow-workspace-snapshot'
 
+/**
+ * Produce success: receipt first, then freeze+CAS artifact, then workflow settle.
+ */
 export async function finishWorkflowProduce(params: {
   store: WorkflowStore
+  orchestration: OrchestrationDb
+  runtime: OrcaRuntimeService
   run: WorkflowRunRecord
   step: WorkflowStepRunRecord
-  collected: WorkflowCollectedResult<
-    WorkflowCompletionEnvelopeV1 | WorkflowReviewResultV1 | WorkflowDecisionV1
-  >
+  prepared: WorkflowPreparedCompletion
 }): Promise<string | null> {
-  const { store, run, step, collected } = params
-  if (collected.value.schema !== 'workflow.completion/v1') {
+  assertPreparedCompletionReady(params.prepared, params.step)
+  const result = await reconcileWorkflowStepSuccess({
+    store: params.store,
+    orchestration: params.orchestration,
+    runtime: params.runtime,
+    run: params.run,
+    step: params.step,
+    prepared: params.prepared
+  })
+  if (result.conflict) {
     throw new WorkflowError(
       'workflow_completion_incomplete',
-      'Produce returned a non-Completion result.'
+      'Produce success lost the attempt outcome race.'
     )
   }
-  if (collected.value.outcome !== 'succeeded' || !collected.value.readyForNextStep) {
-    throw new WorkflowError(
-      'workflow_completion_incomplete',
-      'Produce did not return a ready successful Completion envelope.'
-    )
-  }
-  const artifact = await freezeWorkflowArtifact({
-    store,
-    run,
-    step,
-    envelope: collected.value,
-    baseline: store.getBaseline(run.id) as WorkflowWorkspaceBaseline,
-    workerFilesModified: collected.filesModified
-  })
-  const reviewSteps = store.completeProduce({
-    run,
-    step,
-    envelope: collected.value,
-    conclusionMarkdown: collected.value.finalConclusionMarkdown,
-    source: collected.source,
-    digest: collected.digest,
-    sourceIdentity: collected.sourceIdentity,
-    sourceReference: collected.sourceReference,
-    warnings: collected.warnings,
-    artifact,
-    advance: run.status === 'running'
-  })
-  return run.status === 'running' ? (reviewSteps[0]?.nodeId ?? run.currentNodeId) : null
+  return result.nextNodeId
 }

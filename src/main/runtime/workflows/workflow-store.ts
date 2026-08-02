@@ -21,6 +21,7 @@ import { WorkflowRuntimeStore } from './workflow-runtime-store'
 import { WorkflowTemplateStore } from './workflow-template-store'
 import { hardenWorkflowDatabaseFiles } from './workflow-database-permissions'
 import { bindWorkflowStepDispatchIdentity } from './workflow-delivery-store'
+import { failWorkflowRunInTransaction } from './workflow-runtime-terminal-transitions'
 
 export class WorkflowStore {
   private readonly db: Database.Database
@@ -103,6 +104,10 @@ export class WorkflowStore {
       decisions: this.runtime.listDecisions(runId)
     }
     return { ...complete, resolutionOffers: buildWorkflowResolutionOffers(complete) }
+  }
+
+  getArtifact(artifactId: string): WorkflowArtifactRevision | null {
+    return this.runtime.getArtifact(artifactId)
   }
 
   listRuns(filter: WorkflowRunHistoryFilter, callerIdentity: string): WorkflowRunSummary[] {
@@ -217,10 +222,22 @@ export class WorkflowStore {
     return this.runtime.completeProduce(params)
   }
 
+  completeProduceInTransaction(
+    params: Parameters<WorkflowRuntimeStore['completeProduceInTransaction']>[0]
+  ): WorkflowStepRunRecord[] {
+    return this.runtime.completeProduceInTransaction(params)
+  }
+
   completeReview(
     params: Parameters<WorkflowRuntimeStore['completeReview']>[0]
   ): WorkflowReviewAggregate | null {
     return this.runtime.completeReview(params)
+  }
+
+  completeReviewInTransaction(
+    params: Parameters<WorkflowRuntimeStore['completeReviewInTransaction']>[0]
+  ): WorkflowReviewAggregate | null {
+    return this.runtime.completeReviewInTransaction(params)
   }
 
   advanceProduce(
@@ -242,6 +259,12 @@ export class WorkflowStore {
     this.runtime.completeDecision(...params)
   }
 
+  completeDecisionInTransaction(
+    ...params: Parameters<WorkflowRuntimeStore['completeDecisionInTransaction']>
+  ): void {
+    this.runtime.completeDecisionInTransaction(...params)
+  }
+
   advancePersistedDecision(
     ...params: Parameters<WorkflowRuntimeStore['advancePersistedDecision']>
   ): void {
@@ -258,6 +281,10 @@ export class WorkflowStore {
     params: Parameters<WorkflowRuntimeStore['failDecision']>[0]
   ): WorkflowStepRunRecord | null {
     return this.runtime.failDecision(params)
+  }
+
+  failRunInTransaction(params: Parameters<typeof failWorkflowRunInTransaction>[1]): void {
+    failWorkflowRunInTransaction(this.runtime, params)
   }
 
   failRun(params: Parameters<WorkflowRuntimeStore['fail']>[0]): void {

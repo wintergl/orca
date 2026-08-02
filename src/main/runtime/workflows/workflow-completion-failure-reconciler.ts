@@ -215,7 +215,7 @@ export function resumeWorkflowCompletionReconciliations(params: {
       )
     }
     const afterWorkflow = getWorkflowCompletion(db, record.receiptId)
-    if (afterWorkflow?.state === 'workflow-settled') {
+    if (afterWorkflow?.state === 'workflow-settled' && afterWorkflow.outcome === 'failed') {
       advanceWorkflowCompletionState(db, afterWorkflow.receiptId, 'workflow-settled', 'settled')
     }
     const settled = getWorkflowCompletion(db, record.receiptId)

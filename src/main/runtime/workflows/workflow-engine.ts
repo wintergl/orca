@@ -4,10 +4,8 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import { collectWorkflowResult } from './workflow-completion-collector'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowMutation } from './workflow-mutation-ledger'
-import { workflowReportPath } from './workflow-prompts'
 import { WorkflowStepDispatcher } from './workflow-step-dispatcher'
 import type { WorkflowStore } from './workflow-store'
 import { monitorWorkflowReviewSteps } from './workflow-review-runner'
@@ -19,10 +17,10 @@ import {
   captureWorkspaceBaseline,
   type WorkflowWorkspaceBaseline
 } from './workflow-workspace-snapshot'
+import { prepareWorkflowStepCompletion } from './workflow-completion-prepare'
 import { finishWorkflowProduce } from './workflow-produce-completion'
 import { recoverWorkflowRuns } from './workflow-recovery-coordinator'
 import { finishWorkflowDecision } from './workflow-decision-completion'
-import { completeWorkflowDispatchFromReport } from './workflow-report-completion'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
 import {
   WorkflowAgentStatusHandler,
@@ -267,30 +265,29 @@ export class WorkflowEngine {
       run,
       step
     })
-    await completeWorkflowDispatchFromReport({
+    // prepare once → receive → worker_done/orch → workflow settle
+    const prepared = await prepareWorkflowStepCompletion({
       runtime: this.runtime,
       orchestration: this.orchestration,
       run,
       step
     })
-    const task = this.orchestration.getTask(step.taskId)
-    if (!task || task.status === 'dispatched') {
+    if (prepared.status === 'not-ready') {
       return
     }
-    if (task.status !== 'completed') {
-      throw new WorkflowError(
-        'workflow_completion_incomplete',
-        `Orchestration Task ended as ${task.status}.`
-      )
+    if (prepared.status === 'task-failed') {
+      this.failStep(run, step, new WorkflowError(prepared.code, prepared.message))
+      return
     }
-    const collected = await collectWorkflowResult({
-      runtime: this.runtime,
-      run,
-      step,
-      expectedReportPath: await workflowReportPath(run.id, step.id)
-    })
     if (step.nodeType === 'produce') {
-      const reviewNodeId = await finishWorkflowProduce({ store: this.store, run, step, collected })
+      const reviewNodeId = await finishWorkflowProduce({
+        store: this.store,
+        orchestration: this.orchestration,
+        runtime: this.runtime,
+        run,
+        step,
+        prepared: prepared.prepared
+      })
       if (reviewNodeId) {
         const next = this.store.showRun(run.id, callerIdentity)
         await this.ensureCurrentSteps({ ...next, currentNodeId: reviewNodeId }, callerIdentity)
@@ -298,7 +295,14 @@ export class WorkflowEngine {
       return
     }
     if (step.nodeType === 'decide') {
-      finishWorkflowDecision(this.store, run, step, collected)
+      await finishWorkflowDecision(
+        this.store,
+        this.orchestration,
+        this.runtime,
+        run,
+        step,
+        prepared.prepared
+      )
       return
     }
     throw new WorkflowError('workflow_completion_incomplete', 'Unexpected Workflow Step type.')

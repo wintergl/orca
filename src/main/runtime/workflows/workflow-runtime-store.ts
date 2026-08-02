@@ -2,29 +2,32 @@ import type Database from '../../sqlite/sync-database'
 import type {
   WorkflowAgentAssignment,
   WorkflowArtifactRevision,
-  WorkflowMessageSource,
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import type { WorkflowDecisionV1 } from '../../../shared/workflow-result-schema'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
 import { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { WorkflowRunControl } from './workflow-run-control'
-import { completeWorkflowReview, type WorkflowReviewCompletion } from './workflow-review-fan-in'
+import type { WorkflowReviewCompletion } from './workflow-review-fan-in'
 import { failWorkflowReviewer } from './workflow-review-failure'
 import { failWorkflowDecision } from './workflow-decision-failure'
 import {
   failWorkflowRun,
   markWorkflowArtifactDrifted
 } from './workflow-runtime-terminal-transitions'
+import { advanceProduceTransition, advanceReviewAggregate } from './workflow-transition-engine'
 import {
-  advanceProduceTransition,
-  advanceReviewAggregate,
-  applyPersistedDecision,
-  finishAgentDecision
-} from './workflow-transition-engine'
-import { claimWorkflowResultReceipt } from './workflow-result-receipt'
+  completeDecision,
+  completeDecisionInTransaction,
+  completeProduce,
+  completeProduceInTransaction,
+  completeReview,
+  completeReviewInTransaction,
+  advancePersistedDecision as advancePersistedDecisionWrite,
+  type DecisionCompletionCollected,
+  type ProduceCompletionParams
+} from './workflow-runtime-completion'
 import {
   markWorkflowRecoveryWaiting,
   recordWorkflowRunRecovered,
@@ -197,65 +200,22 @@ export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
     this.markWorking({ ...params, source: 'recovery' })
   }
 
-  completeProduce(params: {
-    run: WorkflowRunRecord
-    step: WorkflowStepRunRecord
-    envelope: unknown
-    conclusionMarkdown: string
-    source: WorkflowMessageSource
-    digest: string
-    sourceIdentity: string | null
-    sourceReference: unknown
-    warnings: string[]
-    artifact: WorkflowArtifactRevision
-    advance?: boolean
-  }): WorkflowStepRunRecord[] {
-    return this.transaction(() => {
-      const persisted = this.getStep(params.step.id)
-      if (persisted?.status === 'succeeded') {
-        return []
-      }
-      claimWorkflowResultReceipt(
-        this,
-        params.run.id,
-        params.step.id,
-        'completion',
-        params.sourceReference
-      )
-      this.insertResultMessage({
-        runId: params.run.id,
-        stepRunId: params.step.id,
-        kind: 'completion',
-        content: params.envelope,
-        markdown: params.conclusionMarkdown,
-        source: params.source,
-        digest: params.digest,
-        sourceIdentity: params.sourceIdentity,
-        sourceReference: params.sourceReference
-      })
-      this.finishStep({
-        stepRunId: params.step.id,
-        envelope: params.envelope,
-        conclusionMarkdown: params.conclusionMarkdown,
-        source: params.source,
-        digest: params.digest,
-        sourceIdentity: params.sourceIdentity,
-        warnings: params.warnings,
-        outputArtifactRevisionId: params.artifact.id
-      })
-      this.insertEvent(params.run.id, 'step-completed', params.step.id, {
-        nodeId: params.step.nodeId,
-        artifactRevisionId: params.artifact.id
-      })
-      if (params.advance === false) {
-        return []
-      }
-      return advanceProduceTransition(this, params.run, params.step, params.artifact)
-    })
+  completeProduce(params: ProduceCompletionParams): WorkflowStepRunRecord[] {
+    return completeProduce(this, params)
+  }
+
+  /** Caller must hold the Workflow DB transaction. */
+  completeProduceInTransaction(params: ProduceCompletionParams): WorkflowStepRunRecord[] {
+    return completeProduceInTransaction(this, params)
   }
 
   completeReview(params: WorkflowReviewCompletion) {
-    return completeWorkflowReview(this, params)
+    return completeReview(this, params)
+  }
+
+  /** Caller must hold the Workflow DB transaction. */
+  completeReviewInTransaction(params: WorkflowReviewCompletion) {
+    return completeReviewInTransaction(this, params)
   }
 
   advanceProduce(
@@ -277,30 +237,28 @@ export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
     run: WorkflowRunRecord,
     step: WorkflowStepRunRecord,
     aggregate: WorkflowRunRecord['reviewAggregates'][number],
-    collected: {
-      result: WorkflowDecisionV1
-      source: WorkflowMessageSource
-      digest: string
-      sourceIdentity: string | null
-      sourceReference: unknown
-      warnings: string[]
-    },
+    collected: DecisionCompletionCollected,
     apply = true
   ): void {
-    this.transaction(() => {
-      if (this.getStep(step.id)?.status === 'succeeded') {
-        return
-      }
-      claimWorkflowResultReceipt(this, run.id, step.id, 'decision', collected.sourceReference)
-      finishAgentDecision(this, run, step, aggregate, collected, apply)
-    })
+    completeDecision(this, run, step, aggregate, collected, apply)
+  }
+
+  /** Caller must hold the Workflow DB transaction. */
+  completeDecisionInTransaction(
+    run: WorkflowRunRecord,
+    step: WorkflowStepRunRecord,
+    aggregate: WorkflowRunRecord['reviewAggregates'][number],
+    collected: DecisionCompletionCollected,
+    apply = true
+  ): void {
+    completeDecisionInTransaction(this, run, step, aggregate, collected, apply)
   }
 
   advancePersistedDecision(
     run: WorkflowRunRecord,
     decision: WorkflowRunRecord['decisions'][number]
   ): void {
-    this.transaction(() => applyPersistedDecision(this, run, decision))
+    advancePersistedDecisionWrite(this, run, decision)
   }
 
   failReviewer(params: Parameters<typeof failWorkflowReviewer>[1]): WorkflowStepRunRecord | null {

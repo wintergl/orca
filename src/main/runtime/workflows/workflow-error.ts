@@ -14,6 +14,7 @@ export class WorkflowError extends Error {
       | 'workflow_m3_scope_unsupported'
       | 'workflow_delivery_uncertain'
       | 'workflow_completion_incomplete'
+      | 'workflow_outcome_conflict'
       | 'workflow_artifact_unavailable'
       | 'workflow_artifact_drifted'
       | 'workflow_transition_invalid'

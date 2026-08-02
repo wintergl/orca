@@ -4,7 +4,7 @@ import type { OrchestrationDb } from '../orchestration/db'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import { assertWorkflowAgentLifecycle } from './workflow-agent-lifecycle-authority'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
-import { completeWorkflowDispatchFromReport } from './workflow-report-completion'
+
 import type { WorkflowStore } from './workflow-store'
 
 export type WorkflowAgentStatusEvent = {
@@ -134,12 +134,8 @@ export class WorkflowAgentStatusHandler {
         sourceIdentity: `agent-status-hook:${pending.done.paneKey}:${pending.done.receivedAt}`
       }
     })
-    await completeWorkflowDispatchFromReport({
-      runtime: this.runtime,
-      orchestration: this.orchestration,
-      run,
-      step
-    })
+    // Why: do not settle Orchestration here — monitor prepares once then
+    // receive → orch settle → workflow settle in order.
     delete pending.done
     this.clearPending(step.dispatchId, pending)
     this.wakeRun(runId, ownerIdentity)

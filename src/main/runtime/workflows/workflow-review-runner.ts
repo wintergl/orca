@@ -4,12 +4,14 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import { collectWorkflowResult } from './workflow-completion-collector'
+import {
+  prepareWorkflowStepCompletion,
+  type WorkflowPreparedCompletion
+} from './workflow-completion-prepare'
+import { reconcileWorkflowStepSuccess } from './workflow-completion-success-reconciler'
 import { WorkflowError } from './workflow-error'
-import { workflowReportPath } from './workflow-prompts'
 import type { WorkflowStore } from './workflow-store'
 import { workspaceGuardDigest, type WorkflowWorkspaceBaseline } from './workflow-workspace-snapshot'
-import { completeWorkflowDispatchFromReport } from './workflow-report-completion'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
 
 export async function monitorWorkflowReviewSteps(params: {
@@ -39,37 +41,31 @@ export async function monitorWorkflowReviewSteps(params: {
       run: params.run,
       step
     })
-    await completeWorkflowDispatchFromReport({
-      runtime: params.runtime,
-      orchestration: params.orchestration,
-      run: params.run,
-      step
-    })
-    const task = params.orchestration.getTask(step.taskId)
-    if (!task || task.status === 'dispatched') {
-      if (isReviewerTimedOut(step, timeoutMs)) {
-        timeoutReviewer(params.store, params.run, step)
-      }
-      continue
-    }
-    if (task.status !== 'completed') {
-      params.failStep(
-        step,
-        new WorkflowError(
-          'workflow_completion_incomplete',
-          `Orchestration Task ended as ${task.status}.`
-        )
-      )
-      continue
-    }
     try {
-      const collected = await collectWorkflowResult({
+      const prepared = await prepareWorkflowStepCompletion({
         runtime: params.runtime,
+        orchestration: params.orchestration,
         run: params.run,
-        step,
-        expectedReportPath: await workflowReportPath(params.run.id, step.id)
+        step
       })
-      await finishWorkflowReview(params.store, params.run, step, collected)
+      if (prepared.status === 'not-ready') {
+        if (isReviewerTimedOut(step, timeoutMs)) {
+          timeoutReviewer(params.store, params.run, step)
+        }
+        continue
+      }
+      if (prepared.status === 'task-failed') {
+        params.failStep(step, new WorkflowError(prepared.code, prepared.message))
+        continue
+      }
+      await finishWorkflowReview(
+        params.store,
+        params.orchestration,
+        params.runtime,
+        params.run,
+        step,
+        prepared.prepared
+      )
     } catch (error) {
       params.failStep(params.store.getStep(step.id) ?? step, error)
     }
@@ -78,11 +74,13 @@ export async function monitorWorkflowReviewSteps(params: {
 
 async function finishWorkflowReview(
   store: WorkflowStore,
+  orchestration: OrchestrationDb,
+  runtime: OrcaRuntimeService,
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord,
-  collected: Awaited<ReturnType<typeof collectWorkflowResult>>
+  prepared: WorkflowPreparedCompletion
 ): Promise<void> {
-  if (collected.value.schema !== 'workflow.review-result/v1') {
+  if (prepared.value.schema !== 'workflow.review-result/v1') {
     throw new WorkflowError(
       'workflow_completion_incomplete',
       'Review returned a non-Review result.'
@@ -101,18 +99,20 @@ async function finishWorkflowReview(
       'The implementation workspace changed during Review.'
     )
   }
-  store.completeReview({
+  const result = await reconcileWorkflowStepSuccess({
+    store,
+    orchestration,
+    runtime,
     run,
     step,
-    result: collected.value,
-    conclusionMarkdown: collected.value.conclusionMarkdown,
-    source: collected.source,
-    digest: collected.digest,
-    sourceIdentity: collected.sourceIdentity,
-    sourceReference: collected.sourceReference,
-    warnings: collected.warnings,
-    verdict: collected.value.verdict
+    prepared
   })
+  if (result.conflict) {
+    throw new WorkflowError(
+      'workflow_completion_incomplete',
+      'Review success lost the attempt outcome race.'
+    )
+  }
 }
 
 function timeoutReviewer(

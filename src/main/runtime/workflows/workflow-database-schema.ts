@@ -214,6 +214,8 @@ function createRuntimeTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run
       ON workflow_artifact_revisions(run_id, revision);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_artifacts_step_digest
+      ON workflow_artifact_revisions(run_id, produced_by_step_run_id, digest);
     CREATE TABLE IF NOT EXISTS workflow_review_aggregates (
       id TEXT PRIMARY KEY,
       run_id TEXT NOT NULL,

@@ -1,31 +1,28 @@
-import type {
-  WorkflowDecisionV1,
-  WorkflowReviewResultV1,
-  WorkflowCompletionEnvelopeV1
-} from '../../../shared/workflow-result-schema'
+import type { OrchestrationDb } from '../orchestration/db'
+import type { OrcaRuntimeService } from '../orca-runtime'
 import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
-import type { WorkflowCollectedResult } from './workflow-completion-collector'
+import type { WorkflowDecisionV1 } from '../../../shared/workflow-result-schema'
+import {
+  assertPreparedCompletionReady,
+  type WorkflowPreparedCompletion
+} from './workflow-completion-prepare'
+import { reconcileWorkflowStepSuccess } from './workflow-completion-success-reconciler'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowStore } from './workflow-store'
 
-export function finishWorkflowDecision(
+export async function finishWorkflowDecision(
   store: WorkflowStore,
+  orchestration: OrchestrationDb,
+  runtime: OrcaRuntimeService,
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord,
-  collected: WorkflowCollectedResult<
-    WorkflowCompletionEnvelopeV1 | WorkflowReviewResultV1 | WorkflowDecisionV1
-  >
-): void {
-  if (collected.value.schema !== 'workflow.decision/v1') {
-    throw new WorkflowError(
-      'workflow_decision_invalid',
-      'Decision Agent returned a non-Decision result.'
-    )
-  }
-  const decisionResult = collected.value
+  prepared: WorkflowPreparedCompletion
+): Promise<void> {
+  assertPreparedCompletionReady(prepared, step)
+  const decisionResult = prepared.value as WorkflowDecisionV1
   const aggregate = run.reviewAggregates.find(
     (candidate) => candidate.id === decisionResult.reviewAggregateId
   )
@@ -35,18 +32,18 @@ export function finishWorkflowDecision(
       'Decision Agent referenced an unavailable Review Aggregate.'
     )
   }
-  store.completeDecision(
+  const result = await reconcileWorkflowStepSuccess({
+    store,
+    orchestration,
+    runtime,
     run,
     step,
-    aggregate,
-    {
-      result: decisionResult,
-      source: collected.source,
-      digest: collected.digest,
-      sourceIdentity: collected.sourceIdentity,
-      sourceReference: collected.sourceReference,
-      warnings: collected.warnings
-    },
-    run.status === 'running'
-  )
+    prepared
+  })
+  if (result.conflict) {
+    throw new WorkflowError(
+      'workflow_decision_invalid',
+      'Decision success lost the attempt outcome race.'
+    )
+  }
 }

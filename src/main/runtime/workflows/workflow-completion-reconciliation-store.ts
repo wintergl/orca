@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto'
 import type Database from '../../sqlite/sync-database'
 import { workflowRecordId } from './workflow-runtime-records'
+import {
+  parseWorkflowSuccessPayload,
+  serializeWorkflowSuccessPayload,
+  type WorkflowSuccessPayload
+} from './workflow-completion-success-payload'
 
 export type WorkflowCompletionReconciliationState =
   | 'received'
@@ -9,7 +14,6 @@ export type WorkflowCompletionReconciliationState =
   | 'settled'
 
 export type WorkflowRetryOutboxState = 'none' | 'pending' | 'consumed'
-
 export type WorkflowCompletionReconciliationRecord = {
   receiptId: string
   runId: string
@@ -26,7 +30,17 @@ export type WorkflowCompletionReconciliationRecord = {
   retryBlocked: boolean
   errorCode: string | null
   errorMessage: string | null
+  /** Recoverable success snapshot; null on failure outcomes or legacy rows. */
+  successPayload: WorkflowSuccessPayload | null
+  /** Fail-close discriminator; conflict/post-receipt never apply success writes. */
+  resolution: WorkflowCompletionResolution
 }
+
+export type WorkflowCompletionResolution =
+  | 'none'
+  | 'conflict-fail-close'
+  | 'post-receipt-fail-close'
+  | 'waiting-human'
 
 export type ReceiveWorkflowCompletionResult = {
   record: WorkflowCompletionReconciliationRecord
@@ -50,6 +64,8 @@ type ReconciliationRow = {
   retry_blocked: number | null
   error_code: string | null
   error_message: string | null
+  success_payload_json: string | null
+  resolution: string | null
 }
 
 export function digestWorkflowCompletionMessage(parts: {
@@ -74,10 +90,7 @@ export function digestWorkflowCompletionMessage(parts: {
     .digest('hex')
 }
 
-/**
- * Atomically claim one winner per attempt identity.
- * Digest is diagnostic only and must not allow a second row for the same attempt.
- */
+/** Atomically claim one winner per attempt identity (digest is diagnostic only). */
 export function receiveWorkflowCompletion(
   db: Database.Database,
   params: {
@@ -90,14 +103,19 @@ export function receiveWorkflowCompletion(
     outcome: 'succeeded' | 'failed'
     errorCode?: string | null
     errorMessage?: string | null
+    successPayload?: WorkflowSuccessPayload | null
   }
 ): ReceiveWorkflowCompletionResult {
   const receiptId = workflowRecordId('workflow_completion')
+  const payloadJson = params.successPayload
+    ? serializeWorkflowSuccessPayload(params.successPayload)
+    : null
   db.prepare(
     `INSERT INTO workflow_completion_reconciliations (
        receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id,
-       message_digest, outcome, state, retry_outbox_state, error_code, error_message
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?)
+       message_digest, outcome, state, retry_outbox_state, error_code, error_message,
+       success_payload_json, resolution
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?, ?, 'none')
      ON CONFLICT(run_id, step_run_id, attempt) DO NOTHING`
   ).run(
     receiptId,
@@ -109,7 +127,8 @@ export function receiveWorkflowCompletion(
     params.messageDigest,
     params.outcome,
     params.errorCode ?? null,
-    params.errorMessage ?? null
+    params.errorMessage ?? null,
+    payloadJson
   )
   const row = db
     .prepare(
@@ -140,8 +159,18 @@ export function advanceWorkflowCompletionState(
     retryBlocked?: boolean
     errorCode?: string | null
     errorMessage?: string | null
+    /** When true, force error_code/error_message to NULL (COALESCE cannot clear). */
+    clearErrorDiagnostics?: boolean
+    successPayload?: WorkflowSuccessPayload | null
+    resolution?: WorkflowCompletionResolution
   }
 ): WorkflowCompletionReconciliationRecord | null {
+  const payloadJson =
+    patch?.successPayload === undefined
+      ? null
+      : patch.successPayload
+        ? serializeWorkflowSuccessPayload(patch.successPayload)
+        : null
   const result = db
     .prepare(
       `UPDATE workflow_completion_reconciliations
@@ -149,8 +178,10 @@ export function advanceWorkflowCompletionState(
            retry_outbox_state = COALESCE(?, retry_outbox_state),
            retry_step_run_id = COALESCE(?, retry_step_run_id),
            retry_blocked = CASE WHEN ? IS NULL THEN retry_blocked ELSE ? END,
-           error_code = COALESCE(?, error_code),
-           error_message = COALESCE(?, error_message),
+           error_code = CASE WHEN ? THEN NULL ELSE COALESCE(?, error_code) END,
+           error_message = CASE WHEN ? THEN NULL ELSE COALESCE(?, error_message) END,
+           success_payload_json = CASE WHEN ? IS NULL THEN success_payload_json ELSE ? END,
+           resolution = COALESCE(?, resolution),
            updated_at = datetime('now')
        WHERE receipt_id = ? AND state = ?`
     )
@@ -160,8 +191,13 @@ export function advanceWorkflowCompletionState(
       patch?.retryStepRunId ?? null,
       patch?.retryBlocked === undefined ? null : patch.retryBlocked ? 1 : 0,
       patch?.retryBlocked === undefined ? null : patch.retryBlocked ? 1 : 0,
+      patch?.clearErrorDiagnostics ? 1 : 0,
       patch?.errorCode ?? null,
+      patch?.clearErrorDiagnostics ? 1 : 0,
       patch?.errorMessage ?? null,
+      patch?.successPayload === undefined ? null : 1,
+      payloadJson,
+      patch?.resolution ?? null,
       receiptId,
       from
     )
@@ -220,17 +256,26 @@ export function listPendingRetryOutbox(
 
 export function listUnsettledCompletions(
   db: Database.Database,
-  runId: string
+  runId?: string
 ): WorkflowCompletionReconciliationRecord[] {
-  return (
-    db
-      .prepare(
-        `SELECT * FROM workflow_completion_reconciliations
-         WHERE run_id = ? AND state != 'settled'
-         ORDER BY created_at`
-      )
-      .all(runId) as ReconciliationRow[]
-  ).map(toRecord)
+  const rows = (
+    runId
+      ? db
+          .prepare(
+            `SELECT * FROM workflow_completion_reconciliations
+             WHERE run_id = ? AND state != 'settled'
+             ORDER BY created_at`
+          )
+          .all(runId)
+      : db
+          .prepare(
+            `SELECT * FROM workflow_completion_reconciliations
+             WHERE state != 'settled'
+             ORDER BY created_at`
+          )
+          .all()
+  ) as ReconciliationRow[]
+  return rows.map(toRecord)
 }
 
 function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecord {
@@ -248,6 +293,19 @@ function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecor
     retryStepRunId: row.retry_step_run_id,
     retryBlocked: Boolean(row.retry_blocked),
     errorCode: row.error_code,
-    errorMessage: row.error_message
+    errorMessage: row.error_message,
+    successPayload: parseWorkflowSuccessPayload(row.success_payload_json),
+    resolution: parseResolution(row.resolution)
   }
+}
+
+function parseResolution(value: string | null | undefined): WorkflowCompletionResolution {
+  if (
+    value === 'conflict-fail-close' ||
+    value === 'post-receipt-fail-close' ||
+    value === 'waiting-human'
+  ) {
+    return value
+  }
+  return 'none'
 }

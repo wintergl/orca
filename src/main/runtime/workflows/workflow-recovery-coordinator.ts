@@ -6,6 +6,8 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import { assertWorkflowAgentLifecycle } from './workflow-agent-lifecycle-authority'
 import { resumeWorkflowCompletionReconciliations } from './workflow-completion-failure-reconciler'
+import { resumeWorkflowSuccessCompletions } from './workflow-completion-success-reconciler'
+import { listUnsettledCompletionRunOwners } from './workflow-completion-reconciliation-queries'
 import type { WorkflowStore } from './workflow-store'
 
 type ResumeRecoveredRun = (runId: string, callerIdentity: string) => Promise<void>
@@ -22,6 +24,8 @@ export async function recoverWorkflowRuns(params: {
   resume: ResumeRecoveredRun
   onRunError?: ReportRecoveryError
 }): Promise<void> {
+  // Why: unsettled success/failure must resume even when the Run is already completed.
+  await resumeUnsettledCompletionsAcrossRuns(params)
   for (const identity of params.store.listRecoverableRunOwners()) {
     try {
       if (!params.store.acquireRecoveryLease(identity.runId, params.recoveryOwnerId)) {
@@ -32,6 +36,37 @@ export async function recoverWorkflowRuns(params: {
         continue
       }
       await recoverRunningWorkflow(params, run, identity.ownerIdentity)
+    } catch (error) {
+      reportRecoveryError(params.onRunError, identity, error)
+    }
+  }
+}
+
+async function resumeUnsettledCompletionsAcrossRuns(
+  params: Parameters<typeof recoverWorkflowRuns>[0]
+): Promise<void> {
+  const db = params.store.persistenceDb
+  if (!db || typeof db.prepare !== 'function') {
+    return
+  }
+  const identities = listUnsettledCompletionRunOwners(db)
+  for (const identity of identities) {
+    try {
+      if (!params.store.acquireRecoveryLease(identity.runId, params.recoveryOwnerId)) {
+        continue
+      }
+      const run = params.store.showRun(identity.runId, identity.ownerIdentity)
+      resumeWorkflowCompletionReconciliations({
+        store: params.store,
+        orchestration: params.orchestration,
+        run
+      })
+      await resumeWorkflowSuccessCompletions({
+        store: params.store,
+        orchestration: params.orchestration,
+        runtime: params.runtime,
+        run
+      })
     } catch (error) {
       reportRecoveryError(params.onRunError, identity, error)
     }
@@ -55,10 +90,16 @@ async function recoverRunningWorkflow(
   run: WorkflowRunRecord,
   callerIdentity: string
 ): Promise<void> {
-  // Why: finish any mid-flight failure reconciliations before re-dispatch.
+  // Why: finish mid-flight success/failure reconciliations before re-dispatch.
   resumeWorkflowCompletionReconciliations({
     store: params.store,
     orchestration: params.orchestration,
+    run
+  })
+  await resumeWorkflowSuccessCompletions({
+    store: params.store,
+    orchestration: params.orchestration,
+    runtime: params.runtime,
     run
   })
   run = params.store.showRun(run.id, callerIdentity)

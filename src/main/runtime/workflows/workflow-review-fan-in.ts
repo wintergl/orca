@@ -31,49 +31,55 @@ export function completeWorkflowReview(
   store: WorkflowRuntimePersistence,
   params: WorkflowReviewCompletion
 ): WorkflowReviewAggregate | null {
-  return store.transaction(() => {
-    const persisted = store.getStep(params.step.id)
-    if (persisted?.status === 'succeeded') {
-      return aggregateFor(store, params.run.id, params.step)
-    }
-    claimWorkflowResultReceipt(
-      store,
-      params.run.id,
-      params.step.id,
-      'review-result',
-      params.sourceReference
-    )
-    store.insertResultMessage({
-      runId: params.run.id,
-      stepRunId: params.step.id,
-      kind: 'review-result',
-      content: params.result,
-      markdown: params.conclusionMarkdown,
-      source: params.source,
-      digest: params.digest,
-      sourceIdentity: params.sourceIdentity,
-      sourceReference: params.sourceReference
-    })
-    store.finishStep({
-      stepRunId: params.step.id,
-      envelope: params.result,
-      conclusionMarkdown: params.conclusionMarkdown,
-      source: params.source,
-      digest: params.digest,
-      sourceIdentity: params.sourceIdentity,
-      warnings: params.warnings
-    })
-    store.insertEvent(params.run.id, 'review-collected', params.step.id, {
-      nodeId: params.step.nodeId,
-      verdict: params.verdict,
-      artifactRevisionId: params.step.inputArtifactRevisionId
-    })
-    store.insertEvent(params.run.id, 'step-completed', params.step.id, {
-      nodeId: params.step.nodeId,
-      verdict: params.verdict
-    })
-    return createAggregateWhenReady(store, params)
+  return store.transaction(() => completeWorkflowReviewInTransaction(store, params))
+}
+
+/** Caller must hold the Workflow DB transaction. */
+export function completeWorkflowReviewInTransaction(
+  store: WorkflowRuntimePersistence,
+  params: WorkflowReviewCompletion
+): WorkflowReviewAggregate | null {
+  const persisted = store.getStep(params.step.id)
+  if (persisted?.status === 'succeeded') {
+    return aggregateFor(store, params.run.id, params.step)
+  }
+  claimWorkflowResultReceipt(
+    store,
+    params.run.id,
+    params.step.id,
+    'review-result',
+    params.sourceReference
+  )
+  store.insertResultMessage({
+    runId: params.run.id,
+    stepRunId: params.step.id,
+    kind: 'review-result',
+    content: params.result,
+    markdown: params.conclusionMarkdown,
+    source: params.source,
+    digest: params.digest,
+    sourceIdentity: params.sourceIdentity,
+    sourceReference: params.sourceReference
   })
+  store.finishStep({
+    stepRunId: params.step.id,
+    envelope: params.result,
+    conclusionMarkdown: params.conclusionMarkdown,
+    source: params.source,
+    digest: params.digest,
+    sourceIdentity: params.sourceIdentity,
+    warnings: params.warnings
+  })
+  store.insertEvent(params.run.id, 'review-collected', params.step.id, {
+    nodeId: params.step.nodeId,
+    verdict: params.verdict,
+    artifactRevisionId: params.step.inputArtifactRevisionId
+  })
+  store.insertEvent(params.run.id, 'step-completed', params.step.id, {
+    nodeId: params.step.nodeId,
+    verdict: params.verdict
+  })
+  return createAggregateWhenReady(store, params)
 }
 
 function createAggregateWhenReady(

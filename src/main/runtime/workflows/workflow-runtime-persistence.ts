@@ -240,6 +240,7 @@ export class WorkflowRuntimePersistence {
              delivery_state = 'delivered',
              message_source = ?, message_digest = ?, source_identity = ?,
              source_warnings_json = ?, output_artifact_revision_id = COALESCE(?, output_artifact_revision_id),
+             error_code = NULL, error_message = NULL, recovery = NULL,
              completed_at = datetime('now'), updated_at = datetime('now')
          WHERE id = ?`
       )

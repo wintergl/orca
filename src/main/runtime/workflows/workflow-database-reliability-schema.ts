@@ -52,12 +52,20 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
       retry_blocked INTEGER NOT NULL DEFAULT 0,
       error_code TEXT,
       error_message TEXT,
+      success_payload_json TEXT,
+      resolution TEXT NOT NULL DEFAULT 'none'
+        CHECK(resolution IN (
+          'none', 'conflict-fail-close', 'post-receipt-fail-close', 'waiting-human'
+        )),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(run_id, step_run_id, attempt)
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_run
       ON workflow_completion_reconciliations(run_id, state, retry_outbox_state);
+    CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_unsettled
+      ON workflow_completion_reconciliations(state, updated_at)
+      WHERE state != 'settled';
     CREATE TABLE IF NOT EXISTS workflow_dispatch_ownership (
       logical_execution_key TEXT PRIMARY KEY,
       run_id TEXT NOT NULL,
@@ -77,6 +85,8 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
   `)
   migrateCompletionReconciliationAttemptUniqueness(db)
   migrateCompletionReconciliationRetryBlocked(db)
+  migrateCompletionReconciliationSuccessPayload(db)
+  migrateCompletionReconciliationResolution(db)
 }
 
 function migrateCompletionReconciliationRetryBlocked(db: Database.Database): void {
@@ -89,6 +99,37 @@ function migrateCompletionReconciliationRetryBlocked(db: Database.Database): voi
   db.exec(
     `ALTER TABLE workflow_completion_reconciliations
      ADD COLUMN retry_blocked INTEGER NOT NULL DEFAULT 0`
+  )
+}
+
+function migrateCompletionReconciliationSuccessPayload(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(workflow_completion_reconciliations)`).all() as {
+    name: string
+  }[]
+  if (columns.length === 0 || columns.some((column) => column.name === 'success_payload_json')) {
+    return
+  }
+  db.exec(
+    `ALTER TABLE workflow_completion_reconciliations
+     ADD COLUMN success_payload_json TEXT`
+  )
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_unsettled
+      ON workflow_completion_reconciliations(state, updated_at)
+      WHERE state != 'settled'
+  `)
+}
+
+function migrateCompletionReconciliationResolution(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(workflow_completion_reconciliations)`).all() as {
+    name: string
+  }[]
+  if (columns.length === 0 || columns.some((column) => column.name === 'resolution')) {
+    return
+  }
+  db.exec(
+    `ALTER TABLE workflow_completion_reconciliations
+     ADD COLUMN resolution TEXT NOT NULL DEFAULT 'none'`
   )
 }
 
@@ -130,6 +171,11 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
         retry_blocked INTEGER NOT NULL DEFAULT 0,
         error_code TEXT,
         error_message TEXT,
+        success_payload_json TEXT,
+        resolution TEXT NOT NULL DEFAULT 'none'
+          CHECK(resolution IN (
+            'none', 'conflict-fail-close', 'post-receipt-fail-close', 'waiting-human'
+          )),
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(run_id, step_run_id, attempt)
@@ -137,16 +183,19 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
       INSERT OR IGNORE INTO workflow_completion_reconciliations (
         receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
         outcome, state, retry_outbox_state, retry_step_run_id, retry_blocked, error_code,
-        error_message, created_at, updated_at
+        error_message, success_payload_json, resolution, created_at, updated_at
       )
       SELECT receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
         outcome, state, retry_outbox_state, retry_step_run_id, 0, error_code, error_message,
-        created_at, updated_at
+        NULL, 'none', created_at, updated_at
       FROM workflow_completion_reconciliations_legacy
       ORDER BY created_at;
       DROP TABLE workflow_completion_reconciliations_legacy;
       CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_run
         ON workflow_completion_reconciliations(run_id, state, retry_outbox_state);
+      CREATE INDEX IF NOT EXISTS idx_workflow_completion_reconciliations_unsettled
+        ON workflow_completion_reconciliations(state, updated_at)
+        WHERE state != 'settled';
     `)
     db.exec('COMMIT')
   } catch (error) {
