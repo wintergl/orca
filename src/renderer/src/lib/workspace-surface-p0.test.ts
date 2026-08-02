@@ -5,17 +5,21 @@ import { createEditorSlice } from '@/store/slices/editor'
 import { createTabsSlice } from '@/store/slices/tabs'
 import { hideTerminalVisibility } from '@/components/terminal-pane/terminal-visibility-resume'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
+import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { activateWorkspaceSurface } from './workspace-surface-activation'
 
 /**
  * P0-R5/R6/R7/R8: workspace surface activation + light terminal hide under Workflows.
- * Covers Folder and Git worktree via opaque worktree ids only (no path hardcoding).
+ * Git worktree and Folder workspace fixtures are mutually exclusive.
  */
 
-function createSurfaceStore(activeWorktreeId: string): StoreApi<AppState> {
+type SurfaceKind = 'git-worktree' | 'folder-workspace'
+
+function createSurfaceStore(kind: SurfaceKind, workspaceId: string): StoreApi<AppState> {
+  const isFolder = kind === 'folder-workspace'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createStore<any>()((...args: any[]) => ({
-    activeWorktreeId,
+    activeWorktreeId: workspaceId,
     activeView: 'workflows' as const,
     workflowTabOpen: true,
     previousViewBeforeWorkflows: 'terminal' as const,
@@ -24,14 +28,17 @@ function createSurfaceStore(activeWorktreeId: string): StoreApi<AppState> {
     browserTabsByWorktree: {},
     activeBrowserTabId: null,
     activeBrowserTabIdByWorktree: {},
+    activeTabIdByWorktree: {},
     unreadTerminalTabs: {},
-    repos: [{ id: 'repo-1', path: '/repo' }],
-    worktreesByRepo: {
-      'repo-1': [{ id: activeWorktreeId, repoId: 'repo-1', path: '/repo' }]
-    },
-    folderWorkspaces: [
-      { id: 'folder-ws-1', path: '/folder', name: 'Folder', createdAt: 0, updatedAt: 0 }
-    ],
+    repos: isFolder ? [] : [{ id: 'repo-1', path: '/repo' }],
+    worktreesByRepo: isFolder
+      ? {}
+      : {
+          'repo-1': [{ id: workspaceId, repoId: 'repo-1', path: '/repo' }]
+        },
+    folderWorkspaces: isFolder
+      ? [{ id: 'folder-ws-1', path: '/folder', name: 'Folder', createdAt: 0, updatedAt: 0 }]
+      : [],
     projectGroups: [],
     recordFeatureInteraction: vi.fn(),
     ...createTabsSlice(...(args as Parameters<typeof createTabsSlice>)),
@@ -49,35 +56,42 @@ function bindSetActiveView(store: StoreApi<AppState>): void {
 
 describe('P0 workspace surface activation (R5–R8)', () => {
   it.each([
-    ['git-worktree', 'wt-git-1'],
-    ['folder-workspace', 'folder-ws-1']
-  ] as const)(
-    'R5: openFile from Workflows activates workspace surface for %s',
-    (_kind, worktreeId) => {
-      const store = createSurfaceStore(worktreeId)
-      bindSetActiveView(store)
-      expect(store.getState().activeView).toBe('workflows')
-      expect(store.getState().workflowTabOpen).toBe(true)
-
-      store.getState().openFile(
-        {
-          filePath: `${worktreeId}/src/a.ts`,
-          relativePath: 'src/a.ts',
-          worktreeId,
-          language: 'typescript',
-          mode: 'edit'
-        },
-        { preview: true, focusEditor: true }
+    ['git-worktree', 'wt-git-1'] as const,
+    ['folder-workspace', folderWorkspaceKey('folder-ws-1')] as const
+  ])('R5: openFile from Workflows activates workspace surface for %s', (kind, workspaceId) => {
+    const store = createSurfaceStore(kind, workspaceId)
+    bindSetActiveView(store)
+    if (kind === 'folder-workspace') {
+      expect(store.getState().worktreesByRepo).toEqual({})
+      expect(store.getState().folderWorkspaces.some((w) => w.id === 'folder-ws-1')).toBe(true)
+      expect(workspaceId.startsWith('folder:')).toBe(true)
+    } else {
+      expect(store.getState().folderWorkspaces).toEqual([])
+      expect(store.getState().worktreesByRepo['repo-1']?.some((w) => w.id === workspaceId)).toBe(
+        true
       )
-
-      expect(store.getState().activeView).toBe('terminal')
-      expect(store.getState().workflowTabOpen).toBe(true)
-      expect(store.getState().openFiles.some((f) => f.relativePath === 'src/a.ts')).toBe(true)
     }
-  )
+    expect(store.getState().activeView).toBe('workflows')
+    expect(store.getState().workflowTabOpen).toBe(true)
+
+    store.getState().openFile(
+      {
+        filePath: `${workspaceId}/src/a.ts`,
+        relativePath: 'src/a.ts',
+        worktreeId: workspaceId,
+        language: 'typescript',
+        mode: 'edit'
+      },
+      { preview: true, focusEditor: true }
+    )
+
+    expect(store.getState().activeView).toBe('terminal')
+    expect(store.getState().workflowTabOpen).toBe(true)
+    expect(store.getState().openFiles.some((f) => f.relativePath === 'src/a.ts')).toBe(true)
+  })
 
   it('R6: consecutive previews replace the previous preview tab in the same group', () => {
-    const store = createSurfaceStore('wt-1')
+    const store = createSurfaceStore('git-worktree', 'wt-1')
     bindSetActiveView(store)
 
     store.getState().openFile(
@@ -110,7 +124,7 @@ describe('P0 workspace surface activation (R5–R8)', () => {
   })
 
   it('R5: createUnifiedTab from Workflows also activates workspace surface', () => {
-    const store = createSurfaceStore('wt-1')
+    const store = createSurfaceStore('git-worktree', 'wt-1')
     bindSetActiveView(store)
     store.getState().createUnifiedTab('wt-1', 'browser', {
       entityId: 'browser-1',
@@ -121,8 +135,53 @@ describe('P0 workspace surface activation (R5–R8)', () => {
     expect(store.getState().workflowTabOpen).toBe(true)
   })
 
+  it('R5: createUnifiedTabInSplit with activate:true leaves Workflows for workspace', () => {
+    const store = createSurfaceStore('git-worktree', 'wt-1')
+    bindSetActiveView(store)
+    const source = store.getState().createUnifiedTab('wt-1', 'terminal', {
+      id: 'term-source',
+      activate: true
+    })
+    store.setState({ activeView: 'workflows', workflowTabOpen: true })
+    const sourceGroupId = store.getState().groupsByWorktree['wt-1']![0]!.id
+    const split = store
+      .getState()
+      .createUnifiedTabInSplit(
+        'wt-1',
+        'browser',
+        { sourceGroupId, splitDirection: 'right' },
+        { entityId: 'browser-split', label: 'Split Browser', activate: true }
+      )
+    expect(split).not.toBeNull()
+    expect(source?.id).toBe('term-source')
+    expect(store.getState().activeView).toBe('terminal')
+    expect(store.getState().workflowTabOpen).toBe(true)
+  })
+
+  it('R5: createUnifiedTabInSplit with activate:false keeps Workflows surface', () => {
+    const store = createSurfaceStore('git-worktree', 'wt-1')
+    bindSetActiveView(store)
+    store.getState().createUnifiedTab('wt-1', 'terminal', {
+      id: 'term-source',
+      activate: true
+    })
+    store.setState({ activeView: 'workflows', workflowTabOpen: true })
+    const sourceGroupId = store.getState().groupsByWorktree['wt-1']![0]!.id
+    const split = store
+      .getState()
+      .createUnifiedTabInSplit(
+        'wt-1',
+        'browser',
+        { sourceGroupId, splitDirection: 'right' },
+        { entityId: 'browser-bg', label: 'Background Browser', activate: false }
+      )
+    expect(split).not.toBeNull()
+    expect(store.getState().activeView).toBe('workflows')
+    expect(store.getState().workflowTabOpen).toBe(true)
+  })
+
   it('R5: activateTab from Workflows activates workspace surface', () => {
-    const store = createSurfaceStore('wt-1')
+    const store = createSurfaceStore('git-worktree', 'wt-1')
     bindSetActiveView(store)
     store.setState({ activeView: 'terminal' })
     const tab = store.getState().createUnifiedTab('wt-1', 'terminal', {
