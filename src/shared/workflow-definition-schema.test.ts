@@ -58,6 +58,18 @@ describe('WorkflowDefinitionV1', () => {
     expect(workflowDefinitionV1Schema.safeParse(legacy).success).toBe(true)
   })
 
+  it('accepts unversioned definitions and optional decisionProtocolVersion', () => {
+    const unversioned = clone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
+    delete unversioned.decisionProtocolVersion
+    expect(workflowDefinitionV1Schema.safeParse(unversioned).success).toBe(true)
+
+    const stamped = clone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
+    stamped.decisionProtocolVersion = 'v1-approve-revise'
+    expect(workflowDefinitionV1Schema.parse(stamped).decisionProtocolVersion).toBe(
+      'v1-approve-revise'
+    )
+  })
+
   it('keeps retry attempts separate from review rounds and accepts no timeout', () => {
     const source = clone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
     const review = source.nodes.find((node) => node.type === 'review')

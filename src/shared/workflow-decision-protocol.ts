@@ -37,12 +37,51 @@ const DECISION_ONLY_ALIASES: Record<'stop-at-review', readonly string[]> = {
 /** V1 forbids the V2 binary protocol as aliases. */
 const FORBIDDEN_V1_BINARY_TOKENS = ['完成', '不完成'] as const
 
+/** Optional label for stripping headings like “判定结果” / “Verdict:”. */
+const VERDICT_LABEL = /^(?:裁定|结论|判定|verdict|decision)\s*[:：-]?\s*/i
+/** Explicit labeled value (requires separator) — invalid value fail-closes immediately. */
+const EXPLICIT_VERDICT_LABEL = /^(?:裁定|结论|判定|verdict|decision)\s*[:：-]\s*\S/i
+const DECORATIVE_PREFIX = /^(?:[✅❌✓✗✔✖•*·\-\s]|[\u{1F300}-\u{1FAFF}])+/u
+
 export function workflowDecisionProtocolInstruction(kind: 'review' | 'decision'): string {
   const tokens =
     kind === 'review'
       ? WORKFLOW_REVIEW_VERDICT_TOKENS.join('、')
       : WORKFLOW_DECISION_TOKENS.join('、')
   return `请在结论第一行明确标注 ${tokens}（仅使用英文 token，不要使用“完成/不完成”）。`
+}
+
+/** Explicit V1 requires English tokens only; unversioned templates keep legacy aliases. */
+export function workflowDecisionAllowsAliases(
+  version: WorkflowDecisionProtocolVersion | null | undefined
+): boolean {
+  return version == null
+}
+
+export function hasWorkflowDecisionProtocolConflict(businessPrompt: string): boolean {
+  const text = normalizeProtocolConflictText(businessPrompt)
+  if (!text) {
+    return false
+  }
+  // Binary first-line / first-row output constraints that fight V1 approve/revise.
+  return (
+    /(?:第一行|首行|结论第一行).{0,24}(?:只能是|仅允许|只能|仅能|必须为|必须是|输出必须为|输出必须是).{0,16}完成.{0,8}不完成/.test(
+      text
+    ) ||
+    /(?:只能|仅允许|必须)(?:输出|填写|标注|写).{0,12}完成.{0,8}不完成/.test(text) ||
+    /(?:第一行|首行).{0,16}完成\s*[/／]\s*不完成/.test(text)
+  )
+}
+
+export function stampWorkflowDecisionProtocolVersionV1<T extends object>(
+  definition: T
+): Omit<T, 'decisionProtocolVersion'> & {
+  decisionProtocolVersion: typeof WORKFLOW_DECISION_PROTOCOL_VERSION_V1
+} {
+  return {
+    ...definition,
+    decisionProtocolVersion: WORKFLOW_DECISION_PROTOCOL_VERSION_V1
+  }
 }
 
 export function parseWorkflowReviewVerdict(
@@ -79,8 +118,8 @@ export function parseExplicitWorkflowDecision(
   value: string,
   options: { allowAliases: boolean; allowStopAtReview: boolean }
 ): WorkflowDecisionToken | null {
-  // Why: scan at most a few heading/verdict lines; never join body text so
-  // "approve\n已完成…" stays valid while a first-line “完成” still fails.
+  // Why: walk candidate lines in order; first real verdict wins. Prose that merely
+  // mentions "approve" is not a verdict; a bare “完成/不完成” fails closed immediately.
   const verdictLines = stripLeadingSystemReminders(value)
     .split('\n')
     .map((line) =>
@@ -90,34 +129,50 @@ export function parseExplicitWorkflowDecision(
         .trim()
     )
     .filter(Boolean)
-    .slice(0, 4)
-    .map((line) => line.toLowerCase())
-  if (verdictLines.length === 0) {
-    return null
-  }
-  const firstLabeled = verdictPortion(verdictLines[0]!)
-  if (firstLabeled && isForbiddenV1BinaryVerdict(firstLabeled)) {
-    return null
-  }
+    .slice(0, 6)
   for (const line of verdictLines) {
-    const labeled = verdictPortion(line)
-    if (!labeled) {
+    const explicitLabeled = EXPLICIT_VERDICT_LABEL.test(line)
+    const candidate = verdictCandidate(line)
+    if (!candidate) {
       continue
     }
-    const token = matchWorkflowDecisionToken(labeled, options)
+    if (isForbiddenV1BinaryVerdict(candidate)) {
+      return null
+    }
+    const token = matchExactWorkflowDecisionToken(candidate, options)
     if (token) {
       return token
+    }
+    // Why: “Verdict: I cannot approve…” must not fall through to a later bare approve.
+    if (explicitLabeled) {
+      return null
     }
   }
   return null
 }
 
-function verdictPortion(line: string): string | null {
-  return /^(?:(?:裁定|结论|判定|verdict|decision)\s*[:：-]?\s*)?(.+)$/.exec(line)?.[1] ?? null
+function verdictCandidate(line: string): string | null {
+  const withoutLabel = line.replace(VERDICT_LABEL, '').trim()
+  if (!withoutLabel) {
+    return null
+  }
+  // Unlabeled prose headings like "SPEC 判定结论" are not verdicts — only keep them
+  // when they still look like a compact token after stripping decoration.
+  const compact = stripTrailingPunctuation(withoutLabel)
+  const stripped = compact.replace(DECORATIVE_PREFIX, '').trim()
+  if (!stripped) {
+    return null
+  }
+  // Reject long prose unless it was explicitly labeled as a verdict/decision line.
+  const labeled = VERDICT_LABEL.test(line)
+  if (!labeled && stripped.length > 32) {
+    return null
+  }
+  return stripped
 }
 
-function isForbiddenV1BinaryVerdict(labeled: string): boolean {
-  const compact = labeled.replace(/[。.！!？?\s]+$/g, '').trim()
+function isForbiddenV1BinaryVerdict(candidate: string): boolean {
+  const compact = stripTrailingPunctuation(candidate)
   return FORBIDDEN_V1_BINARY_TOKENS.some(
     (token) =>
       compact === token ||
@@ -127,42 +182,66 @@ function isForbiddenV1BinaryVerdict(labeled: string): boolean {
   )
 }
 
-function matchWorkflowDecisionToken(
-  labeled: string,
+function matchExactWorkflowDecisionToken(
+  candidate: string,
   options: { allowAliases: boolean; allowStopAtReview: boolean }
 ): WorkflowDecisionToken | null {
-  if (/\brequest-human\b/.test(labeled)) {
+  const compact = stripTrailingPunctuation(candidate).toLowerCase()
+  if (compact === 'request-human') {
     return 'request-human'
   }
-  if (options.allowStopAtReview && /\bstop-at-review\b/.test(labeled)) {
+  if (options.allowStopAtReview && compact === 'stop-at-review') {
     return 'stop-at-review'
   }
-  if (/\brevise\b/.test(labeled)) {
+  if (compact === 'revise') {
     return 'revise'
   }
-  if (/\bapprove\b/.test(labeled)) {
+  if (compact === 'approve') {
     return 'approve'
   }
   if (!options.allowAliases) {
     return null
   }
-  if (matchesAlias(labeled, REVIEW_ALIASES['request-human'])) {
+  // Aliases stay case-sensitive Chinese exact matches (not substring-in-prose).
+  const original = stripTrailingPunctuation(candidate)
+  if (matchesExactAlias(original, REVIEW_ALIASES['request-human'])) {
     return 'request-human'
   }
-  if (options.allowStopAtReview && matchesAlias(labeled, DECISION_ONLY_ALIASES['stop-at-review'])) {
+  if (
+    options.allowStopAtReview &&
+    matchesExactAlias(original, DECISION_ONLY_ALIASES['stop-at-review'])
+  ) {
     return 'stop-at-review'
   }
-  if (matchesAlias(labeled, REVIEW_ALIASES.revise)) {
+  if (matchesExactAlias(original, REVIEW_ALIASES.revise)) {
     return 'revise'
   }
-  if (matchesAlias(labeled, REVIEW_ALIASES.approve)) {
+  if (matchesExactAlias(original, REVIEW_ALIASES.approve)) {
     return 'approve'
   }
   return null
 }
 
-function matchesAlias(labeled: string, aliases: readonly string[]): boolean {
-  return aliases.some((alias) => labeled.includes(alias.toLowerCase()))
+function matchesExactAlias(value: string, aliases: readonly string[]): boolean {
+  return aliases.some((alias) => {
+    if (value === alias) {
+      return true
+    }
+    // Why: labeled lines often use short natural suffixes (请求人工处理).
+    return value.startsWith(alias) && value.length - alias.length <= 4
+  })
+}
+
+function stripTrailingPunctuation(value: string): string {
+  return value.replace(/[。.！!？?\s]+$/g, '').trim()
+}
+
+function normalizeProtocolConflictText(value: string): string {
+  return value
+    .replace(/[‘’‛‹›']/g, "'")
+    .replace(/[“”„«»「」『』"]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function stripLeadingSystemReminders(value: string): string {

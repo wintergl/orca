@@ -3,6 +3,10 @@ import type {
   WorkflowRunRecord
 } from '../../../shared/workflow-definition-types'
 import {
+  hasWorkflowDecisionProtocolConflict,
+  WORKFLOW_DECISION_PROTOCOL_VERSION_V2
+} from '../../../shared/workflow-decision-protocol'
+import {
   workflowAgentUnavailableReasonLabel,
   type WorkflowAgentUnavailableReason
 } from './workflow-agent-assignment-availability'
@@ -63,6 +67,12 @@ export function buildWorkflowPreflightChecks(
         node.reviewPolicy.minReviewers
   )
   const hasExit = run.templateSnapshot.nodes.some((node) => node.type === 'complete')
+  const protocolConflicts = run.templateSnapshot.nodes
+    .filter((node) => node.type === 'review' || node.type === 'decide')
+    .filter((node) => hasWorkflowDecisionProtocolConflict(node.promptInstructions ?? ''))
+    .map((node) => node.name)
+  const explicitV2 =
+    run.templateSnapshot.decisionProtocolVersion === WORKFLOW_DECISION_PROTOCOL_VERSION_V2
   return [
     preflightCheck(
       'required-slots',
@@ -125,6 +135,18 @@ export function buildWorkflowPreflightChecks(
         ? 'Workspace and host capabilities recognized'
         : 'Host capability unavailable',
       'Reconnect the host or choose a supported workspace'
+    ),
+    preflightCheck(
+      'decision-protocol',
+      !explicitV2 && protocolConflicts.length === 0,
+      explicitV2
+        ? 'V2 binary decision protocol is not executable yet'
+        : protocolConflicts.length
+          ? `V1 decision protocol conflict in: ${protocolConflicts.join(', ')}`
+          : 'Decision protocol constraints match V1 approve/revise',
+      explicitV2
+        ? 'Use a V1 template (v1-approve-revise) until V2 runtime ships'
+        : 'Remove “完成/不完成” first-line constraints from Review/Decision business prompts'
     )
   ]
 }

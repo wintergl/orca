@@ -13,6 +13,7 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
+import { parseWorkflowCompletionJsonText } from './workflow-completion-json-parse'
 import { WorkflowError } from './workflow-error'
 import { normalizeWorkflowResult } from './workflow-result-normalization'
 import { readWorkflowAgentFinalResponse } from './workflow-agent-final-response'
@@ -125,6 +126,8 @@ async function readReportPath(
   sourceIdentity: string
   warnings: string[]
 }> {
+  let raw: Buffer
+  let reportedReal: string
   try {
     const reported = resolve(reportedPath)
     const expected = resolve(expectedReportPath)
@@ -135,30 +138,32 @@ async function readReportPath(
     if (!directStat.isFile() || directStat.isSymbolicLink() || directStat.size > MAX_REPORT_BYTES) {
       throw incomplete('reportPath is not a supported regular JSON file.')
     }
-    const [reportedReal, expectedReal] = await Promise.all([
+    const resolved = await Promise.all([
       realpath(reported),
       realpath(expected).catch(() => expected)
     ])
-    if (reportedReal !== expectedReal) {
+    reportedReal = resolved[0]!
+    if (reportedReal !== resolved[1]) {
       throw incomplete('reportPath resolved to a different file.')
     }
     const reportStat = await lstat(reportedReal)
     if (!reportStat.isFile() || reportStat.size > MAX_REPORT_BYTES) {
       throw incomplete('reportPath is not a supported regular JSON file.')
     }
-    const raw = await readFile(reportedReal)
-    return {
-      value: JSON.parse(raw.toString('utf8')),
-      raw,
-      source: 'report-path',
-      sourceIdentity: `report-path:${sha256(Buffer.from(reportedReal))}`,
-      warnings: []
-    }
+    raw = await readFile(reportedReal)
   } catch (error) {
     if (error instanceof WorkflowError) {
       throw error
     }
-    throw incomplete('reportPath is missing, unreadable, or contains invalid JSON.', error)
+    throw incomplete('reportPath is missing or unreadable.', error)
+  }
+  const text = raw.toString('utf8')
+  return {
+    value: parseWorkflowCompletionJsonText(text, 'reportPath contains invalid JSON.'),
+    raw,
+    source: 'report-path',
+    sourceIdentity: `report-path:${sha256(Buffer.from(reportedReal))}`,
+    warnings: []
   }
 }
 
@@ -178,16 +183,12 @@ async function readTranscriptFallback(
   }
   const { text, sourceIdentity } = finalResponse
   const raw = Buffer.from(text)
-  try {
-    return {
-      value: JSON.parse(text),
-      raw,
-      source: 'transcript',
-      sourceIdentity,
-      warnings: []
-    }
-  } catch (error) {
-    throw incomplete('The final Assistant message is not exact JSON.', error)
+  return {
+    value: parseWorkflowCompletionJsonText(text, 'The final Assistant message is not exact JSON.'),
+    raw,
+    source: 'transcript',
+    sourceIdentity,
+    warnings: []
   }
 }
 

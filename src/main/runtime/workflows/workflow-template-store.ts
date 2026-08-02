@@ -5,6 +5,7 @@ import type {
   WorkflowTemplateRecord,
   WorkflowTemplateScope
 } from '../../../shared/workflow-definition-types'
+import { stampWorkflowDecisionProtocolVersionV1 } from '../../../shared/workflow-decision-protocol'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
 import {
@@ -59,7 +60,9 @@ export class WorkflowTemplateStore {
     },
     mutation: WorkflowMutation
   ): WorkflowTemplateRecord {
-    const definition = parseStoredWorkflowDefinition(params.definition)
+    const definition = stampWorkflowDecisionProtocolVersionV1(
+      parseStoredWorkflowDefinition(params.definition)
+    )
     return runWorkflowMutation(this.db, mutation, () => {
       this.assertProjectScope(params.scope, params.projectIdentity)
       this.assertNameAvailable(
@@ -101,7 +104,9 @@ export class WorkflowTemplateStore {
     },
     mutation: WorkflowMutation
   ): WorkflowTemplateRecord {
-    const definition = parseStoredWorkflowDefinition(params.definition)
+    const definition = stampWorkflowDecisionProtocolVersionV1(
+      parseStoredWorkflowDefinition(params.definition)
+    )
     return runWorkflowMutation(this.db, mutation, () => {
       const row = this.getRow(params.templateId)
       this.assertMutable(row, mutation.callerIdentity, params.projectIdentity)

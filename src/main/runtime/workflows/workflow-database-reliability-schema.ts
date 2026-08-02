@@ -53,6 +53,7 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
       error_code TEXT,
       error_message TEXT,
       success_payload_json TEXT,
+      failure_diagnostic_json TEXT,
       resolution TEXT NOT NULL DEFAULT 'none'
         CHECK(resolution IN (
           'none', 'conflict-fail-close', 'post-receipt-fail-close', 'waiting-human'
@@ -87,6 +88,20 @@ export function createWorkflowReliabilityTables(db: Database.Database): void {
   migrateCompletionReconciliationRetryBlocked(db)
   migrateCompletionReconciliationSuccessPayload(db)
   migrateCompletionReconciliationResolution(db)
+  migrateCompletionReconciliationFailureDiagnostic(db)
+}
+
+function migrateCompletionReconciliationFailureDiagnostic(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(workflow_completion_reconciliations)`).all() as {
+    name: string
+  }[]
+  if (columns.length === 0 || columns.some((column) => column.name === 'failure_diagnostic_json')) {
+    return
+  }
+  db.exec(
+    `ALTER TABLE workflow_completion_reconciliations
+     ADD COLUMN failure_diagnostic_json TEXT`
+  )
 }
 
 function migrateCompletionReconciliationRetryBlocked(db: Database.Database): void {
@@ -172,6 +187,7 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
         error_code TEXT,
         error_message TEXT,
         success_payload_json TEXT,
+        failure_diagnostic_json TEXT,
         resolution TEXT NOT NULL DEFAULT 'none'
           CHECK(resolution IN (
             'none', 'conflict-fail-close', 'post-receipt-fail-close', 'waiting-human'
@@ -183,11 +199,12 @@ function migrateCompletionReconciliationAttemptUniqueness(db: Database.Database)
       INSERT OR IGNORE INTO workflow_completion_reconciliations (
         receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
         outcome, state, retry_outbox_state, retry_step_run_id, retry_blocked, error_code,
-        error_message, success_payload_json, resolution, created_at, updated_at
+        error_message, success_payload_json, failure_diagnostic_json, resolution,
+        created_at, updated_at
       )
       SELECT receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id, message_digest,
         outcome, state, retry_outbox_state, retry_step_run_id, 0, error_code, error_message,
-        NULL, 'none', created_at, updated_at
+        NULL, NULL, 'none', created_at, updated_at
       FROM workflow_completion_reconciliations_legacy
       ORDER BY created_at;
       DROP TABLE workflow_completion_reconciliations_legacy;

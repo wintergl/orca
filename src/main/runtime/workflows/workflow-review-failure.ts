@@ -12,6 +12,8 @@ export function failWorkflowReviewer(
     code: string
     message: string
     recovery: string
+    /** Raw Agent conclusion for attempt diagnostics (not only the parse error). */
+    rawAgentText?: string | null
     timedOut?: boolean
     /** When true, only mark the step failed; retry is created by outbox consumer. */
     deferRetry?: boolean
@@ -29,9 +31,17 @@ export function failWorkflowReviewer(
       .prepare(
         `UPDATE workflow_step_runs
          SET status = ?, error_code = ?, error_message = ?, recovery = ?,
+             conclusion_markdown = COALESCE(?, conclusion_markdown),
              completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
       )
-      .run(status, params.code, params.message, params.recovery, current.id)
+      .run(
+        status,
+        params.code,
+        params.message,
+        params.recovery,
+        params.rawAgentText?.trim() || null,
+        current.id
+      )
     store.insertEvent(
       params.run.id,
       params.timedOut ? 'reviewer-timed-out' : 'reviewer-failed',

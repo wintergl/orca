@@ -2,6 +2,7 @@ import type {
   WorkflowNodeDefinitionV1,
   WorkflowPromptTemplateKey
 } from '../../../../shared/workflow-definition-types'
+import { workflowDecisionProtocolInstruction } from '../../../../shared/workflow-decision-protocol'
 import {
   defaultWorkflowPromptInstructions,
   inspectWorkflowPromptInstructions,
@@ -132,6 +133,19 @@ export function WorkflowPromptInstructionsField({
           {value.length}/{WORKFLOW_PROMPT_INSTRUCTIONS_MAX_LENGTH}
         </span>
       </div>
+      {node.type === 'review' || node.type === 'decide' ? (
+        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {translate(
+              'workflows.prompt.protocolAppended',
+              'Engine appends this decision protocol (not editable):'
+            )}
+          </p>
+          <p className="font-mono text-[11px] leading-relaxed text-foreground/90">
+            {workflowDecisionProtocolInstruction(node.type === 'review' ? 'review' : 'decision')}
+          </p>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -13,6 +13,8 @@ export function failWorkflowDecision(
     code: string
     message: string
     recovery: string
+    /** Raw Agent conclusion for attempt diagnostics (not only the parse error). */
+    rawAgentText?: string | null
     /** When true, only mark the step failed; retry is created by outbox consumer. */
     deferRetry?: boolean
     /** When true, skip technical retry and enter waiting-human path. */
@@ -28,9 +30,16 @@ export function failWorkflowDecision(
       .prepare(
         `UPDATE workflow_step_runs
          SET status = 'failed', error_code = ?, error_message = ?, recovery = ?,
+             conclusion_markdown = COALESCE(?, conclusion_markdown),
              completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
       )
-      .run(params.code, params.message, params.recovery, current.id)
+      .run(
+        params.code,
+        params.message,
+        params.recovery,
+        params.rawAgentText?.trim() || null,
+        current.id
+      )
     const node = params.run.templateSnapshot.nodes.find(
       (candidate) => candidate.id === current.nodeId && candidate.type === 'decide'
     )

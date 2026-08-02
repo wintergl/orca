@@ -10,18 +10,16 @@ import {
   getWorkflowCompletion,
   listPendingRetryOutbox,
   listUnsettledCompletions,
-  receiveWorkflowCompletion,
-  type WorkflowCompletionReconciliationRecord
+  receiveWorkflowCompletion
 } from './workflow-completion-reconciliation-store'
+import { applyWorkflowFailureWrite } from './workflow-completion-failure-apply'
 import {
   classifyWorkflowStepFailureCode,
   consumeWorkflowRetryOutbox,
   isHumanWaitFailureCode,
-  recoveryMessageForFailureCode,
   terminalizeWorkflowStepOwnership
 } from './workflow-completion-retry-outbox'
-import { decisionFailureCanRetry } from './workflow-decision-failure'
-import { reviewFailureCanRetry } from './workflow-review-failure'
+import { failureDiagnosticFromError } from './workflow-attempt-raw-response'
 import type { WorkflowStore } from './workflow-store'
 
 export type WorkflowFailureReconcileResult = {
@@ -68,6 +66,9 @@ export function reconcileWorkflowStepFailure(params: {
     code,
     message
   })
+  // Why: persist raw body on the receipt so crash recovery can restore diagnostics
+  // without re-reading a thrown Error (and without putting body on Error.data).
+  const failureDiagnostic = failureDiagnosticFromError(params.error)
   const received = receiveWorkflowCompletion(db, {
     runId: params.run.id,
     stepRunId: params.step.id,
@@ -77,7 +78,8 @@ export function reconcileWorkflowStepFailure(params: {
     messageDigest: digest,
     outcome: 'failed',
     errorCode: code,
-    errorMessage: message
+    errorMessage: message,
+    failureDiagnostic
   })
   if (received.conflict) {
     // Success (or another outcome) already owns this attempt — stop failure path.
@@ -131,7 +133,19 @@ export function reconcileWorkflowStepFailure(params: {
 
   if (current.state === 'orchestration-settled') {
     const allowRetry = !current.retryBlocked
-    applyWorkflowFailureWrite(params, code, message, current, { allowRetry })
+    applyWorkflowFailureWrite(
+      {
+        store: params.store,
+        run: params.run,
+        step: params.step,
+        rawAgentText:
+          failureDiagnostic?.rawAgentText ?? current.failureDiagnostic?.rawAgentText ?? null
+      },
+      code,
+      message,
+      current,
+      { allowRetry }
+    )
     current = getWorkflowCompletion(db, current.receiptId) ?? current
   }
 
@@ -207,7 +221,12 @@ export function resumeWorkflowCompletionReconciliations(params: {
         }
       }
       applyWorkflowFailureWrite(
-        { store: params.store, run: params.run, step },
+        {
+          store: params.store,
+          run: params.run,
+          step,
+          rawAgentText: afterOrch.failureDiagnostic?.rawAgentText ?? null
+        },
         afterOrch.errorCode ?? 'workflow_agent_unavailable',
         afterOrch.errorMessage ?? 'recovery resume',
         afterOrch,
@@ -233,71 +252,4 @@ export function resumeWorkflowCompletionReconciliations(params: {
     }
   }
   return created
-}
-
-function applyWorkflowFailureWrite(
-  params: {
-    store: WorkflowStore
-    run: WorkflowRunRecord
-    step: WorkflowStepRunRecord
-  },
-  code: string,
-  message: string,
-  record: WorkflowCompletionReconciliationRecord,
-  options: { allowRetry: boolean } = { allowRetry: true }
-): void {
-  const recovery = recoveryMessageForFailureCode(code)
-  const decisionCode =
-    code === 'workflow_completion_incomplete' ? 'workflow_decision_invalid' : code
-  const shouldRetry =
-    options.allowRetry &&
-    (params.step.nodeType === 'decide'
-      ? decisionFailureCanRetry(params.run, params.step)
-      : params.step.nodeType === 'review'
-        ? reviewFailureCanRetry(params.run, params.step)
-        : false)
-
-  if (params.step.nodeType === 'review') {
-    params.store.failReviewer({
-      run: params.run,
-      step: params.step,
-      code,
-      message,
-      recovery,
-      deferRetry: options.allowRetry,
-      skipRetry: !options.allowRetry
-    })
-  } else if (params.step.nodeType === 'decide') {
-    params.store.failDecision({
-      run: params.run,
-      step: params.step,
-      code: decisionCode,
-      message,
-      recovery: 'Inspect the Decision output, then retry or decide manually.',
-      deferRetry: options.allowRetry,
-      skipRetry: !options.allowRetry
-    })
-  } else {
-    params.store.failRun({
-      runId: params.run.id,
-      stepRunId: params.step.id,
-      code,
-      message,
-      recovery,
-      incomplete:
-        code === 'workflow_completion_incomplete' || code === 'workflow_artifact_unavailable'
-    })
-  }
-
-  advanceWorkflowCompletionState(
-    params.store.persistenceDb,
-    record.receiptId,
-    'orchestration-settled',
-    'workflow-settled',
-    {
-      retryOutboxState: shouldRetry ? 'pending' : 'none',
-      errorCode: decisionCode,
-      errorMessage: message
-    }
-  )
 }

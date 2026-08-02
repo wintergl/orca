@@ -83,6 +83,29 @@ describe('WorkflowStore templates', () => {
     ).not.toContain(projectTemplate.id)
   })
 
+  it('stamps decisionProtocolVersion when creating or updating a template', () => {
+    const { store } = createStore()
+    const definition = fixtureDefinition()
+    delete definition.decisionProtocolVersion
+    const created = store.createTemplate(
+      { name: 'Protocol stamp flow', scope: 'personal', definition },
+      mutation('user-a', 'create-protocol', 'workflow.templateCreate', {
+        name: 'Protocol stamp flow'
+      })
+    )
+    expect(created.definition.decisionProtocolVersion).toBe('v1-approve-revise')
+    const updated = store.updateTemplate(
+      {
+        templateId: created.id,
+        expectedVersion: 1,
+        name: 'Protocol stamp flow',
+        definition: { ...created.definition, decisionProtocolVersion: undefined }
+      },
+      mutation('user-a', 'update-protocol', 'workflow.templateUpdate', { templateId: created.id })
+    )
+    expect(updated.definition.decisionProtocolVersion).toBe('v1-approve-revise')
+  })
+
   it('creates immutable versions and keeps an existing run snapshot stable', () => {
     const { store } = createStore()
     const template = store.createTemplate(

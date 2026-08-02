@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto'
 import type Database from '../../sqlite/sync-database'
 import { workflowRecordId } from './workflow-runtime-records'
 import {
+  parseWorkflowFailureDiagnostic,
+  serializeWorkflowFailureDiagnostic,
+  type WorkflowFailureDiagnosticPayload
+} from './workflow-completion-failure-diagnostic'
+import {
   parseWorkflowSuccessPayload,
   serializeWorkflowSuccessPayload,
   type WorkflowSuccessPayload
@@ -26,12 +31,13 @@ export type WorkflowCompletionReconciliationRecord = {
   state: WorkflowCompletionReconciliationState
   retryOutboxState: WorkflowRetryOutboxState
   retryStepRunId: string | null
-  /** When true, technical retry outbox must stay none across crash recovery. */
   retryBlocked: boolean
   errorCode: string | null
   errorMessage: string | null
   /** Recoverable success snapshot; null on failure outcomes or legacy rows. */
   successPayload: WorkflowSuccessPayload | null
+  /** Controlled failure diagnostics (raw Agent text); null when absent/legacy. */
+  failureDiagnostic: WorkflowFailureDiagnosticPayload | null
   /** Fail-close discriminator; conflict/post-receipt never apply success writes. */
   resolution: WorkflowCompletionResolution
 }
@@ -65,6 +71,7 @@ type ReconciliationRow = {
   error_code: string | null
   error_message: string | null
   success_payload_json: string | null
+  failure_diagnostic_json: string | null
   resolution: string | null
 }
 
@@ -104,18 +111,22 @@ export function receiveWorkflowCompletion(
     errorCode?: string | null
     errorMessage?: string | null
     successPayload?: WorkflowSuccessPayload | null
+    failureDiagnostic?: WorkflowFailureDiagnosticPayload | null
   }
 ): ReceiveWorkflowCompletionResult {
   const receiptId = workflowRecordId('workflow_completion')
   const payloadJson = params.successPayload
     ? serializeWorkflowSuccessPayload(params.successPayload)
     : null
+  const failureDiagnosticJson = params.failureDiagnostic
+    ? serializeWorkflowFailureDiagnostic(params.failureDiagnostic)
+    : null
   db.prepare(
     `INSERT INTO workflow_completion_reconciliations (
        receipt_id, run_id, step_run_id, attempt, task_id, dispatch_id,
        message_digest, outcome, state, retry_outbox_state, error_code, error_message,
-       success_payload_json, resolution
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?, ?, 'none')
+       success_payload_json, failure_diagnostic_json, resolution
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', 'none', ?, ?, ?, ?, 'none')
      ON CONFLICT(run_id, step_run_id, attempt) DO NOTHING`
   ).run(
     receiptId,
@@ -128,7 +139,8 @@ export function receiveWorkflowCompletion(
     params.outcome,
     params.errorCode ?? null,
     params.errorMessage ?? null,
-    payloadJson
+    payloadJson,
+    failureDiagnosticJson
   )
   const row = db
     .prepare(
@@ -234,48 +246,46 @@ export function listPendingRetryOutbox(
   db: Database.Database,
   runId?: string
 ): WorkflowCompletionReconciliationRecord[] {
-  const rows = (
-    runId
-      ? db
-          .prepare(
-            `SELECT * FROM workflow_completion_reconciliations
-             WHERE run_id = ? AND state = 'settled' AND retry_outbox_state = 'pending'
-             ORDER BY created_at`
-          )
-          .all(runId)
-      : db
-          .prepare(
-            `SELECT * FROM workflow_completion_reconciliations
-             WHERE state = 'settled' AND retry_outbox_state = 'pending'
-             ORDER BY created_at`
-          )
-          .all()
-  ) as ReconciliationRow[]
-  return rows.map(toRecord)
+  return runId
+    ? queryCompletions(
+        db,
+        `SELECT * FROM workflow_completion_reconciliations
+         WHERE run_id = ? AND state = 'settled' AND retry_outbox_state = 'pending'
+         ORDER BY created_at`,
+        runId
+      )
+    : queryCompletions(
+        db,
+        `SELECT * FROM workflow_completion_reconciliations
+         WHERE state = 'settled' AND retry_outbox_state = 'pending'
+         ORDER BY created_at`
+      )
 }
 
 export function listUnsettledCompletions(
   db: Database.Database,
   runId?: string
 ): WorkflowCompletionReconciliationRecord[] {
-  const rows = (
-    runId
-      ? db
-          .prepare(
-            `SELECT * FROM workflow_completion_reconciliations
-             WHERE run_id = ? AND state != 'settled'
-             ORDER BY created_at`
-          )
-          .all(runId)
-      : db
-          .prepare(
-            `SELECT * FROM workflow_completion_reconciliations
-             WHERE state != 'settled'
-             ORDER BY created_at`
-          )
-          .all()
-  ) as ReconciliationRow[]
-  return rows.map(toRecord)
+  return runId
+    ? queryCompletions(
+        db,
+        `SELECT * FROM workflow_completion_reconciliations
+         WHERE run_id = ? AND state != 'settled' ORDER BY created_at`,
+        runId
+      )
+    : queryCompletions(
+        db,
+        `SELECT * FROM workflow_completion_reconciliations
+         WHERE state != 'settled' ORDER BY created_at`
+      )
+}
+
+function queryCompletions(
+  db: Database.Database,
+  sql: string,
+  ...params: string[]
+): WorkflowCompletionReconciliationRecord[] {
+  return (db.prepare(sql).all(...params) as ReconciliationRow[]).map(toRecord)
 }
 
 function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecord {
@@ -295,17 +305,15 @@ function toRecord(row: ReconciliationRow): WorkflowCompletionReconciliationRecor
     errorCode: row.error_code,
     errorMessage: row.error_message,
     successPayload: parseWorkflowSuccessPayload(row.success_payload_json),
+    failureDiagnostic: parseWorkflowFailureDiagnostic(row.failure_diagnostic_json),
     resolution: parseResolution(row.resolution)
   }
 }
 
 function parseResolution(value: string | null | undefined): WorkflowCompletionResolution {
-  if (
-    value === 'conflict-fail-close' ||
+  return value === 'conflict-fail-close' ||
     value === 'post-receipt-fail-close' ||
     value === 'waiting-human'
-  ) {
-    return value
-  }
-  return 'none'
+    ? value
+    : 'none'
 }

@@ -3,12 +3,16 @@ import type {
   WorkflowDecisionSubmissionV1,
   WorkflowReviewSubmissionV1
 } from '../../../shared/workflow-result-schema'
-import type { WorkflowStepRunRecord } from '../../../shared/workflow-definition-types'
+import type {
+  WorkflowDefinitionV1,
+  WorkflowStepRunRecord
+} from '../../../shared/workflow-definition-types'
 import {
   parseWorkflowDecisionToken,
-  parseWorkflowReviewVerdict
+  parseWorkflowReviewVerdict,
+  workflowDecisionAllowsAliases
 } from '../../../shared/workflow-decision-protocol'
-import { WorkflowError } from './workflow-error'
+import { workflowIncompleteWithRawAgentText } from './workflow-attempt-raw-response'
 
 type AutomaticWorkflowResult =
   | WorkflowCompletionSubmissionV1
@@ -17,36 +21,38 @@ type AutomaticWorkflowResult =
 
 export function buildAutomaticWorkflowResult(
   step: WorkflowStepRunRecord,
-  finalResponse: string
+  finalResponse: string,
+  options?: { decisionProtocolVersion?: WorkflowDefinitionV1['decisionProtocolVersion'] }
 ): AutomaticWorkflowResult {
   const conclusion = finalResponse.trim()
   if (!conclusion) {
-    throw incomplete('The Agent returned an empty final response.')
+    throw incomplete('The Agent returned an empty final response.', conclusion)
   }
+  const allowAliases = workflowDecisionAllowsAliases(options?.decisionProtocolVersion)
   if (step.nodeType === 'review') {
     try {
       return {
         schema: 'workflow.review-result/v1',
-        verdict: parseWorkflowReviewVerdict(conclusion, { allowAliases: true }),
+        verdict: parseWorkflowReviewVerdict(conclusion, { allowAliases }),
         issues: [],
         unverified: [],
         conclusionMarkdown: conclusion
       }
     } catch (error) {
-      throw incomplete(error instanceof Error ? error.message : String(error))
+      throw incomplete(error instanceof Error ? error.message : String(error), conclusion)
     }
   }
   if (step.nodeType === 'decide') {
     try {
       return {
         schema: 'workflow.decision/v1',
-        decision: parseWorkflowDecisionToken(conclusion, { allowAliases: true }),
+        decision: parseWorkflowDecisionToken(conclusion, { allowAliases }),
         issues: [],
         conflicts: [],
         conclusionMarkdown: conclusion
       }
     } catch (error) {
-      throw incomplete(error instanceof Error ? error.message : String(error))
+      throw incomplete(error instanceof Error ? error.message : String(error), conclusion)
     }
   }
   const failed = reportsFailure(conclusion)
@@ -76,6 +82,6 @@ function summarize(value: string): string {
   return compact.length <= 500 ? compact : `${compact.slice(0, 497)}...`
 }
 
-function incomplete(message: string): WorkflowError {
-  return new WorkflowError('workflow_completion_incomplete', message)
+function incomplete(message: string, rawAgentText?: string) {
+  return workflowIncompleteWithRawAgentText(message, rawAgentText ?? '')
 }

@@ -178,6 +178,7 @@ export const workflowDefinitionV1Schema = z
     schemaVersion: z.literal(1, {
       error: 'Unsupported workflow schema version; upgrade Orca to edit it'
     }),
+    decisionProtocolVersion: z.enum(['v1-approve-revise', 'v2-binary-zh']).optional(),
     entryNodeId: idSchema,
     defaults: z.object({ retryPolicy: retryPolicySchema }).strict(),
     roleSlots: z.array(roleSlotSchema).min(1).max(24),

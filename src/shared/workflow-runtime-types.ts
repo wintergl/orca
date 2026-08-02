@@ -221,6 +221,7 @@ export type WorkflowPreflightCheck = {
     | 'review-bounds'
     | 'workflow-exit'
     | 'workspace-capability'
+    | 'decision-protocol'
   status: 'passed' | 'failed'
   nodeId: string | null
   message: string

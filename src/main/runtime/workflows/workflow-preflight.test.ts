@@ -38,4 +38,49 @@ describe('Workflow M3 preflight', () => {
 
     expect(checks.find((check) => check.id === 'review-bounds')?.status).toBe('failed')
   })
+
+  it('blocks Review/Decision business prompts that conflict with V1 protocol', () => {
+    const definition = structuredClone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
+    const decide = definition.nodes.find((node) => node.type === 'decide')!
+    decide.promptInstructions = '结论第一行只能是完成/不完成。'
+    const run = {
+      objective: 'Ship the SPEC.',
+      templateVersion: 1,
+      templateSnapshot: definition,
+      assignments: []
+    } as unknown as WorkflowRunRecord
+
+    const checks = buildWorkflowPreflightChecks(run, {
+      workspaceAvailable: true,
+      capabilityAvailable: true,
+      unavailableAgentLifecycleIds: []
+    })
+
+    expect(checks.find((check) => check.id === 'decision-protocol')).toMatchObject({
+      status: 'failed',
+      message: expect.stringContaining(decide.name)
+    })
+  })
+
+  it('fail-closes explicit V2 decision protocol templates until V2 runtime ships', () => {
+    const definition = structuredClone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
+    definition.decisionProtocolVersion = 'v2-binary-zh'
+    const run = {
+      objective: 'Ship the SPEC.',
+      templateVersion: 1,
+      templateSnapshot: definition,
+      assignments: []
+    } as unknown as WorkflowRunRecord
+
+    const checks = buildWorkflowPreflightChecks(run, {
+      workspaceAvailable: true,
+      capabilityAvailable: true,
+      unavailableAgentLifecycleIds: []
+    })
+
+    expect(checks.find((check) => check.id === 'decision-protocol')).toMatchObject({
+      status: 'failed',
+      message: expect.stringMatching(/V2 binary/)
+    })
+  })
 })

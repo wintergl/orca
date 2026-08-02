@@ -173,6 +173,12 @@ export type WorkflowTransitionV1 = {
 
 export type WorkflowDefinitionV1 = {
   schemaVersion: 1
+  /**
+   * Canonical decision protocol for this template.
+   * Missing = unversioned legacy V1 (Chinese aliases accepted at runtime).
+   * Saves always stamp `v1-approve-revise` (P0).
+   */
+  decisionProtocolVersion?: 'v1-approve-revise' | 'v2-binary-zh'
   entryNodeId: string
   defaults: {
     retryPolicy: WorkflowRetryPolicy

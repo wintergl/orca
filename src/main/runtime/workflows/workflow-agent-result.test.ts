@@ -1,6 +1,8 @@
+import { inspect } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import type { WorkflowStepRunRecord } from '../../../shared/workflow-definition-types'
 import { buildAutomaticWorkflowResult } from './workflow-agent-result'
+import { takeWorkflowRawAgentText } from './workflow-attempt-raw-response'
 
 describe('automatic Workflow Agent result', () => {
   it('wraps a normal Produce conclusion without exposing a result schema to the Agent', () => {
@@ -30,6 +32,39 @@ describe('automatic Workflow Agent result', () => {
     expect(() => buildAutomaticWorkflowResult(step('review'), '已经检查完毕。')).toThrow(
       'must begin with approve, revise, or request-human'
     )
+  })
+
+  it('keeps raw agent text off Error.data while still bridging live failure path', () => {
+    const marker = 'SECRET_RAW_PROTOCOL_MARKER'
+    const raw = `完成\n\n${marker}`
+    try {
+      buildAutomaticWorkflowResult(step('decide'), raw, {
+        decisionProtocolVersion: 'v1-approve-revise'
+      })
+      throw new Error('expected throw')
+    } catch (error) {
+      expect(error).toMatchObject({
+        message: expect.stringMatching(/must begin with/),
+        data: {
+          rawAgentTextDigest: expect.any(String),
+          rawAgentTextLength: raw.length,
+          truncated: false
+        }
+      })
+      expect(
+        error && typeof error === 'object' && 'data' in error && error.data
+      ).not.toHaveProperty('cause')
+      expect(inspect(error, { depth: 8, showHidden: true })).not.toContain(marker)
+      expect(takeWorkflowRawAgentText(error)).toBe(raw)
+    }
+  })
+
+  it('rejects Chinese aliases when the template stamps V1 protocol version', () => {
+    expect(() =>
+      buildAutomaticWorkflowResult(step('decide'), '裁定：通过\n\n可以进入', {
+        decisionProtocolVersion: 'v1-approve-revise'
+      })
+    ).toThrow(/must begin with/)
   })
 
   it('ignores leading Claude system reminders before parsing a Decision verdict', () => {

@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import { readWorkflowAgentFinalResponse } from './workflow-agent-final-response'
 import { buildAutomaticWorkflowResult } from './workflow-agent-result'
+import { workflowIncompleteWithRawAgentText } from './workflow-attempt-raw-response'
 import { WorkflowError } from './workflow-error'
 import { workflowReportPath } from './workflow-prompts'
 
@@ -50,9 +51,19 @@ export async function captureWorkflowAgentCompletion(params: {
   if (!response) {
     return false
   }
-  const result = buildAutomaticWorkflowResult(step, response.text)
-  await writeAtomicJson(reportPath, result)
-  return true
+  try {
+    const result = buildAutomaticWorkflowResult(step, response.text, {
+      decisionProtocolVersion: run.templateSnapshot?.decisionProtocolVersion
+    })
+    await writeAtomicJson(reportPath, result)
+    return true
+  } catch (error) {
+    // Re-bind raw body via side-channel only; never put full text on Error.data.
+    if (error instanceof WorkflowError) {
+      throw workflowIncompleteWithRawAgentText(error.message, response.text)
+    }
+    throw error
+  }
 }
 
 async function readFinalResponse(

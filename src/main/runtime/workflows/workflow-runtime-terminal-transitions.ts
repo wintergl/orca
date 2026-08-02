@@ -9,6 +9,7 @@ export function failWorkflowRun(
     message: string
     recovery: string
     incomplete?: boolean
+    rawAgentText?: string | null
   }
 ): void {
   store.transaction(() => failWorkflowRunInTransaction(store, params))
@@ -24,6 +25,8 @@ export function failWorkflowRunInTransaction(
     message: string
     recovery: string
     incomplete?: boolean
+    /** Raw Agent conclusion for attempt diagnostics (not only the parse error). */
+    rawAgentText?: string | null
   }
 ): void {
   const stepStatus = params.incomplete ? 'completion-incomplete' : 'failed'
@@ -45,9 +48,18 @@ export function failWorkflowRunInTransaction(
        SET status = ?, delivery_state = CASE WHEN ? = 'workflow_delivery_uncertain'
              THEN 'uncertain' ELSE 'failed' END,
            error_code = ?, error_message = ?, recovery = ?,
+           conclusion_markdown = COALESCE(?, conclusion_markdown),
            completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
     )
-    .run(stepStatus, params.code, params.code, params.message, params.recovery, params.stepRunId)
+    .run(
+      stepStatus,
+      params.code,
+      params.code,
+      params.message,
+      params.recovery,
+      params.rawAgentText?.trim() || null,
+      params.stepRunId
+    )
   store.db
     .prepare(
       `UPDATE workflow_runs

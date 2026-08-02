@@ -13,6 +13,7 @@ import {
   type WorkflowDecisionV1,
   type WorkflowReviewResultV1
 } from '../../../shared/workflow-result-schema'
+import { workflowIncompleteWithRawAgentText } from './workflow-attempt-raw-response'
 import { WorkflowError } from './workflow-error'
 import { assertWorkflowResultIdentity } from './workflow-result-identity'
 
@@ -43,7 +44,11 @@ export function normalizeWorkflowResult(
         ? WorkflowDecisionSubmissionV1Schema.safeParse(value)
         : WorkflowCompletionSubmissionV1Schema.safeParse(value)
   if (!compact.success) {
-    throw incomplete('The Workflow result JSON does not match its required schema.', compact.error)
+    throw incomplete(
+      'The Workflow result JSON does not match its required schema.',
+      compact.error,
+      rawAgentTextFromValue(value)
+    )
   }
 
   const identity = {
@@ -113,6 +118,24 @@ function required(value: string | null | undefined, label: string): string {
   return value
 }
 
-function incomplete(message: string, cause?: unknown): WorkflowError {
-  return new WorkflowError('workflow_completion_incomplete', message, cause)
+function rawAgentTextFromValue(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  for (const key of ['conclusionMarkdown', 'finalConclusionMarkdown'] as const) {
+    const text = record[key]
+    if (typeof text === 'string' && text.trim()) {
+      return text
+    }
+  }
+  return undefined
+}
+
+function incomplete(message: string, _cause?: unknown, rawAgentText?: string): WorkflowError {
+  if (rawAgentText?.trim()) {
+    // Why: never attach parse/schema cause objects — messages can embed raw fragments.
+    return workflowIncompleteWithRawAgentText(message, rawAgentText)
+  }
+  return new WorkflowError('workflow_completion_incomplete', message)
 }

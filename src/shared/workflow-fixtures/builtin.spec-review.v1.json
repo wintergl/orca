@@ -2,12 +2,16 @@
   "id": "builtin.spec-review.v1",
   "name": "SPEC 编写与评审",
   "scope": "built-in",
-  "version": 4,
+  "version": 5,
   "definition": {
     "schemaVersion": 1,
     "entryNodeId": "spec-produce",
     "defaults": {
-      "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" }
+      "retryPolicy": {
+        "maxAttempts": 2,
+        "backoffMs": 1000,
+        "onExhausted": "wait-human"
+      }
     },
     "roleSlots": [
       {
@@ -47,7 +51,11 @@
         "promptTemplateKey": "builtin.spec.produce.v1",
         "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n请完成本轮 SPEC。\n\n上一轮评审意见：\n{{reviewAggregate}}\n\n人工修改要求：\n{{humanInstructions}}",
         "inputBindings": ["root-goal", "review-aggregate"],
-        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "backoffMs": 1000,
+          "onExhausted": "wait-human"
+        },
         "artifactKind": "spec",
         "outputSchema": "workflow.completion/v1"
       },
@@ -59,7 +67,11 @@
         "promptTemplateKey": "builtin.spec.review.v1",
         "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n上游 Agent 的完成结论为：\n{{upstreamCompletion}}\n\n本轮完成的 SPEC 为：\n{{artifactRevision}}\n\n请结合工作目标和冻结的 SPEC 评审此结果。",
         "inputBindings": ["root-goal", "upstream-completion", "artifact-revision"],
-        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "backoffMs": 1000,
+          "onExhausted": "wait-human"
+        },
         "reviewPolicy": {
           "minReviewers": 1,
           "completion": "all-required",
@@ -77,7 +89,11 @@
         "promptTemplateKey": "builtin.spec.decide.v1",
         "promptInstructions": "当前工作目标为：\n{{rootGoal}}\n\n本轮完成的 SPEC 为：\n{{artifactRevision}}\n\n评审汇总为：\n{{reviewAggregate}}\n\n请判断该 SPEC 应通过、修改或请求人工处理。",
         "inputBindings": ["root-goal", "artifact-revision", "review-aggregate"],
-        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "wait-human" },
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "backoffMs": 1000,
+          "onExhausted": "wait-human"
+        },
         "mode": "rules-then-agent",
         "outputSchema": "workflow.decision/v1"
       },
@@ -89,7 +105,11 @@
         "promptTemplateKey": null,
         "promptInstructions": null,
         "inputBindings": ["artifact-revision", "review-aggregate", "decision"],
-        "retryPolicy": { "maxAttempts": 0, "backoffMs": 0, "onExhausted": "wait-human" },
+        "retryPolicy": {
+          "maxAttempts": 0,
+          "backoffMs": 0,
+          "onExhausted": "wait-human"
+        },
         "waitingReasons": [
           "review-request-human",
           "review-revision-required",
@@ -115,7 +135,11 @@
         "promptTemplateKey": null,
         "promptInstructions": null,
         "inputBindings": ["decision"],
-        "retryPolicy": { "maxAttempts": 0, "backoffMs": 0, "onExhausted": "fail-run" },
+        "retryPolicy": {
+          "maxAttempts": 0,
+          "backoffMs": 0,
+          "onExhausted": "fail-run"
+        },
         "outcome": "succeeded",
         "outputSchema": null
       }
@@ -169,7 +193,13 @@
         "when": "human:revise",
         "to": "spec-produce"
       },
-      { "id": "spec-human-end", "from": "spec-human", "when": "human:end", "to": "run:cancelled" }
-    ]
+      {
+        "id": "spec-human-end",
+        "from": "spec-human",
+        "when": "human:end",
+        "to": "run:cancelled"
+      }
+    ],
+    "decisionProtocolVersion": "v1-approve-revise"
   }
 }

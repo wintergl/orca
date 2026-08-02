@@ -4,6 +4,7 @@ exports[`WorkflowDefinitionV1 > validates and snapshots every complete built-in 
 [
   {
     "definition": {
+      "decisionProtocolVersion": "v1-approve-revise",
       "defaults": {
         "retryPolicy": {
           "backoffMs": 1000,
@@ -260,10 +261,11 @@ exports[`WorkflowDefinitionV1 > validates and snapshots every complete built-in 
     "id": "builtin.spec-review.v1",
     "name": "SPEC 编写与评审",
     "scope": "built-in",
-    "version": 4,
+    "version": 5,
   },
   {
     "definition": {
+      "decisionProtocolVersion": "v1-approve-revise",
       "defaults": {
         "retryPolicy": {
           "backoffMs": 1000,
@@ -528,10 +530,11 @@ exports[`WorkflowDefinitionV1 > validates and snapshots every complete built-in 
     "id": "builtin.code-review.v1",
     "name": "代码实现与评审",
     "scope": "built-in",
-    "version": 4,
+    "version": 5,
   },
   {
     "definition": {
+      "decisionProtocolVersion": "v1-approve-revise",
       "defaults": {
         "retryPolicy": {
           "backoffMs": 1000,
@@ -1015,7 +1018,7 @@ exports[`WorkflowDefinitionV1 > validates and snapshots every complete built-in 
     "id": "builtin.spec-to-code-review.v1",
     "name": "SPEC → 实现完整流程",
     "scope": "built-in",
-    "version": 4,
+    "version": 5,
   },
 ]
 `;

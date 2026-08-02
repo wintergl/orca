@@ -17,6 +17,7 @@ import {
   reconcileWorkflowStepFailure,
   resumeWorkflowCompletionReconciliations
 } from './workflow-completion-failure-reconciler'
+import { workflowIncompleteWithRawAgentText } from './workflow-attempt-raw-response'
 import { BUILTIN_WORKFLOW_TEMPLATES } from '../../../shared/workflow-fixtures'
 import { claimWorkflowDispatchOwnership } from './workflow-dispatch-ownership-store'
 import { buildWorkflowResolutionOffers } from './workflow-resolution-offers'
@@ -374,6 +375,101 @@ describe('failWorkflowDecision aggregate invariant', () => {
     const unchanged = store.getStep(step.id)!
     expect(unchanged.status).toBe('running')
     expect(unchanged.errorCode).toBeNull()
+  })
+})
+
+describe('attempt raw agent text diagnostics', () => {
+  it('persists raw agent text on produce failure, not only the parse error', () => {
+    const store = createStore()
+    const { run, step } = makeRunAndStep(store, { nodeKind: 'produce', maxAttempts: 1 })
+    const raw = '完成\n\n看起来可以发布，但协议非法。'
+    store.failRun({
+      runId: run.id,
+      stepRunId: step.id,
+      code: 'workflow_completion_incomplete',
+      message: 'The Decision conclusion must begin with approve.',
+      recovery: 'Inspect the raw Agent response.',
+      incomplete: true,
+      rawAgentText: raw
+    })
+    const failed = store.getStep(step.id)!
+    expect(failed.status).toBe('completion-incomplete')
+    expect(failed.errorMessage).toContain('must begin with approve')
+    expect(failed.conclusionMarkdown).toBe(raw)
+  })
+
+  it('restores raw agent text from the receipt after close/reopen recovery', () => {
+    const path = join(tmpdir(), `orca-workflow-recon-diag-${randomUUID()}.db`)
+    databasePaths.push(path)
+    const store = new WorkflowStore(path)
+    openStores.push(store)
+    const { run, step } = makeRunAndStep(store, { nodeKind: 'produce', maxAttempts: 1 })
+    const raw = '完成\n\n崩溃前的原始响应。'
+    const error = workflowIncompleteWithRawAgentText(
+      'The Decision conclusion must begin with approve.',
+      raw
+    )
+    expect(JSON.stringify(error.data)).not.toContain(raw)
+    expect(error.data).toMatchObject({
+      rawAgentTextDigest: expect.any(String),
+      rawAgentTextLength: raw.length,
+      truncated: false,
+      originalLength: raw.length
+    })
+
+    const first = reconcileWorkflowStepFailure({
+      store,
+      orchestration: orchestrationReady(),
+      run,
+      step,
+      error
+    })
+    expect(first.conflict).toBe(false)
+    const receipt = getWorkflowCompletion(store.persistenceDb, first.receiptId)!
+    expect(receipt.failureDiagnostic?.rawAgentText).toBe(raw)
+    expect(store.getStep(step.id)!.conclusionMarkdown).toBe(raw)
+
+    // Crash after orch settle / before durable step diagnostics: rewind + reopen same DB.
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_completion_reconciliations
+         SET state = 'orchestration-settled', retry_outbox_state = 'none',
+             updated_at = datetime('now')
+         WHERE receipt_id = ?`
+      )
+      .run(first.receiptId)
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_step_runs
+         SET status = 'running', error_code = NULL, error_message = NULL,
+             conclusion_markdown = NULL, completed_at = NULL
+         WHERE id = ?`
+      )
+      .run(step.id)
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_runs SET status = 'running', waiting_reason = NULL,
+           failure_code = NULL, failure_message = NULL WHERE id = ?`
+      )
+      .run(run.id)
+    store.close()
+    openStores.pop()
+
+    const reopened = new WorkflowStore(path)
+    openStores.push(reopened)
+    const resumedRun = {
+      ...run,
+      templateSnapshot: run.templateSnapshot,
+      steps: [reopened.getStep(step.id)!]
+    } as WorkflowRunRecord
+    resumeWorkflowCompletionReconciliations({
+      store: reopened,
+      orchestration: orchestrationReady(),
+      run: resumedRun
+    })
+    const restoredReceipt = getWorkflowCompletion(reopened.persistenceDb, first.receiptId)!
+    expect(restoredReceipt.failureDiagnostic?.rawAgentText).toBe(raw)
+    expect(reopened.getStep(step.id)!.conclusionMarkdown).toBe(raw)
   })
 })
 
