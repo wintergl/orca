@@ -120,6 +120,24 @@ describe('ExperimentalPane', () => {
     expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Agent sleep')
   })
 
+  it('renders and enables the Workflow V2 runtime-host gate', async () => {
+    const settings = getDefaultSettings('/tmp')
+    const updateSettings = vi.fn()
+    const { root, container } = await renderExperimentalPane({ settings, updateSettings })
+    const switchButton = container.querySelector<HTMLButtonElement>(
+      '#experimental-workflow-v2 button[role="switch"]'
+    )
+    if (!switchButton) {
+      throw new Error('Workflow V2 switch was not rendered')
+    }
+
+    expect(settings['workflows.v2.enabled']).toBe(false)
+    expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Workflow V2')
+    await act(async () => switchButton.click())
+    expect(updateSettings).toHaveBeenCalledWith({ 'workflows.v2.enabled': true })
+    root.unmount()
+  })
+
   it('renders new card style as an off-by-default searchable experimental switch', () => {
     const settings = getDefaultSettings('/tmp')
     const markup = renderToStaticMarkup(

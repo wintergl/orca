@@ -136,6 +136,24 @@ describe('client UI RPC methods', () => {
     })
   })
 
+  it('round-trips the Workflow V2 feature gate on the targeted runtime host', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateClientSettings: vi.fn(() => ({ 'workflows.v2.enabled': true }))
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('settings.update', { 'workflows.v2.enabled': true })
+    )
+
+    expect(runtime.updateClientSettings).toHaveBeenCalledWith({ 'workflows.v2.enabled': true })
+    expect(response).toMatchObject({
+      ok: true,
+      result: { settings: { 'workflows.v2.enabled': true } }
+    })
+  })
+
   it('normalizes manual bot-author overrides before persisting', async () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',

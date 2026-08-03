@@ -12,6 +12,8 @@ import { WorkflowRunHistory } from './WorkflowRunHistory'
 import { WorkflowTemplateWorkspace } from './WorkflowTemplateWorkspace'
 import {
   listWorkflowTemplates,
+  getWorkflowV2FeatureEnabled,
+  setWorkflowV2FeatureEnabled,
   switchWorkflowRunTemplate,
   workflowTargetForExecutionHost
 } from './workflow-runtime-client'
@@ -34,6 +36,8 @@ export default function WorkflowsPage(): React.JSX.Element {
   const [templates, setTemplates] = useState<WorkflowTemplateRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [switchingTemplate, setSwitchingTemplate] = useState(false)
+  const [workflowV2Enabled, setWorkflowV2EnabledState] = useState<boolean | null>(null)
+  const [enablingWorkflowV2, setEnablingWorkflowV2] = useState(false)
   const templateTarget = context?.target ?? fallbackTarget
   const activeExecutionHostId = activeRun?.executionHostId
   const refreshGeneration = useRef(0)
@@ -59,11 +63,15 @@ export default function WorkflowsPage(): React.JSX.Element {
       const generation = ++refreshGeneration.current
       setLoading(true)
       try {
-        const rows = await listWorkflowTemplates(templateListTarget, templateProjectIdentity, false)
+        const [rows, v2Enabled] = await Promise.all([
+          listWorkflowTemplates(templateListTarget, templateProjectIdentity, false),
+          getWorkflowV2FeatureEnabled(templateListTarget)
+        ])
         if (generation !== refreshGeneration.current) {
           return
         }
         setTemplates(rows)
+        setWorkflowV2EnabledState(v2Enabled)
         const currentTemplateId = getWorkflowSelectedTemplate()?.id
         const selected =
           preferred ?? rows.find((template) => template.id === currentTemplateId) ?? rows[0] ?? null
@@ -125,6 +133,22 @@ export default function WorkflowsPage(): React.JSX.Element {
     },
     [activeRun, runTarget, templates]
   )
+  const enableWorkflowV2 = useCallback(async (): Promise<void> => {
+    setEnablingWorkflowV2(true)
+    try {
+      const enabled = await setWorkflowV2FeatureEnabled(templateListTarget, true)
+      setWorkflowV2EnabledState(enabled)
+      toast.success(translate('workflows.v2.enabled', 'Workflow V2 enabled on this host'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : translate('workflows.v2.enableError', 'Could not enable Workflow V2')
+      )
+    } finally {
+      setEnablingWorkflowV2(false)
+    }
+  }, [templateListTarget])
 
   if (page === 'application' && activeRun) {
     return (
@@ -203,6 +227,10 @@ export default function WorkflowsPage(): React.JSX.Element {
         selected={selectedTemplate}
         target={templateTarget}
         projectIdentity={context?.projectIdentity}
+        workflowV2Enabled={workflowV2Enabled}
+        enablingWorkflowV2={enablingWorkflowV2}
+        onEnableWorkflowV2={() => void enableWorkflowV2()}
+        onOpenHistory={() => setWorkflowPage('runs')}
         onTemplatesChanged={refreshTemplates}
       />
     </WorkflowPageSurface>

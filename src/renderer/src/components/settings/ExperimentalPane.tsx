@@ -10,6 +10,7 @@ import { translate } from '@/i18n/i18n'
 import { NativeChatExperimentalSetting } from './NativeChatExperimentalSetting'
 import { AgentDashboardExperimentalSetting } from './AgentDashboardExperimentalSetting'
 import { EphemeralVmsExperimentalSetting } from './EphemeralVmsExperimentalSetting'
+import { WorkflowV2ExperimentalSetting } from './WorkflowV2ExperimentalSetting'
 import {
   MAX_AGENT_HIBERNATION_IDLE_MS,
   MIN_AGENT_HIBERNATION_IDLE_MS,
@@ -43,6 +44,9 @@ export function ExperimentalPane({
   ])
   const showNativeChat = matchesSettingsSearch(searchQuery, [
     getExperimentalSearchEntry().nativeChat
+  ])
+  const showWorkflowV2 = matchesSettingsSearch(searchQuery, [
+    getExperimentalSearchEntry().workflowV2
   ])
   const showTerminalAttention = matchesSettingsSearch(searchQuery, [
     getExperimentalSearchEntry().terminalAttention
@@ -158,6 +162,10 @@ export function ExperimentalPane({
 
       {showNativeChat ? (
         <NativeChatExperimentalSetting settings={settings} updateSettings={updateSettings} />
+      ) : null}
+
+      {showWorkflowV2 ? (
+        <WorkflowV2ExperimentalSetting settings={settings} updateSettings={updateSettings} />
       ) : null}
 
       {showTerminalAttention ? (

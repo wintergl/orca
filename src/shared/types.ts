@@ -2989,6 +2989,8 @@ export type GlobalSettings = {
   experimentalNewWorktreeCardStyle?: boolean
   /** Experimental: per-workspace on-demand environment recipes and setup surface. */
   experimentalEphemeralVms?: boolean
+  /** Experimental: enables Workflow V2 template mutation and execution on this runtime host. */
+  'workflows.v2.enabled'?: boolean
   /** Compact worktree cards: hide the metadata row when title and branch say the same thing. */
   compactWorktreeCards: boolean
   /** Legacy persisted key from the Experimental rollout; new writes use compactWorktreeCards. */

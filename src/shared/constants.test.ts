@@ -95,6 +95,10 @@ describe('getDefaultSettings', () => {
     expect(getDefaultSettings('/tmp').experimentalEphemeralVms).toBe(false)
   })
 
+  it('keeps Workflow V2 disabled until the runtime host explicitly enables it', () => {
+    expect(getDefaultSettings('/tmp')['workflows.v2.enabled']).toBe(false)
+  })
+
   it('keeps the agent dashboard popout disabled by default', () => {
     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBe(false)
   })

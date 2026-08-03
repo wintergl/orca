@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FolderCog, Save, ShieldCheck } from 'lucide-react'
+import { FolderCog, History, Save, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
   WorkflowTemplateRecord,
@@ -8,10 +8,8 @@ import type {
 } from '../../../../shared/workflow-definition-types'
 import { parseWorkflowDefinitionV1 } from '../../../../shared/workflow-definition-schema'
 import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
-import { isWorkflowV2FeatureEnabled } from '../../../../shared/workflow-feature-gates'
 import { validateWorkflowPromptBoundaries } from '../../../../shared/workflow-prompt-boundary-validation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
-import { useAppStore } from '@/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,8 +33,7 @@ import {
   isBlankWorkflowCreationEnabled
 } from './workflow-template-draft'
 import { WorkflowTemplateManager } from './WorkflowTemplateManager'
-import { WorkflowTemplateV2Editor } from './WorkflowTemplateV2Editor'
-import { WorkflowTemplateVisualEditor } from './WorkflowTemplateVisualEditor'
+import { WorkflowTemplateDefinitionSurface } from './WorkflowTemplateDefinitionSurface'
 
 type EditorDraft = {
   kind: 'new' | 'existing'
@@ -52,25 +49,32 @@ export function WorkflowTemplateWorkspace({
   selected,
   target,
   projectIdentity,
+  workflowV2Enabled,
+  enablingWorkflowV2,
+  onEnableWorkflowV2,
+  onOpenHistory,
   onTemplatesChanged
 }: {
   templates: readonly WorkflowTemplateRecord[]
   selected: WorkflowTemplateRecord | null
   target: RuntimeClientTarget
   projectIdentity?: string
+  workflowV2Enabled: boolean | null
+  enablingWorkflowV2: boolean
+  onEnableWorkflowV2: () => void
+  onOpenHistory: () => void
   onTemplatesChanged: (selectedTemplate?: WorkflowTemplateRecord) => Promise<void>
 }): React.JSX.Element {
   const [draft, setDraft] = useState<EditorDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
-  const workflowV2Enabled = useAppStore((state) =>
-    isWorkflowV2FeatureEnabled(
-      state.settings as { 'workflows.v2.enabled'?: boolean } | null | undefined
-    )
-  )
   const draftReadOnly =
     selected?.scope === 'built-in' ||
-    Boolean(workflowV2Enabled && draft?.definition.schemaVersion === 1)
+    Boolean(
+      (workflowV2Enabled === true && draft?.definition.schemaVersion === 1) ||
+      (workflowV2Enabled === false && draft?.definition.schemaVersion === 2)
+    )
+  const workflowV2Blocked = workflowV2Enabled === false && draft?.definition.schemaVersion === 2
 
   useEffect(() => {
     if (selected) {
@@ -79,7 +83,11 @@ export function WorkflowTemplateWorkspace({
   }, [selected])
 
   const startNew = (): void => {
-    if (!isBlankWorkflowCreationEnabled({ 'workflows.v2.enabled': workflowV2Enabled })) {
+    if (
+      !isBlankWorkflowCreationEnabled({
+        'workflows.v2.enabled': workflowV2Enabled === true
+      })
+    ) {
       toast.info(
         translate(
           'workflows.templates.blankRequiresV2',
@@ -262,6 +270,10 @@ export function WorkflowTemplateWorkspace({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onOpenHistory}>
+            <History />
+            <span>{translate('workflows.history.title', 'Run history')}</span>
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -328,43 +340,14 @@ export function WorkflowTemplateWorkspace({
           ) : null}
         </div>
       </header>
-      <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-        {draft ? (
-          <>
-            {draftReadOnly ? (
-              <div className="shrink-0 border-b border-border bg-muted/25 px-4 py-2 text-xs text-muted-foreground">
-                {translate(
-                  'workflows.templates.builtinReadOnly',
-                  'This template is read-only under the current workflow schema policy.'
-                )}
-              </div>
-            ) : null}
-            <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">
-              {draft.definition.schemaVersion === 2 ? (
-                <WorkflowTemplateV2Editor
-                  key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}:v2`}
-                  definition={draft.definition}
-                  readOnly={draftReadOnly}
-                  onChange={(definition) => setDraft({ ...draft, definition })}
-                />
-              ) : (
-                <WorkflowTemplateVisualEditor
-                  key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}`}
-                  definition={draft.definition}
-                  readOnly={draftReadOnly}
-                  onChange={(definition) => setDraft({ ...draft, definition })}
-                />
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              {translate('workflows.templates.select', 'Select a workflow template')}
-            </p>
-          </div>
-        )}
-      </main>
+      <WorkflowTemplateDefinitionSurface
+        draft={draft}
+        readOnly={draftReadOnly}
+        workflowV2Blocked={workflowV2Blocked}
+        enablingWorkflowV2={enablingWorkflowV2}
+        onEnableWorkflowV2={onEnableWorkflowV2}
+        onChange={(definition) => draft && setDraft({ ...draft, definition })}
+      />
       <WorkflowTemplateManager
         open={managerOpen}
         templates={templates}

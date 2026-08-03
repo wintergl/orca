@@ -20,6 +20,7 @@ import type {
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
+import { isWorkflowV2FeatureEnabled } from '../../../../shared/workflow-feature-gates'
 
 function requestId(): string {
   return crypto.randomUUID()
@@ -38,6 +39,25 @@ export function listWorkflowTemplates(
   includeArchived = false
 ): Promise<WorkflowTemplateRecord[]> {
   return callRuntimeRpc(target, 'workflow.templateList', { projectIdentity, includeArchived })
+}
+
+type WorkflowRuntimeSettingsResult = {
+  settings: { 'workflows.v2.enabled'?: boolean }
+}
+
+export async function getWorkflowV2FeatureEnabled(target: RuntimeClientTarget): Promise<boolean> {
+  const result = await callRuntimeRpc<WorkflowRuntimeSettingsResult>(target, 'settings.get')
+  return isWorkflowV2FeatureEnabled(result.settings)
+}
+
+export async function setWorkflowV2FeatureEnabled(
+  target: RuntimeClientTarget,
+  enabled: boolean
+): Promise<boolean> {
+  const result = await callRuntimeRpc<WorkflowRuntimeSettingsResult>(target, 'settings.update', {
+    'workflows.v2.enabled': enabled
+  })
+  return isWorkflowV2FeatureEnabled(result.settings)
 }
 
 export function createWorkflowTemplate(

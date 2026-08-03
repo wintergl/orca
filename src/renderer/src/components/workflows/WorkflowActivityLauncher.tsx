@@ -20,19 +20,27 @@ export function WorkflowActivityLauncher({
   templates,
   selectedTemplate,
   workspaceLabel,
+  workflowV2Enabled,
+  enablingWorkflowV2,
   disabled,
   onSelect,
   onConfigure,
+  onEnableWorkflowV2,
   onOpenTemplates
 }: {
   templates: readonly WorkflowTemplateRecord[]
   selectedTemplate: WorkflowTemplateRecord | null
   workspaceLabel: string
+  workflowV2Enabled: boolean | null
+  enablingWorkflowV2: boolean
   disabled: boolean
   onSelect: (templateId: string) => void
   onConfigure: () => void
+  onEnableWorkflowV2: () => void
   onOpenTemplates: () => void
 }): React.JSX.Element {
+  const workflowV2Blocked =
+    selectedTemplate?.definition.schemaVersion === 2 && workflowV2Enabled === false
   return (
     <>
       <div>
@@ -60,8 +68,29 @@ export function WorkflowActivityLauncher({
           </SelectContent>
         </Select>
       </label>
+      {workflowV2Blocked ? (
+        <div role="status" className="space-y-2 rounded-md border border-sidebar-border p-2">
+          <p className="text-[10px] text-muted-foreground">
+            {translate(
+              'workflows.v2.disabledDescription',
+              'This V2 template is view-only until Workflow V2 is enabled on this runtime host.'
+            )}
+          </p>
+          <Button
+            size="xs"
+            variant="outline"
+            className="w-full"
+            disabled={enablingWorkflowV2}
+            onClick={onEnableWorkflowV2}
+          >
+            {enablingWorkflowV2
+              ? translate('workflows.v2.enabling', 'Enabling…')
+              : translate('workflows.v2.enable', 'Enable Workflow V2')}
+          </Button>
+        </div>
+      ) : null}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
-        <Button size="xs" disabled={disabled} onClick={onConfigure}>
+        <Button size="xs" disabled={disabled || workflowV2Blocked} onClick={onConfigure}>
           {translate('workflows.activity.configureRun', 'Configure and run')}
         </Button>
         <Button size="xs" variant="outline" onClick={onOpenTemplates}>

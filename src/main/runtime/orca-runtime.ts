@@ -3162,6 +3162,7 @@ export class OrcaRuntimeService {
     | 'defaultLinearTeamSelection'
     | 'githubProjects'
     | 'experimentalNewWorktreeCardStyle'
+    | 'workflows.v2.enabled'
     | 'compactWorktreeCards'
     | 'minimaxGroupId'
     | 'minimaxUsageModels'
@@ -3185,6 +3186,7 @@ export class OrcaRuntimeService {
       defaultLinearTeamSelection: settings.defaultLinearTeamSelection ?? null,
       githubProjects: settings.githubProjects,
       experimentalNewWorktreeCardStyle: settings.experimentalNewWorktreeCardStyle === true,
+      'workflows.v2.enabled': settings['workflows.v2.enabled'] === true,
       compactWorktreeCards: settings.compactWorktreeCards === true,
       minimaxGroupId: settings.minimaxGroupId ?? '',
       minimaxUsageModels: settings.minimaxUsageModels ?? 'general',
@@ -3207,6 +3209,7 @@ export class OrcaRuntimeService {
       | 'defaultLinearTeamSelection'
       | 'githubProjects'
       | 'experimentalNewWorktreeCardStyle'
+      | 'workflows.v2.enabled'
       | 'compactWorktreeCards'
       | 'minimaxGroupId'
       | 'minimaxUsageModels'
@@ -3227,6 +3230,7 @@ export class OrcaRuntimeService {
     | 'defaultLinearTeamSelection'
     | 'githubProjects'
     | 'experimentalNewWorktreeCardStyle'
+    | 'workflows.v2.enabled'
     | 'compactWorktreeCards'
     | 'minimaxGroupId'
     | 'minimaxUsageModels'

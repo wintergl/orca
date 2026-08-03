@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, Check, Circle, LoaderCircle, Workflow, XCircle } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, History, LoaderCircle, Workflow, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
   WorkflowRunRecord,
@@ -16,7 +16,9 @@ import {
 } from './WorkflowActivityLauncher'
 import {
   createWorkflowRun,
+  getWorkflowV2FeatureEnabled,
   listWorkflowTemplates,
+  setWorkflowV2FeatureEnabled,
   showWorkflowRun,
   workflowTargetForExecutionHost
 } from './workflow-runtime-client'
@@ -41,6 +43,8 @@ export function WorkflowActivityBox(): React.JSX.Element {
   const [templates, setTemplates] = useState<WorkflowTemplateRecord[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [workflowV2Enabled, setWorkflowV2EnabledState] = useState<boolean | null>(null)
+  const [enablingWorkflowV2, setEnablingWorkflowV2] = useState(false)
   const activeRunId = activeRun?.id
   const activeRunStatus = activeRun?.status
   const activeExecutionHostId = activeRun?.executionHostId
@@ -50,12 +54,16 @@ export function WorkflowActivityBox(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
     setLoadingTemplates(true)
-    void listWorkflowTemplates(templateTarget, context?.projectIdentity, false)
-      .then((rows) => {
+    void Promise.all([
+      listWorkflowTemplates(templateTarget, context?.projectIdentity, false),
+      getWorkflowV2FeatureEnabled(templateTarget)
+    ])
+      .then(([rows, v2Enabled]) => {
         if (cancelled) {
           return
         }
         setTemplates(rows)
+        setWorkflowV2EnabledState(v2Enabled)
         if (!selectedTemplateId || !rows.some((template) => template.id === selectedTemplateId)) {
           setWorkflowSelectedTemplate(rows[0] ?? null)
         }
@@ -141,6 +149,19 @@ export function WorkflowActivityBox(): React.JSX.Element {
     }
   }
 
+  const enableWorkflowV2 = async (): Promise<void> => {
+    setEnablingWorkflowV2(true)
+    try {
+      const enabled = await setWorkflowV2FeatureEnabled(templateTarget, true)
+      setWorkflowV2EnabledState(enabled)
+      toast.success(translate('workflows.v2.enabled', 'Workflow V2 enabled on this host'))
+    } catch (error) {
+      showError(error, translate('workflows.v2.enableError', 'Could not enable Workflow V2'))
+    } finally {
+      setEnablingWorkflowV2(false)
+    }
+  }
+
   const openStep = (step: WorkflowStepRunRecord | undefined): void => {
     setWorkflowSelectedStep(step?.id ?? null)
     openPage('runs')
@@ -167,6 +188,10 @@ export function WorkflowActivityBox(): React.JSX.Element {
           ) : (
             <span className="ml-auto" />
           )}
+          <Button size="xs" variant="ghost" onClick={() => openPage('runs')}>
+            <History />
+            {translate('workflows.history.short', 'History')}
+          </Button>
           <Button size="xs" variant="ghost" onClick={() => openPage(defaultPage)}>
             {translate('workflows.activity.openShort', 'Open')}
             <ArrowUpRight />
@@ -217,6 +242,8 @@ export function WorkflowActivityBox(): React.JSX.Element {
                   ? `${context.projectName} · ${context.workspaceName}`
                   : translate('workflows.activity.noWorkspace', 'No project workspace selected')
               }
+              workflowV2Enabled={workflowV2Enabled}
+              enablingWorkflowV2={enablingWorkflowV2}
               disabled={!context || loadingTemplates || !selectedTemplate || busy}
               onSelect={(templateId) =>
                 setWorkflowSelectedTemplate(
@@ -224,6 +251,7 @@ export function WorkflowActivityBox(): React.JSX.Element {
                 )
               }
               onConfigure={() => void configureRun()}
+              onEnableWorkflowV2={() => void enableWorkflowV2()}
               onOpenTemplates={() => openPage('templates')}
             />
           )}

@@ -154,15 +154,21 @@ describe('workflow template RPC', () => {
         scope: 'personal'
       })
     ).rejects.toMatchObject({ code: 'workflow_action_forbidden' })
-    await expect(
-      call('workflow.runCreate', {
-        requestId: 'v2-enabled',
-        templateId: 'builtin.v2.single-agent-end',
-        projectIdentity: 'project-a',
-        workspace: { kind: 'folder-workspace', id: 'worktree-a' },
-        executionHostId: 'local'
-      })
-    ).resolves.toMatchObject({ templateId: 'builtin.v2.single-agent-end' })
+    for (const templateId of [
+      'builtin.v2.single-agent-end',
+      'builtin.v2.agent-decision-loop',
+      'builtin.v2.multi-agent-human'
+    ]) {
+      await expect(
+        call('workflow.runCreate', {
+          requestId: `v2-enabled-${templateId}`,
+          templateId,
+          projectIdentity: 'project-a',
+          workspace: { kind: 'folder-workspace', id: 'worktree-a' },
+          executionHostId: 'local'
+        })
+      ).resolves.toMatchObject({ templateId })
+    }
 
     const unbounded = structuredClone(
       store.showTemplate({
