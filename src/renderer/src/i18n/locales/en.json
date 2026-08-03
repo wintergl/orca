@@ -14509,7 +14509,9 @@
       "selectStep": "Select a step",
       "blankRequiresV2": "Blank workflows require the V2 feature gate. Clone a runnable built-in template instead.",
       "v1ReadOnlyAfterV2": "V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.",
-      "valid": "Workflow definition is valid"
+      "valid": "Workflow definition is valid",
+      "v1Group": "V1 · Stable workflows",
+      "v2Group": "V2 · Free-form workflows"
     },
     "scope": {
       "personal": "Personal",
@@ -14593,7 +14595,9 @@
       "rootRun": "Root Run",
       "anotherRoundNumber": "Another round {{count}}",
       "runPolicy": "Run policy",
-      "promptOverrides": "Prompt overrides"
+      "promptOverrides": "Prompt overrides",
+      "short": "History",
+      "title": "Run history"
     },
     "tab": {
       "title": "Workflows"
@@ -14941,6 +14945,21 @@
       "required": "This prompt boundary is required.",
       "invalidPlaceholders": "This prompt has invalid placeholders.",
       "criteriaRequired": "Include the completion criteria variable."
+    },
+    "settings": {
+      "v2": {
+        "title": "Workflow V2",
+        "description": "Enable generic graph workflows on this runtime host.",
+        "copy": "Allows V2 templates to be created and run on this host. Turn it off to restrict this host to stable V1 workflows.",
+        "toggle": "Toggle Workflow V2"
+      }
+    },
+    "v2": {
+      "enabled": "Workflow V2 enabled on this host",
+      "enableError": "Could not enable Workflow V2",
+      "disabledDescription": "This V2 template is view-only until Workflow V2 is enabled on this runtime host.",
+      "enabling": "Enabling…",
+      "enable": "Enable Workflow V2"
     }
   },
   "common": {

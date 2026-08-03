@@ -14509,7 +14509,9 @@
       "selectStep": "Select a step",
       "blankRequiresV2": "Blank workflows require the V2 feature gate. Clone a runnable built-in template instead.",
       "v1ReadOnlyAfterV2": "V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.",
-      "valid": "Workflow definition is valid"
+      "valid": "Workflow definition is valid",
+      "v1Group": "V1 · 稳定工作流",
+      "v2Group": "V2 · 自由编排工作流"
     },
     "scope": {
       "personal": "个人",
@@ -14593,7 +14595,9 @@
       "rootRun": "Root Run",
       "anotherRoundNumber": "Another round {{count}}",
       "runPolicy": "Run policy",
-      "promptOverrides": "Prompt overrides"
+      "promptOverrides": "Prompt overrides",
+      "short": "历史",
+      "title": "运行历史"
     },
     "tab": {
       "title": "工作流"
@@ -14941,6 +14945,21 @@
       "required": "This prompt boundary is required.",
       "invalidPlaceholders": "This prompt has invalid placeholders.",
       "criteriaRequired": "Include the completion criteria variable."
+    },
+    "settings": {
+      "v2": {
+        "title": "Workflow V2",
+        "description": "在当前运行主机上启用通用图工作流。",
+        "copy": "允许在此主机创建并运行 V2 模板；关闭后仅使用稳定的 V1 工作流。",
+        "toggle": "切换 Workflow V2"
+      }
+    },
+    "v2": {
+      "enabled": "已在此主机启用 Workflow V2",
+      "enableError": "无法启用 Workflow V2",
+      "disabledDescription": "此 V2 模板当前仅可查看；在此运行主机启用 Workflow V2 后可使用。",
+      "enabling": "正在启用…",
+      "enable": "启用 Workflow V2"
     }
   },
   "common": {

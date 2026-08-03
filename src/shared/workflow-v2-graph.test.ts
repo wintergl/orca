@@ -32,7 +32,12 @@ describe('workflow v2 graph', () => {
       resolveWorkflowV2Decision(loop, 'judge', '不完成\nagain', {
         'decision:judge:false': 2
       })
-    ).toEqual({ kind: 'wait-human', stepId: 'human' })
+    ).toEqual({
+      kind: 'wait-human',
+      stepId: 'human',
+      exhaustedRouteId: 'decision:judge:false',
+      exhaustedTargetStepId: 'produce'
+    })
   })
 
   it('routes invalid binary decisions to human', () => {
