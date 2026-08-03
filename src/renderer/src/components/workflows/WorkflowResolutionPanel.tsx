@@ -14,7 +14,7 @@ import { reassignWorkflowStep, resolveWorkflowRun } from './workflow-runtime-cli
 import { useWorkflowRendererState, type WorkflowAssignableAgent } from './workflow-renderer-state'
 import { WorkflowAgentPickerDialog } from './WorkflowAgentPickerDialog'
 import { WorkflowResolutionDialog } from './WorkflowResolutionDialog'
-import { workflowResolutionActionLabel } from './workflow-resolution-action-label'
+import { workflowResolutionOfferLabel } from './workflow-resolution-action-label'
 
 const DIRECT_ACTIONS = new Set<WorkflowResolutionOffer['action']>([
   'approve',
@@ -197,7 +197,7 @@ export function WorkflowResolutionPanel({
             variant={offer.action === primaryAction ? 'default' : 'outline'}
             onClick={() => choose(offer)}
           >
-            {workflowResolutionActionLabel(offer.action)}
+            {workflowResolutionOfferLabel(offer)}
           </Button>
         ))}
       </div>

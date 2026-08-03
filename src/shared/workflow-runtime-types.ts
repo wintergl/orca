@@ -130,6 +130,8 @@ export type WorkflowResolutionOffer = {
   requiresConfirmation: boolean
   requiredPermission: 'workflow-operate' | 'workflow-approve'
   expiresAt: string
+  /** Optional product label (e.g. V2 human route label). Falls back to action label. */
+  displayLabel?: string | null
 }
 
 export type WorkflowRunRecord = {
@@ -139,7 +141,10 @@ export type WorkflowRunRecord = {
   templateId: string
   templateVersion: number
   templateName: string
-  /** V1 execution snapshot. V2 free-form graphs are template-only until the V2 run path is enabled. */
+  /**
+   * Execution snapshot. Typed as V1 for existing call sites; V2 runs cast via
+   * isWorkflowRunSnapshotV2 / requireWorkflowDefinitionV2 at runtime.
+   */
   templateSnapshot: WorkflowDefinitionV1
   ownerIdentity: string
   projectIdentity: string

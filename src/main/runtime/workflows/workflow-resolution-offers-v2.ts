@@ -66,7 +66,8 @@ export function buildWorkflowV2ResolutionOffers(
       requiresReason: route.requiresText,
       requiresConfirmation: route.requiresConfirmation,
       requiredPermission: targetsEnd ? 'workflow-approve' : 'workflow-operate',
-      expiresAt
+      expiresAt,
+      displayLabel: route.label
     }
   })
 }

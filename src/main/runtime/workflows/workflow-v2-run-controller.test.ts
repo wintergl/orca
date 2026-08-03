@@ -115,6 +115,65 @@ afterEach(() => {
 })
 
 describe('Workflow V2 run controller', () => {
+  it('runs blank V2 agent → end template', () => {
+    const store = createStore()
+    const created = store.createTemplate(
+      {
+        name: 'Blank V2 run',
+        scope: 'personal',
+        definition: {
+          schemaVersion: 2,
+          decisionProtocolVersion: 'v2-binary-zh',
+          entryStepId: 'agent-1',
+          roleSlots: [
+            {
+              id: 'agent',
+              label: 'Agent',
+              required: true,
+              minAgents: 1,
+              maxAgents: 1,
+              execution: 'single',
+              allowedAgentStates: ['idle']
+            }
+          ],
+          steps: [
+            {
+              id: 'agent-1',
+              name: 'Agent step',
+              kind: 'agent',
+              roleSlotIds: ['agent'],
+              execution: 'single',
+              prompt: {
+                variants: [
+                  {
+                    when: 'always',
+                    template: '目标：\n{{goal}}\n\n完成条件：\n{{criteria}}'
+                  }
+                ],
+                completionCriteria: 'Done.'
+              },
+              retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'fail-run' },
+              next: { targetStepId: 'end' }
+            },
+            { id: 'end', name: 'Complete', kind: 'end', outcome: 'succeeded' }
+          ]
+        }
+      },
+      mutation('create-blank-template')
+    )
+    const runId = readyV2Run(store, created.id, [['agent-1', 'agent', 'worker']])
+    const started = store.beginRun({ runId, baseline: {} }, mutation('start-blank'))
+    const step = started.steps.find((candidate) => candidate.nodeId === 'agent-1')!
+    completeWorkflowV2AgentStep({
+      store: surface(store),
+      db: store.persistenceDb,
+      run: started,
+      step,
+      finalText: 'blank complete'
+    })
+    expect(store.showRun(runId, 'user-a').status).toBe('completed')
+  })
+
   it('runs single agent → end', () => {
     const store = createStore()
     const template = BUILTIN_WORKFLOW_V2_TEMPLATES[0]!
@@ -246,7 +305,8 @@ describe('Workflow V2 run controller', () => {
     expect(accept).toMatchObject({
       action: 'approve',
       requiresReason: false,
-      requiresConfirmation: true
+      requiresConfirmation: true,
+      displayLabel: '人工通过'
     })
     run = store.resolveRun(
       { runId, offerId: accept!.id, confirmation: true },

@@ -34,6 +34,7 @@ import {
   isBlankWorkflowCreationEnabled
 } from './workflow-template-draft'
 import { WorkflowTemplateManager } from './WorkflowTemplateManager'
+import { WorkflowTemplateV2Editor } from './WorkflowTemplateV2Editor'
 import { WorkflowTemplateVisualEditor } from './WorkflowTemplateVisualEditor'
 
 type EditorDraft = {
@@ -291,17 +292,12 @@ export function WorkflowTemplateWorkspace({
             ) : null}
             <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">
               {draft.definition.schemaVersion === 2 ? (
-                <div className="scrollbar-sleek h-full overflow-auto p-4">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    {translate(
-                      'workflows.templates.v2ReadonlyGraph',
-                      'V2 free-form graph (schemaVersion 2). Visual editing ships with the V2 canvas; definition JSON is shown below.'
-                    )}
-                  </p>
-                  <pre className="rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-                    {JSON.stringify(draft.definition, null, 2)}
-                  </pre>
-                </div>
+                <WorkflowTemplateV2Editor
+                  key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}:v2`}
+                  definition={draft.definition}
+                  readOnly={selected?.scope === 'built-in'}
+                  onChange={(definition) => setDraft({ ...draft, definition })}
+                />
               ) : (
                 <WorkflowTemplateVisualEditor
                   key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}`}

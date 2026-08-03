@@ -1,4 +1,7 @@
-import type { WorkflowResolutionAction } from '../../../../shared/workflow-definition-types'
+import type {
+  WorkflowResolutionAction,
+  WorkflowResolutionOffer
+} from '../../../../shared/workflow-definition-types'
 import { translate } from '@/i18n/i18n'
 
 const FALLBACK_LABELS: Record<WorkflowResolutionAction, string> = {
@@ -17,4 +20,12 @@ const FALLBACK_LABELS: Record<WorkflowResolutionAction, string> = {
 
 export function workflowResolutionActionLabel(action: WorkflowResolutionAction): string {
   return translate(`workflows.resolution.action.${action}`, FALLBACK_LABELS[action])
+}
+
+export function workflowResolutionOfferLabel(offer: WorkflowResolutionOffer): string {
+  const custom = offer.displayLabel?.trim()
+  if (custom) {
+    return custom
+  }
+  return workflowResolutionActionLabel(offer.action)
 }
