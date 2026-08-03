@@ -19,6 +19,8 @@ test('Explorer-opened Markdown accepts the find shortcut without a document clic
   await pressShortcut(orcaPage, 'f')
 
   await expect(
-    orcaPage.getByRole('textbox', { name: 'Find in rich markdown editor' })
+    orcaPage.getByRole('textbox', {
+      name: /Find in rich markdown editor|在 Markdown 编辑器中查找/
+    })
   ).toBeVisible()
 })

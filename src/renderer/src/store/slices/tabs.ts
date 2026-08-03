@@ -668,25 +668,44 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       const nextRecent = shouldActivate
         ? pushRecentTabId(sanitizedRecent, created.id)
         : sanitizedRecent
+      const nextUnifiedTabsByWorktree = {
+        ...state.unifiedTabsByWorktree,
+        [worktreeId]: [...nextTabs, created]
+      }
+      const nextGroupsByWorktree = {
+        ...groupsByWorktree,
+        [worktreeId]: updateGroup(groupsByWorktree[worktreeId] ?? [], {
+          ...group,
+          activeTabId: nextActiveTabId,
+          tabOrder: nextOrder,
+          recentTabIds: nextRecent
+        })
+      }
+      const nextActiveGroupIdByWorktree = shouldActivate
+        ? { ...activeGroupIdByWorktree, [worktreeId]: group.id }
+        : activeGroupIdByWorktree
+      const nextLayoutByWorktree: AppState['layoutByWorktree'] = {
+        ...state.layoutByWorktree,
+        [worktreeId]: state.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
+      }
       return {
-        unifiedTabsByWorktree: {
-          ...state.unifiedTabsByWorktree,
-          [worktreeId]: [...nextTabs, created]
-        },
-        groupsByWorktree: {
-          ...groupsByWorktree,
-          [worktreeId]: updateGroup(groupsByWorktree[worktreeId] ?? [], {
-            ...group,
-            activeTabId: nextActiveTabId,
-            tabOrder: nextOrder,
-            recentTabIds: nextRecent
-          })
-        },
-        activeGroupIdByWorktree,
-        layoutByWorktree: {
-          ...state.layoutByWorktree,
-          [worktreeId]: state.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
-        }
+        unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+        groupsByWorktree: nextGroupsByWorktree,
+        activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+        layoutByWorktree: nextLayoutByWorktree,
+        ...(shouldActivate && state.activeWorktreeId === worktreeId
+          ? buildActiveSurfacePatch(
+              {
+                ...state,
+                unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+                groupsByWorktree: nextGroupsByWorktree,
+                activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+                layoutByWorktree: nextLayoutByWorktree
+              },
+              worktreeId,
+              group.id
+            )
+          : {})
       }
     })
     if (init?.recordInteraction !== false) {
@@ -843,35 +862,50 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
               return copy
             })()
           : state.unreadTerminalTabs
+      const nextUnifiedTabsByWorktree = opts?.preservePreview
+        ? state.unifiedTabsByWorktree
+        : {
+            ...state.unifiedTabsByWorktree,
+            [worktreeId]: (state.unifiedTabsByWorktree[worktreeId] ?? []).map((item) =>
+              item.id === tabId ? { ...item, isPreview: false } : item
+            )
+          }
+      const nextGroupsByWorktree = {
+        ...state.groupsByWorktree,
+        [worktreeId]: (state.groupsByWorktree[worktreeId] ?? []).map((group) =>
+          group.id === tab.groupId
+            ? {
+                ...group,
+                activeTabId: tabId,
+                // Why: track every activation in the group's MRU so closeUnifiedTab returns to the previous tab; sanitize to prune removed ids.
+                recentTabIds: pushRecentTabId(
+                  sanitizeRecentTabIds(group.recentTabIds, group.tabOrder),
+                  tabId
+                )
+              }
+            : group
+        )
+      }
+      const nextActiveGroupIdByWorktree = {
+        ...state.activeGroupIdByWorktree,
+        [worktreeId]: tab.groupId
+      }
       return {
-        unifiedTabsByWorktree: opts?.preservePreview
-          ? state.unifiedTabsByWorktree
-          : {
-              ...state.unifiedTabsByWorktree,
-              [worktreeId]: (state.unifiedTabsByWorktree[worktreeId] ?? []).map((item) =>
-                item.id === tabId ? { ...item, isPreview: false } : item
-              )
-            },
-        groupsByWorktree: {
-          ...state.groupsByWorktree,
-          [worktreeId]: (state.groupsByWorktree[worktreeId] ?? []).map((group) =>
-            group.id === tab.groupId
-              ? {
-                  ...group,
-                  activeTabId: tabId,
-                  // Why: track every activation in the group's MRU so closeUnifiedTab returns to the previous tab; sanitize to prune removed ids.
-                  recentTabIds: pushRecentTabId(
-                    sanitizeRecentTabIds(group.recentTabIds, group.tabOrder),
-                    tabId
-                  )
-                }
-              : group
-          )
-        },
-        activeGroupIdByWorktree: {
-          ...state.activeGroupIdByWorktree,
-          [worktreeId]: tab.groupId
-        },
+        unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+        groupsByWorktree: nextGroupsByWorktree,
+        activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+        ...(state.activeWorktreeId === worktreeId
+          ? buildActiveSurfacePatch(
+              {
+                ...state,
+                unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+                groupsByWorktree: nextGroupsByWorktree,
+                activeGroupIdByWorktree: nextActiveGroupIdByWorktree
+              },
+              worktreeId,
+              tab.groupId
+            )
+          : {}),
         // Why: skip writing unreadTerminalTabs when the reference is unchanged, avoiding a no-op alloc that re-runs full-state selectors.
         ...(nextUnreadTerminalTabs !== state.unreadTerminalTabs
           ? { unreadTerminalTabs: nextUnreadTerminalTabs }

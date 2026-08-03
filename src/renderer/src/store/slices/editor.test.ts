@@ -62,6 +62,8 @@ function createEditorTabsStore(): StoreApi<AppState> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createStore<any>()((...args: any[]) => ({
     activeWorktreeId: 'wt-1',
+    activeTabId: null,
+    activeTabIdByWorktree: {},
     tabsByWorktree: {},
     browserTabsByWorktree: {},
     activeBrowserTabId: null,

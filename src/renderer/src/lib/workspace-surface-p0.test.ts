@@ -194,6 +194,50 @@ describe('P0 workspace surface activation (R5–R8)', () => {
     expect(store.getState().workflowTabOpen).toBe(true)
   })
 
+  it('R5: activateTab from Workflows restores the editor surface identity', () => {
+    const store = createSurfaceStore('git-worktree', 'wt-1')
+    bindSetActiveView(store)
+    store.setState({ activeView: 'terminal' })
+    store.getState().createUnifiedTab('wt-1', 'terminal', {
+      id: 'term-1',
+      activate: true
+    })
+    store.setState({
+      openFiles: [
+        {
+          id: '/repo/AGENTS.md',
+          filePath: '/repo/AGENTS.md',
+          relativePath: 'AGENTS.md',
+          worktreeId: 'wt-1',
+          language: 'markdown',
+          isDirty: false,
+          mode: 'edit'
+        }
+      ]
+    })
+    const editor = store.getState().createUnifiedTab('wt-1', 'editor', {
+      entityId: '/repo/AGENTS.md',
+      label: 'AGENTS.md',
+      activate: false
+    })
+    store.setState({
+      activeView: 'workflows',
+      activeFileId: null,
+      activeFileIdByWorktree: { 'wt-1': null },
+      activeTabType: 'terminal',
+      activeTabTypeByWorktree: { 'wt-1': 'terminal' }
+    })
+
+    store.getState().activateTab(editor.id, { preservePreview: true })
+
+    expect(store.getState().activeView).toBe('terminal')
+    expect(store.getState().groupsByWorktree['wt-1']?.[0]?.activeTabId).toBe(editor.id)
+    expect(store.getState().activeFileId).toBe('/repo/AGENTS.md')
+    expect(store.getState().activeFileIdByWorktree['wt-1']).toBe('/repo/AGENTS.md')
+    expect(store.getState().activeTabType).toBe('editor')
+    expect(store.getState().activeTabTypeByWorktree['wt-1']).toBe('editor')
+  })
+
   it('R7: workflows overlay keeps light tab hide (no suspendRendering)', () => {
     const suspendRendering = vi.fn()
     const result = hideTerminalVisibility({
