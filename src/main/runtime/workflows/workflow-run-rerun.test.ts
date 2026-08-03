@@ -39,6 +39,67 @@ function mutation(requestId: string) {
 }
 
 describe('workflow run rerun lineage', () => {
+  it('persists versioned run policy and prompt overrides with optimistic concurrency', () => {
+    const store = createStore()
+    const template = BUILTIN_WORKFLOW_TEMPLATES[0]!
+    const run = store.createRun(
+      {
+        templateId: template.id,
+        projectIdentity: 'project-a',
+        workspace: { kind: 'folder-workspace', id: 'folder-1' },
+        executionHostId: 'local'
+      },
+      mutation('create-configurable')
+    )
+    if (run.templateSnapshot.schemaVersion !== 1) {
+      throw new Error('expected V1 fixture')
+    }
+    const reviewId = run.templateSnapshot.nodes.find((node) => node.type === 'review')!.id
+    const produceId = run.templateSnapshot.entryNodeId
+    const configured = store.updateRunConfiguration(
+      {
+        runId: run.id,
+        expectedVersion: run.version,
+        objective: 'Configured objective',
+        policyOverrides: {
+          policyVersion: 'v1-review-rounds',
+          maxReviewRoundsByNodeId: { [reviewId]: 2 }
+        },
+        promptOverrides: { [produceId]: { firstVisit: 'Run-only prompt' } }
+      },
+      mutation('configure-run')
+    )
+    expect(configured).toMatchObject({
+      objective: 'Configured objective',
+      policyOverrides: {
+        policyVersion: 'v1-review-rounds',
+        maxReviewRoundsByNodeId: { [reviewId]: 2 }
+      },
+      promptOverrides: { [produceId]: { firstVisit: 'Run-only prompt' } }
+    })
+    expect(() =>
+      store.updateRunConfiguration(
+        {
+          runId: run.id,
+          expectedVersion: run.version,
+          objective: 'Stale',
+          policyOverrides: null,
+          promptOverrides: null
+        },
+        mutation('stale-configure')
+      )
+    ).toThrow(/changed/)
+    const summary = store
+      .listRuns({ projectIdentity: 'project-a' }, 'user-a')
+      .find((row) => row.id === run.id)
+    expect(summary).toMatchObject({
+      policyOverrideVersion: 'v1-review-rounds',
+      promptOverrideNodeIds: [produceId]
+    })
+    expect(summary?.businessBudgetSummary).toContain(`${reviewId}: 0/2`)
+    expect(summary?.businessBudgetSummary).toContain('override 2')
+  })
+
   it('creates an idempotent child draft from a completed parent with lineage', () => {
     const store = createStore()
     const template = BUILTIN_WORKFLOW_TEMPLATES[0]!
@@ -57,6 +118,9 @@ describe('workflow run rerun lineage', () => {
       )
       .run(parent.id)
     parent = store.showRun(parent.id, 'user-a')
+    if (parent.templateSnapshot.schemaVersion !== 1) {
+      throw new Error('expected V1 fixture')
+    }
     expect(parent.rootRunId).toBe(parent.id)
     expect(parent.parentRunId).toBeNull()
 

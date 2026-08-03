@@ -13,6 +13,10 @@ import type {
   WorkflowTemplateSnapshot,
   WorkflowWorkspaceRef
 } from '../../../../shared/workflow-definition-types'
+import type {
+  WorkflowRunPolicyOverrides,
+  WorkflowRunPromptOverrides
+} from '../../../../shared/workflow-run-lineage'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
@@ -105,11 +109,8 @@ export function createWorkflowRunRerun(
     rerunReason?: string | null
     noAdditionalRequirements?: boolean
     objective?: string
-    policyOverrides?: {
-      policyVersion: 'v1-review-rounds'
-      maxReviewRoundsByNodeId: Record<string, number>
-    } | null
-    promptOverrides?: Record<string, { firstVisit?: string; repeatVisit?: string }> | null
+    policyOverrides?: WorkflowRunPolicyOverrides | null
+    promptOverrides?: WorkflowRunPromptOverrides | null
     copyAssignments?: boolean
   }
 ): Promise<WorkflowRunRecord> {
@@ -129,15 +130,20 @@ export function assignWorkflowAgent(
   return callRuntimeRpc(target, 'workflow.runAssign', { requestId: requestId(), ...input })
 }
 
-export function updateWorkflowRunObjective(
+export function updateWorkflowRunConfiguration(
   target: RuntimeClientTarget,
-  runId: string,
-  objective: string
+  run: WorkflowRunRecord,
+  input: {
+    objective: string
+    policyOverrides: WorkflowRunPolicyOverrides | null
+    promptOverrides: WorkflowRunPromptOverrides | null
+  }
 ): Promise<WorkflowRunRecord> {
   return callRuntimeRpc(target, 'workflow.runUpdate', {
     requestId: requestId(),
-    runId,
-    objective
+    runId: run.id,
+    expectedVersion: run.version,
+    ...input
   })
 }
 
@@ -240,7 +246,12 @@ export function resolveWorkflowRun(
   target: RuntimeClientTarget,
   runId: string,
   offer: WorkflowResolutionOffer,
-  input: { reason?: string; reviewRoundBudget?: number; confirmation: boolean }
+  input: {
+    reason?: string
+    reviewRoundBudget?: number
+    routeTraversalBudget?: number
+    confirmation: boolean
+  }
 ): Promise<WorkflowRunRecord> {
   return callRuntimeRpc(target, 'workflow.runResolve', {
     requestId: requestId(),

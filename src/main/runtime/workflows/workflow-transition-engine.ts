@@ -23,6 +23,7 @@ import {
   workflowResolutionContext,
   WORKFLOW_DECISION_RULE_VERSION
 } from './workflow-transition-application'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export { WORKFLOW_DECISION_RULE_VERSION } from './workflow-transition-application'
 
@@ -33,7 +34,8 @@ export function advanceProduceTransition(
   artifact: WorkflowArtifactRevision
 ): WorkflowStepRunRecord[] {
   const transition = requiredWorkflowTransition(run, step.nodeId, 'step:succeeded')
-  const review = run.templateSnapshot.nodes.find(
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 produce advance')
+  const review = definition.nodes.find(
     (node) => node.id === transition.to && node.type === 'review'
   )
   if (review?.type !== 'review') {
@@ -236,7 +238,8 @@ export function applyHumanReviewDecision(
       .run(JSON.stringify(extensions), run.id)
     run = { ...run, reviewRoundExtensionsByNodeId: extensions }
   } else if (action === 'revise') {
-    const review = run.templateSnapshot.nodes.find(
+    const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 human review')
+    const review = definition.nodes.find(
       (node) => node.id === context.reviewNodeId && node.type === 'review'
     )
     if (review?.type !== 'review') {

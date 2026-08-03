@@ -13,6 +13,8 @@ import {
   type WorkflowAgentUnavailableReason
 } from './workflow-agent-assignment-availability'
 import { preflightCheck } from './workflow-preflight-check'
+import { validateWorkflowPromptBoundaries } from '../../../shared/workflow-prompt-boundary-validation'
+import { validateWorkflowV2Graph } from '../../../shared/workflow-v2-graph-validation'
 
 export function buildWorkflowV2PreflightChecks(
   run: WorkflowRunRecord,
@@ -21,6 +23,7 @@ export function buildWorkflowV2PreflightChecks(
     capabilityAvailable: boolean
     unavailableAgentLifecycleIds: string[]
     unavailableAgentReasons?: Record<string, WorkflowAgentUnavailableReason>
+    promptHistoryIssues?: string[]
   }
 ): WorkflowPreflightCheck[] {
   // Runtime may store V2 JSON while WorkflowRunRecord still types snapshot as V1.
@@ -66,6 +69,15 @@ export function buildWorkflowV2PreflightChecks(
   })
   const hasExit = Boolean(definition?.steps.some((step) => step.kind === 'end'))
   const protocolOk = definition?.decisionProtocolVersion === WORKFLOW_DECISION_PROTOCOL_VERSION_V2
+  const promptIssues = definition ? validateWorkflowPromptBoundaries(definition) : []
+  const graphIssues = definition
+    ? validateWorkflowV2Graph(
+        definition,
+        run.policyOverrides?.policyVersion === 'v2-route-traversals'
+          ? run.policyOverrides.maxTraversalsByRouteId
+          : {}
+      )
+    : ['Invalid V2 snapshot']
   return [
     preflightCheck(
       'required-slots',
@@ -109,7 +121,12 @@ export function buildWorkflowV2PreflightChecks(
         : 'Assigned Agents are idle and reachable',
       'Wait until the listed Agent is idle, or reassign it'
     ),
-    preflightCheck('review-bounds', true, 'V2 route traversal budgets are template-scoped', null),
+    preflightCheck(
+      'review-bounds',
+      graphIssues.length === 0,
+      graphIssues.length ? graphIssues.join('; ') : 'Every reachable V2 loop is bounded',
+      'Add a traversal budget to at least one route in every loop'
+    ),
     preflightCheck(
       'workflow-exit',
       hasExit,
@@ -131,6 +148,28 @@ export function buildWorkflowV2PreflightChecks(
         ? 'Decision protocol constraints match V2 binary 完成/不完成'
         : 'V2 templates require decisionProtocolVersion v2-binary-zh',
       'Set decisionProtocolVersion to v2-binary-zh'
+    ),
+    preflightCheck(
+      'prompt-boundaries',
+      promptIssues.length === 0,
+      promptIssues.length
+        ? promptIssues.map((issue) => `${issue.nodeId}: ${issue.message}`).join('; ')
+        : 'First-visit and repeat-visit prompt boundaries are valid',
+      'Fix the listed prompt boundary or explicitly declare that repeat visits do not read history'
+    ),
+    preflightCheck(
+      'graph-routes',
+      graphIssues.length === 0,
+      graphIssues.length ? graphIssues.join('; ') : 'Route targets and exits are reachable',
+      'Repair unreachable exits, invalid targets, or unbounded loops'
+    ),
+    preflightCheck(
+      'prompt-history',
+      (context.promptHistoryIssues?.length ?? 0) === 0,
+      context.promptHistoryIssues?.length
+        ? context.promptHistoryIssues.join('; ')
+        : 'Required prompt history is available',
+      'Choose an available cycle and stable step ID, or remove the reference'
     )
   ]
 }

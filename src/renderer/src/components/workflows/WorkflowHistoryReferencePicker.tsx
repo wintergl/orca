@@ -51,6 +51,28 @@ export function WorkflowHistoryReferencePicker({
           )}
         </p>
       </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={readOnly}
+          onClick={() => onInsert(workflowPromptHistoryToken(-1, node.id))}
+        >
+          {translate('workflows.prompt.previousSameNode', 'Previous result from this node')}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={readOnly}
+          onClick={() =>
+            onInsert(workflowPromptHistoryToken(-1, suggestedHistoryNodeId(definition, node)))
+          }
+        >
+          {translate('workflows.prompt.previousUpstreamNode', 'Previous upstream result')}
+        </Button>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         <HistorySelect
           label={translate('workflows.prompt.historyRound', 'Round')}

@@ -77,7 +77,8 @@ const promptRulesSchema = z
       )
       .min(1)
       .max(3),
-    completionCriteria: z.string().trim().min(1).max(4_000)
+    completionCriteria: z.string().trim().min(1).max(4_000),
+    repeatVisitHistoryMode: z.enum(['required', 'not-required']).optional()
   })
   .strict()
   .superRefine((prompt, context) => {

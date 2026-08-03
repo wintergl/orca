@@ -9,6 +9,7 @@ import type {
 import { parseWorkflowDefinitionV1 } from '../../../../shared/workflow-definition-schema'
 import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
 import { isWorkflowV2FeatureEnabled } from '../../../../shared/workflow-feature-gates'
+import { validateWorkflowPromptBoundaries } from '../../../../shared/workflow-prompt-boundary-validation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { useAppStore } from '@/store'
 import { Badge } from '@/components/ui/badge'
@@ -67,6 +68,9 @@ export function WorkflowTemplateWorkspace({
       state.settings as { 'workflows.v2.enabled'?: boolean } | null | undefined
     )
   )
+  const draftReadOnly =
+    selected?.scope === 'built-in' ||
+    Boolean(workflowV2Enabled && draft?.definition.schemaVersion === 1)
 
   useEffect(() => {
     if (selected) {
@@ -109,6 +113,10 @@ export function WorkflowTemplateWorkspace({
         parseWorkflowDefinitionV2(draft.definition)
       } else {
         parseWorkflowDefinitionV1(draft.definition)
+      }
+      const promptIssues = validateWorkflowPromptBoundaries(draft.definition)
+      if (promptIssues.length) {
+        throw new Error(promptIssues.map((issue) => `${issue.nodeId}: ${issue.message}`).join('; '))
       }
     } catch (error) {
       toast.error(
@@ -155,6 +163,15 @@ export function WorkflowTemplateWorkspace({
   }
 
   const copyTemplate = async (template: WorkflowTemplateRecord): Promise<void> => {
+    if (workflowV2Enabled && template.definition.schemaVersion === 1) {
+      toast.info(
+        translate(
+          'workflows.templates.v1ReadOnlyAfterV2',
+          'V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.'
+        )
+      )
+      return
+    }
     try {
       const copied = await cloneWorkflowTemplate(target, {
         sourceTemplateId: template.id,
@@ -258,18 +275,50 @@ export function WorkflowTemplateWorkspace({
             size="sm"
             variant="outline"
             aria-label={translate('workflows.templates.validate', 'Validate')}
+            disabled={!draft}
+            onClick={() => {
+              if (!draft) {
+                return
+              }
+              try {
+                if (draft.definition.schemaVersion === 2) {
+                  parseWorkflowDefinitionV2(draft.definition)
+                } else {
+                  parseWorkflowDefinitionV1(draft.definition)
+                }
+                const issues = validateWorkflowPromptBoundaries(draft.definition)
+                if (issues.length) {
+                  throw new Error(
+                    issues.map((issue) => `${issue.nodeId}: ${issue.message}`).join('; ')
+                  )
+                }
+                toast.success(
+                  translate('workflows.templates.valid', 'Workflow definition is valid')
+                )
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : translate(
+                        'workflows.templates.invalidDefinition',
+                        'Workflow definition is invalid'
+                      )
+                )
+              }
+            }}
           >
             <ShieldCheck />
             <span className="hidden xl:inline">
               {translate('workflows.templates.validate', 'Validate')}
             </span>
           </Button>
-          {selected?.scope === 'built-in' ? (
+          {selected?.scope === 'built-in' &&
+          !(workflowV2Enabled && selected.definition.schemaVersion === 1) ? (
             <Button size="sm" onClick={() => void copyTemplate(selected)}>
               {translate('workflows.templates.copyToEdit', 'Copy to edit')}
             </Button>
           ) : null}
-          {draft && (selected?.scope !== 'built-in' || draft.kind === 'new') ? (
+          {draft && !draftReadOnly ? (
             <Button size="sm" disabled={saving} onClick={() => void save()}>
               <Save />
               {saving
@@ -282,11 +331,11 @@ export function WorkflowTemplateWorkspace({
       <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         {draft ? (
           <>
-            {selected?.scope === 'built-in' ? (
+            {draftReadOnly ? (
               <div className="shrink-0 border-b border-border bg-muted/25 px-4 py-2 text-xs text-muted-foreground">
                 {translate(
                   'workflows.templates.builtinReadOnly',
-                  'This built-in template is read-only. Copy it to make your own version.'
+                  'This template is read-only under the current workflow schema policy.'
                 )}
               </div>
             ) : null}
@@ -295,14 +344,14 @@ export function WorkflowTemplateWorkspace({
                 <WorkflowTemplateV2Editor
                   key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}:v2`}
                   definition={draft.definition}
-                  readOnly={selected?.scope === 'built-in'}
+                  readOnly={draftReadOnly}
                   onChange={(definition) => setDraft({ ...draft, definition })}
                 />
               ) : (
                 <WorkflowTemplateVisualEditor
                   key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}`}
                   definition={draft.definition}
-                  readOnly={selected?.scope === 'built-in'}
+                  readOnly={draftReadOnly}
                   onChange={(definition) => setDraft({ ...draft, definition })}
                 />
               )}

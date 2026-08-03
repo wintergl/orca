@@ -13,6 +13,7 @@ import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { workflowRecordId } from './workflow-runtime-records'
 import type { WorkflowStore } from './workflow-store'
 import { tryConsumeV2RetryOutbox } from './workflow-completion-retry-outbox-v2'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 /** Hosts that expose a Workflow DB without a private `db` field clash. */
 export type WorkflowMutationHost = {
@@ -76,7 +77,8 @@ export function consumeWorkflowRetryOutboxInTransaction(
   if (v2Retry !== undefined) {
     return v2Retry
   }
-  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === failed.nodeId)
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 retry outbox')
+  const node = definition.nodes.find((candidate) => candidate.id === failed.nodeId)
   if (!node || (node.type !== 'decide' && node.type !== 'review')) {
     db.prepare(
       `UPDATE workflow_completion_reconciliations
@@ -209,7 +211,8 @@ export function retryWorkflowStepWithDuplicateRiskInTransaction(
        WHERE run_id = ? AND step_run_id = ? AND attempt = ? AND state != 'settled'`
     )
     .run(run.id, step.id, step.attempt)
-  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === step.nodeId)
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 duplicate-risk retry')
+  const node = definition.nodes.find((candidate) => candidate.id === step.nodeId)
   if (!node) {
     throw new WorkflowError('workflow_transition_invalid', 'Retry node is unavailable.')
   }

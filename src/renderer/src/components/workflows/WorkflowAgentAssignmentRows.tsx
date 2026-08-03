@@ -2,10 +2,14 @@ import { useMemo } from 'react'
 import { ArrowRight, Bot, Plus, X } from 'lucide-react'
 import type {
   WorkflowAgentAssignment,
-  WorkflowNodeDefinitionV1,
-  WorkflowRoleSlot,
   WorkflowRunRecord
 } from '../../../../shared/workflow-definition-types'
+import {
+  workflowAssignableUnits,
+  workflowRoleSlots,
+  type WorkflowAssignableUnit,
+  type WorkflowRoleSlotView
+} from '../../../../shared/workflow-definition-access'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import type { WorkflowAssignableAgent } from './workflow-renderer-state'
@@ -47,7 +51,9 @@ export function WorkflowAgentAssignmentRows({
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-sm font-medium">{node.name}</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">{runNodeSummary(node)}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {runNodeSummary(run, node.id)}
+                </p>
               </div>
             </div>
             <div className="space-y-2">
@@ -74,7 +80,13 @@ export function WorkflowAgentAssignmentRows({
           </section>
         ))}
       </div>
-      <WorkflowSequence nodes={run.templateSnapshot.nodes} />
+      <WorkflowSequence
+        nodes={
+          run.templateSnapshot.schemaVersion === 1
+            ? run.templateSnapshot.nodes
+            : run.templateSnapshot.steps
+        }
+      />
     </div>
   )
 }
@@ -88,7 +100,7 @@ function AssignmentSlotRow({
   onUnassign
 }: {
   target: WorkflowAssignmentTarget
-  slot: WorkflowRoleSlot
+  slot: WorkflowRoleSlotView
   assignments: readonly WorkflowAgentAssignment[]
   onChoose: (target: WorkflowAssignmentTarget) => void
   onAssign: (target: WorkflowAssignmentTarget, agent: WorkflowAssignableAgent) => void
@@ -180,7 +192,7 @@ function AssignmentSlotRow({
 function WorkflowSequence({
   nodes
 }: {
-  nodes: readonly WorkflowNodeDefinitionV1[]
+  nodes: readonly { id: string; name: string }[]
 }): React.JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-muted/20 px-4 py-2.5 text-[11px] text-muted-foreground">
@@ -195,12 +207,12 @@ function WorkflowSequence({
 }
 
 function buildAssignmentRows(run: WorkflowRunRecord): {
-  assignableNodes: { node: WorkflowNodeDefinitionV1; workflowIndex: number }[]
+  assignableNodes: { node: WorkflowAssignableUnit; workflowIndex: number }[]
   assignmentsByTarget: Map<string, WorkflowAgentAssignment[]>
-  slotsById: Map<string, WorkflowRoleSlot>
+  slotsById: Map<string, WorkflowRoleSlotView>
 } {
-  const assignableNodes = run.templateSnapshot.nodes.flatMap((node, workflowIndex) =>
-    node.roleSlotIds.length ? [{ node, workflowIndex }] : []
+  const assignableNodes = workflowAssignableUnits(run.templateSnapshot).flatMap(
+    (node, workflowIndex) => (node.roleSlotIds.length ? [{ node, workflowIndex }] : [])
   )
   const assignmentsByTarget = new Map<string, WorkflowAgentAssignment[]>()
   for (const assignment of run.assignments) {
@@ -215,7 +227,7 @@ function buildAssignmentRows(run: WorkflowRunRecord): {
   return {
     assignableNodes,
     assignmentsByTarget,
-    slotsById: new Map(run.templateSnapshot.roleSlots.map((slot) => [slot.id, slot]))
+    slotsById: new Map(workflowRoleSlots(run.templateSnapshot).map((slot) => [slot.id, slot]))
   }
 }
 
@@ -223,8 +235,15 @@ function targetKey(target: WorkflowAssignmentTarget): string {
   return `${target.nodeId}\u0000${target.slotId}`
 }
 
-function runNodeSummary(node: WorkflowNodeDefinitionV1): string {
-  switch (node.type) {
+function runNodeSummary(run: WorkflowRunRecord, nodeId: string): string {
+  if (run.templateSnapshot.schemaVersion === 2) {
+    const step = run.templateSnapshot.steps.find((candidate) => candidate.id === nodeId)
+    return step?.kind === 'decision'
+      ? translate('workflows.application.decideNext', 'Decide the next step')
+      : translate('workflows.application.agentStep', 'Complete an Agent step')
+  }
+  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === nodeId)
+  switch (node?.type) {
     case 'produce':
       return node.artifactKind === 'spec'
         ? translate('workflows.application.produceSpec', 'Create a SPEC document')
@@ -237,11 +256,14 @@ function runNodeSummary(node: WorkflowNodeDefinitionV1): string {
       return translate('workflows.application.waitHuman', 'Wait for human confirmation')
     case 'complete':
       return translate('workflows.application.completeRun', 'Complete the workflow')
+    case undefined:
+      return translate('workflows.application.agentStep', 'Complete an Agent step')
   }
 }
 
-function roleExecutionLabel(execution: WorkflowRoleSlot['execution']): string {
+function roleExecutionLabel(execution: WorkflowRoleSlotView['execution']): string {
   switch (execution) {
+    case undefined:
     case 'single':
       return translate('workflows.visual.single', 'One Agent')
     case 'parallel':

@@ -11,6 +11,10 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
+import {
+  workflowAssignableUnits,
+  workflowRoleSlots
+} from '../../../../shared/workflow-definition-access'
 
 export function WorkflowActivityLauncher({
   templates,
@@ -78,12 +82,13 @@ export function WorkflowRunConfigurationSummary({
   const assignedRoles = new Set(
     run.assignments.map((assignment) => `${assignment.nodeId}:${assignment.slotId}`)
   ).size
-  const requiredRoles = run.templateSnapshot.nodes.reduce(
-    (total, node) =>
-      total +
-      node.roleSlotIds.filter((slotId) =>
-        run.templateSnapshot.roleSlots.some((slot) => slot.id === slotId && slot.required)
-      ).length,
+  const requiredSlots = new Set(
+    workflowRoleSlots(run.templateSnapshot)
+      .filter((slot) => slot.required)
+      .map((slot) => slot.id)
+  )
+  const requiredRoles = workflowAssignableUnits(run.templateSnapshot).reduce(
+    (total, node) => total + node.roleSlotIds.filter((slotId) => requiredSlots.has(slotId)).length,
     0
   )
   return (

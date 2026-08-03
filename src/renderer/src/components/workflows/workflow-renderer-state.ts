@@ -37,7 +37,7 @@ export type WorkflowRendererSnapshot = {
 }
 
 const EMPTY_SNAPSHOT: WorkflowRendererSnapshot = {
-  page: 'templates',
+  page: initialWorkflowPage(),
   selectedTemplate: null,
   activeRun: null,
   preflight: null,
@@ -61,6 +61,11 @@ export function setWorkflowSelectedTemplate(template: WorkflowTemplateRecord | n
 }
 
 export function setWorkflowPage(page: WorkflowPage): void {
+  try {
+    window.localStorage.setItem('orca.workflow-page.v1', page)
+  } catch {
+    // Navigation persistence is best effort.
+  }
   update({ page })
 }
 
@@ -138,4 +143,13 @@ function sameAgents(
       agent.runtimeAgent === right[index]?.runtimeAgent &&
       agent.currentTask === right[index]?.currentTask
   )
+}
+
+function initialWorkflowPage(): WorkflowPage {
+  try {
+    const value = window.localStorage.getItem('orca.workflow-page.v1')
+    return value === 'application' || value === 'runs' ? value : 'templates'
+  } catch {
+    return 'templates'
+  }
 }

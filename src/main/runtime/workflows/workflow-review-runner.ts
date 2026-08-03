@@ -13,6 +13,7 @@ import { WorkflowError } from './workflow-error'
 import type { WorkflowStore } from './workflow-store'
 import { workspaceGuardDigest, type WorkflowWorkspaceBaseline } from './workflow-workspace-snapshot'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export async function monitorWorkflowReviewSteps(params: {
   runtime: OrcaRuntimeService
@@ -22,7 +23,8 @@ export async function monitorWorkflowReviewSteps(params: {
   steps: WorkflowStepRunRecord[]
   failStep: (step: WorkflowStepRunRecord, error: unknown) => void
 }): Promise<void> {
-  const currentNode = params.run.templateSnapshot.nodes.find(
+  const definition = requireWorkflowDefinitionV1(params.run.templateSnapshot, 'V1 review monitor')
+  const currentNode = definition.nodes.find(
     (candidate) => candidate.id === params.run.currentNodeId
   )
   const timeoutMs = currentNode?.type === 'review' ? currentNode.reviewPolicy.timeoutMs : null

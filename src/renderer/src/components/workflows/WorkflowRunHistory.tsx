@@ -8,9 +8,7 @@ import type {
   WorkflowRunSummary
 } from '../../../../shared/workflow-definition-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
-import { Badge } from '@/components/ui/badge'
 import { translate } from '@/i18n/i18n'
-import { cn } from '@/lib/utils'
 import { listWorkflowRuns, showWorkflowRun } from './workflow-runtime-client'
 import type { WorkflowWorkspaceContext } from './use-workflow-workspace-context'
 import { WorkflowRunDetail } from './WorkflowRunDetail'
@@ -18,6 +16,11 @@ import {
   WorkflowRunHistoryFilters,
   type WorkflowHistoryTemplateOption
 } from './WorkflowRunHistoryFilters'
+import {
+  readWorkflowHistoryPreferences,
+  writeWorkflowHistoryPreferences
+} from './workflow-history-preferences'
+import { WorkflowRunHistoryList } from './WorkflowRunHistoryList'
 
 type HistoryScope = 'workspace' | 'project'
 type HistoryStatus = 'all' | WorkflowRunStatus
@@ -37,12 +40,13 @@ export function WorkflowRunHistory({
   onRunUpdated: (run: WorkflowRunRecord) => void
   onBackToSetup: () => void
 }): React.JSX.Element {
-  const [scope, setScope] = useState<HistoryScope>('project')
-  const [status, setStatus] = useState<HistoryStatus>('all')
-  const [templateId, setTemplateId] = useState('all')
-  const [createdFrom, setCreatedFrom] = useState('')
-  const [createdTo, setCreatedTo] = useState('')
-  const [query, setQuery] = useState('')
+  const [preferences] = useState(readWorkflowHistoryPreferences)
+  const [scope, setScope] = useState<HistoryScope>(preferences.scope)
+  const [status, setStatus] = useState<HistoryStatus>(preferences.status)
+  const [templateId, setTemplateId] = useState(preferences.templateId)
+  const [createdFrom, setCreatedFrom] = useState(preferences.createdFrom)
+  const [createdTo, setCreatedTo] = useState(preferences.createdTo)
+  const [query, setQuery] = useState(preferences.query)
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([])
   const [templateOptions, setTemplateOptions] = useState<WorkflowHistoryTemplateOption[]>([])
   const [selectedRun, setSelectedRun] = useState<WorkflowRunRecord | null>(activeRun)
@@ -65,6 +69,10 @@ export function WorkflowRunHistory({
   )
   const requestKey = JSON.stringify({ target, baseFilter, templateId })
   const loading = loadedRequestKey !== requestKey
+
+  useEffect(() => {
+    writeWorkflowHistoryPreferences({ scope, status, templateId, createdFrom, createdTo, query })
+  }, [createdFrom, createdTo, query, scope, status, templateId])
 
   useEffect(() => {
     let cancelled = false
@@ -194,39 +202,11 @@ export function WorkflowRunHistory({
               {translate('workflows.history.empty', 'No matching Workflow runs.')}
             </p>
           ) : (
-            visibleRuns.map((run) => (
-              <button
-                type="button"
-                key={run.id}
-                data-current={selectedRun?.id === run.id}
-                className={cn(
-                  'w-full rounded-md px-2 py-2 text-left hover:bg-accent',
-                  selectedRun?.id === run.id && 'bg-accent'
-                )}
-                onClick={() => void openRun(run)}
-              >
-                <span className="flex items-start justify-between gap-2">
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-medium">{run.templateName}</span>
-                    <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted-foreground">
-                      {run.objective || run.id}
-                    </span>
-                    {run.isRerun ? (
-                      <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                        {translate('workflows.history.anotherRound', 'Another round')}
-                        {run.parentRunId ? ` · ${run.parentRunId.slice(-8)}` : ''}
-                      </span>
-                    ) : null}
-                  </span>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">
-                    {run.status}
-                  </Badge>
-                </span>
-                <span className="mt-1 block text-[10px] text-muted-foreground">
-                  {formatTimestamp(run.startedAt ?? run.createdAt)}
-                </span>
-              </button>
-            ))
+            <WorkflowRunHistoryList
+              runs={visibleRuns}
+              selectedRun={selectedRun}
+              onOpenRun={(run) => void openRun(run)}
+            />
           )}
         </div>
       </aside>
@@ -255,11 +235,6 @@ export function WorkflowRunHistory({
       )}
     </div>
   )
-}
-
-function formatTimestamp(value: string): string {
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
 function dateBoundary(value: string, edge: 'start' | 'end'): string | undefined {

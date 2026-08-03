@@ -16,9 +16,11 @@ import { renderWorkflowV2StepPrompt } from './workflow-v2-prompt'
 import {
   appendWorkflowV2History,
   getWorkflowV2RouteTraversalCounts,
-  listWorkflowV2HistoryWithLineage,
-  setWorkflowV2RouteTraversalCounts
+  getWorkflowV2RouteBudgetExtensions,
+  incrementWorkflowV2RouteTraversal,
+  listWorkflowV2HistoryWithLineage
 } from './workflow-v2-history-store'
+import { workflowV2RouteCatalog } from '../../../shared/workflow-v2-route-catalog'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import {
@@ -62,15 +64,29 @@ function lineageCycle(run: WorkflowRunRecord, localRound: number): number {
   return (run.lineageCycleBase ?? 0) + localRound
 }
 
-function v2PolicyOverrides(run: WorkflowRunRecord): WorkflowRunPolicyOverridesV2 | null {
+function v2PolicyOverrides(
+  run: WorkflowRunRecord,
+  definition: ReturnType<typeof requireWorkflowDefinitionV2>,
+  db: Database.Database
+): WorkflowRunPolicyOverridesV2 | null {
   const value = run.policyOverrides as unknown
-  if (
+  const configured =
     value &&
     typeof value === 'object' &&
     (value as { policyVersion?: unknown }).policyVersion === 'v2-route-traversals' &&
     typeof (value as WorkflowRunPolicyOverridesV2).maxTraversalsByRouteId === 'object'
-  ) {
-    return value as WorkflowRunPolicyOverridesV2
+      ? (value as WorkflowRunPolicyOverridesV2).maxTraversalsByRouteId
+      : {}
+  const extensions = getWorkflowV2RouteBudgetExtensions(db, run.id)
+  const maxTraversalsByRouteId = { ...configured }
+  for (const entry of workflowV2RouteCatalog(definition)) {
+    const base = configured[entry.id] ?? entry.route.maxTraversals
+    if (base !== undefined && extensions[entry.id]) {
+      maxTraversalsByRouteId[entry.id] = base + extensions[entry.id]
+    }
+  }
+  if (Object.keys(maxTraversalsByRouteId).length > 0) {
+    return { policyVersion: 'v2-route-traversals', maxTraversalsByRouteId }
   }
   return null
 }
@@ -146,7 +162,7 @@ export function completeWorkflowV2AgentStep(params: {
     definition,
     params.step.nodeId,
     counts,
-    v2PolicyOverrides(params.run)
+    v2PolicyOverrides(params.run, definition, params.db)
   )
   claimRouteTraversal(params.db, params.run.id, advance.kind === 'goto' ? advance.routeId : null)
   return applyWorkflowV2Advance(params.store, params.run, definition, advance, params.step.round)
@@ -172,7 +188,7 @@ export function completeWorkflowV2DecisionStep(params: {
     params.step.nodeId,
     params.finalText,
     counts,
-    v2PolicyOverrides(params.run)
+    v2PolicyOverrides(params.run, definition, params.db)
   )
   let decision: boolean | null = null
   try {
@@ -211,7 +227,7 @@ export function resolveWorkflowV2HumanAction(params: {
     params.stepId,
     params.routeId,
     counts,
-    v2PolicyOverrides(params.run)
+    v2PolicyOverrides(params.run, definition, params.db)
   )
   appendWorkflowV2History(params.db, params.run.id, {
     stepId: params.stepId,
@@ -248,7 +264,8 @@ export function buildWorkflowV2StepPrompt(
     workflowName: `${run.templateName} v${run.templateVersion}`,
     visit: visitCount(run, step.nodeId, db),
     cycle: lineageCycle(run, step.round),
-    history: listWorkflowV2HistoryWithLineage(db, run)
+    history: listWorkflowV2HistoryWithLineage(db, run),
+    promptOverride: run.promptOverrides?.[step.nodeId]
   })
 }
 
@@ -289,9 +306,7 @@ function claimRouteTraversal(
   if (!routeId) {
     return
   }
-  const counts = getWorkflowV2RouteTraversalCounts(db, runId)
-  counts[routeId] = (counts[routeId] ?? 0) + 1
-  setWorkflowV2RouteTraversalCounts(db, runId, counts)
+  incrementWorkflowV2RouteTraversal(db, runId, routeId)
 }
 
 function idleAdvanceResult(): WorkflowV2AdvanceResult {

@@ -1,5 +1,6 @@
 import type { WorkflowRunRecord } from './workflow-definition-types'
 import type { WorkflowRunPolicyOverrides } from './workflow-run-lineage'
+import { requireWorkflowDefinitionV1 } from './workflow-definition-access'
 
 export const WORKFLOW_REVIEW_ROUND_BUDGET_MAX = 20
 
@@ -41,9 +42,8 @@ export function workflowReviewRoundLimit(
   },
   reviewNodeId: string
 ): number | null {
-  const review = run.templateSnapshot.nodes.find(
-    (node) => node.id === reviewNodeId && node.type === 'review'
-  )
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 review budget')
+  const review = definition.nodes.find((node) => node.id === reviewNodeId && node.type === 'review')
   if (review?.type !== 'review') {
     return null
   }
@@ -73,9 +73,8 @@ export function workflowReviewExtensionForBudget(
   completedRound: number,
   budget: number
 ): number {
-  const review = run.templateSnapshot.nodes.find(
-    (node) => node.id === reviewNodeId && node.type === 'review'
-  )
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 review extension')
+  const review = definition.nodes.find((node) => node.id === reviewNodeId && node.type === 'review')
   if (review?.type !== 'review') {
     throw new Error(`Review node ${reviewNodeId} is unavailable.`)
   }

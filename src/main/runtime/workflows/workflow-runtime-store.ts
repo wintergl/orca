@@ -38,7 +38,10 @@ import {
   markWorkflowStepDelivering,
   markWorkflowStepWorking
 } from './workflow-delivery-store'
-import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-access'
+import {
+  isWorkflowRunSnapshotV2,
+  requireWorkflowDefinitionV1
+} from '../../../shared/workflow-definition-access'
 import { beginWorkflowV2Run } from './workflow-v2-run-controller'
 
 export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
@@ -105,8 +108,9 @@ export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
         beginWorkflowV2Run(this, run, params.baseline)
         return this.showRunRecord(run.id, mutation.callerIdentity)
       }
-      const produce = run.templateSnapshot.nodes.find(
-        (node) => node.id === run.templateSnapshot.entryNodeId && node.type === 'produce'
+      const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 run start')
+      const produce = definition.nodes.find(
+        (node) => node.id === definition.entryNodeId && node.type === 'produce'
       )
       if (!produce) {
         throw new WorkflowError(
@@ -114,10 +118,10 @@ export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
           'Workflow entry node must be a Produce node.'
         )
       }
-      const entryTransition = run.templateSnapshot.transitions.find(
+      const entryTransition = definition.transitions.find(
         (transition) => transition.from === produce.id && transition.when === 'step:succeeded'
       )
-      const review = run.templateSnapshot.nodes.find(
+      const review = definition.nodes.find(
         (node) => node.id === entryTransition?.to && node.type === 'review'
       )
       if (review?.type !== 'review') {

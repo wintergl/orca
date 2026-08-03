@@ -244,16 +244,22 @@ export function workflowPromptHistoryToken(round: number | 'currentRound', nodeI
   return `{{ history[${round}].nodes["${nodeId}"].output }}`
 }
 
+export function workflowPromptHistoryReferenceRound(
+  reference: WorkflowPromptHistoryReference,
+  currentRound: number
+): number {
+  return reference.round === 'currentRound'
+    ? currentRound
+    : reference.round < 0
+      ? currentRound + reference.round
+      : reference.round
+}
+
 function resolveWorkflowPromptHistoryReference(
   reference: WorkflowPromptHistoryReference,
   context: WorkflowPromptRenderContext
 ): string {
-  const round =
-    reference.round === 'currentRound'
-      ? context.currentRound
-      : reference.round < 0
-        ? context.currentRound + reference.round
-        : reference.round
+  const round = workflowPromptHistoryReferenceRound(reference, context.currentRound)
   const outputs = context.history
     .filter((entry) => entry.round === round && entry.nodeId === reference.nodeId)
     .toSorted((left, right) => left.sequence - right.sequence)

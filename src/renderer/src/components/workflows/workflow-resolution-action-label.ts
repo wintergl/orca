@@ -9,6 +9,7 @@ const FALLBACK_LABELS: Record<WorkflowResolutionAction, string> = {
   approve: 'Approve',
   revise: 'Return for revision',
   'continue-round': 'Continue one round',
+  'extend-route-budget': 'Extend route budget',
   'retry-step': 'Retry step',
   'retry-with-duplicate-risk': 'Retry with duplicate risk',
   'reassign-agent': 'Reassign Agent',

@@ -173,6 +173,9 @@ export function toWorkflowRunRecord(
     artifacts,
     reviewAggregates: [],
     decisions: [],
+    v2History: [],
+    v2RouteTraversals: {},
+    v2RouteBudgetExtensions: {},
     createdAt: exposeTimestamp(row.created_at)!,
     updatedAt: exposeTimestamp(row.updated_at)!
   }

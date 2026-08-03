@@ -240,9 +240,14 @@ function RunSummary({
   run: NonNullable<ReturnType<typeof useWorkflowRendererState>['activeRun']>
   onOpenStep: (step: WorkflowStepRunRecord | undefined) => void
 }): React.JSX.Element {
-  const visibleNodes = run.templateSnapshot.nodes.filter(
-    (node) => node.type === 'produce' || node.type === 'review' || node.type === 'complete'
-  )
+  const visibleNodes =
+    run.templateSnapshot.schemaVersion === 1
+      ? run.templateSnapshot.nodes.filter(
+          (node) => node.type === 'produce' || node.type === 'review' || node.type === 'complete'
+        )
+      : run.templateSnapshot.steps.filter(
+          (step) => step.kind === 'agent' || step.kind === 'decision' || step.kind === 'end'
+        )
   const currentStep = run.steps.toReversed().find((step) => step.nodeId === run.currentNodeId)
   return (
     <>

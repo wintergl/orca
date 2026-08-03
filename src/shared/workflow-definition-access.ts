@@ -14,12 +14,13 @@ export type WorkflowRoleSlotView = {
   required: boolean
   minAgents: number
   maxAgents: number
+  execution: 'single' | 'parallel' | 'sequential'
 }
 
 export function isWorkflowDefinitionV1(
   definition: WorkflowTemplateSnapshot
 ): definition is WorkflowDefinitionV1 {
-  return definition.schemaVersion === 1
+  return isV1Snapshot(definition)
 }
 
 export function requireWorkflowDefinitionV1(
@@ -32,6 +33,13 @@ export function requireWorkflowDefinitionV1(
   return definition
 }
 
+export function requireWorkflowRunV1<Run extends { templateSnapshot: WorkflowTemplateSnapshot }>(
+  run: Run,
+  context = 'This operation'
+): asserts run is Run & { templateSnapshot: WorkflowDefinitionV1 } {
+  requireWorkflowDefinitionV1(run.templateSnapshot, context)
+}
+
 export function requireWorkflowDefinitionV2(
   definition: WorkflowTemplateSnapshot,
   context = 'This operation'
@@ -42,7 +50,6 @@ export function requireWorkflowDefinitionV2(
   return definition
 }
 
-/** Runtime may still type snapshots as V1 while V2 JSON is stored. */
 export function isWorkflowRunSnapshotV2(snapshot: unknown): snapshot is WorkflowDefinitionV2 {
   return isWorkflowDefinitionV2(snapshot)
 }
@@ -57,7 +64,8 @@ export function workflowRoleSlots(snapshot: unknown): WorkflowRoleSlotView[] {
       label: slot.label,
       required: slot.required,
       minAgents: slot.minAgents,
-      maxAgents: slot.maxAgents
+      maxAgents: slot.maxAgents,
+      execution: slot.execution
     }))
   }
   return []
@@ -89,15 +97,18 @@ function toRoleSlotView(slot: WorkflowRoleSlotV2): WorkflowRoleSlotView {
     label: slot.label,
     required: slot.required,
     minAgents: slot.minAgents,
-    maxAgents: slot.maxAgents
+    maxAgents: slot.maxAgents,
+    execution: slot.execution
   }
 }
 
 function isV1Snapshot(value: unknown): value is WorkflowDefinitionV1 {
-  return Boolean(
-    value &&
-    typeof value === 'object' &&
-    (value as { schemaVersion?: unknown }).schemaVersion === 1 &&
-    Array.isArray((value as WorkflowDefinitionV1).nodes)
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as { schemaVersion?: unknown; nodes?: unknown }
+  return (
+    Array.isArray(candidate.nodes) &&
+    (candidate.schemaVersion === undefined || candidate.schemaVersion === 1)
   )
 }

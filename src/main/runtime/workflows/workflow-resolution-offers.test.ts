@@ -79,6 +79,9 @@ describe('Workflow Resolution Offers', () => {
 
   it('uses the configured Human Gate actions for review intervention', () => {
     const run = runFor('review-request-human')
+    if (run.templateSnapshot.schemaVersion !== 1) {
+      throw new Error('expected V1 fixture')
+    }
     const gate = run.templateSnapshot.nodes.find((node) => node.type === 'human-gate')!
     if (gate.type === 'human-gate') {
       gate.allowedActions = ['view-evidence', 'revise']

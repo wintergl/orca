@@ -14,6 +14,7 @@ type RuntimeFake = {
   getTerminalProcessIncarnation: ReturnType<typeof vi.fn>
   getExactWorkerProviderSession: ReturnType<typeof vi.fn>
   getAgentLifecycleAuthorityIdForPaneKey?: ReturnType<typeof vi.fn>
+  getClientSettings: ReturnType<typeof vi.fn>
 }
 
 let store: WorkflowStore
@@ -72,7 +73,8 @@ beforeEach(() => {
     sendTerminalAgentPrompt: vi.fn(),
     getTerminalProcessIncarnation: vi.fn((handle: string) => `process-${handle}`),
     getExactWorkerProviderSession: vi.fn(() => null),
-    getAgentLifecycleAuthorityIdForPaneKey: vi.fn((paneKey: string) => `authority-${paneKey}`)
+    getAgentLifecycleAuthorityIdForPaneKey: vi.fn((paneKey: string) => `authority-${paneKey}`),
+    getClientSettings: vi.fn(() => ({}))
   }
 })
 
@@ -123,6 +125,68 @@ describe('workflow template RPC', () => {
       id: clone.id
     })
   })
+
+  it('gates V2 execution and makes V1 template mutations read-only after enablement', async () => {
+    await expect(
+      call('workflow.runCreate', {
+        requestId: 'v2-disabled',
+        templateId: 'builtin.v2.single-agent-end',
+        projectIdentity: 'project-a',
+        workspace: { kind: 'folder-workspace', id: 'worktree-a' },
+        executionHostId: 'local'
+      })
+    ).rejects.toMatchObject({ code: 'workflow_action_forbidden' })
+
+    runtime.getClientSettings.mockReturnValue({ 'workflows.v2.enabled': true })
+    await expect(
+      call('workflow.templateCreate', {
+        requestId: 'malformed-v2-enabled',
+        name: 'Malformed V2',
+        scope: 'personal',
+        definition: { schemaVersion: 2 }
+      })
+    ).rejects.toMatchObject({ code: 'workflow_definition_invalid' })
+    await expect(
+      call('workflow.templateClone', {
+        requestId: 'v1-read-only',
+        sourceTemplateId: 'builtin.spec-review.v1',
+        name: 'V1 copy',
+        scope: 'personal'
+      })
+    ).rejects.toMatchObject({ code: 'workflow_action_forbidden' })
+    await expect(
+      call('workflow.runCreate', {
+        requestId: 'v2-enabled',
+        templateId: 'builtin.v2.single-agent-end',
+        projectIdentity: 'project-a',
+        workspace: { kind: 'folder-workspace', id: 'worktree-a' },
+        executionHostId: 'local'
+      })
+    ).resolves.toMatchObject({ templateId: 'builtin.v2.single-agent-end' })
+
+    const unbounded = structuredClone(
+      store.showTemplate({
+        templateId: 'builtin.v2.agent-decision-loop',
+        callerIdentity: 'user-a'
+      }).definition
+    )
+    if (unbounded.schemaVersion !== 2) {
+      throw new Error('expected V2 fixture')
+    }
+    const judge = unbounded.steps.find((step) => step.id === 'judge')
+    if (judge?.kind !== 'decision') {
+      throw new Error('expected decision step')
+    }
+    delete judge.routes.whenFalse.maxTraversals
+    await expect(
+      call('workflow.templateCreate', {
+        requestId: 'unbounded-v2',
+        name: 'Unbounded V2',
+        scope: 'personal',
+        definition: unbounded
+      })
+    ).rejects.toMatchObject({ code: 'workflow_definition_invalid' })
+  })
 })
 
 describe('workflow run RPC', () => {
@@ -143,7 +207,7 @@ describe('workflow run RPC', () => {
       projectIdentity: 'project-a',
       workspace: { kind: 'git-worktree', id: 'worktree-a' },
       executionHostId: 'local'
-    })) as { id: string }
+    })) as { id: string; version: number }
 
     await expect(
       call('workflow.runResolve', {
@@ -162,7 +226,7 @@ describe('workflow run RPC', () => {
       projectIdentity: 'project-a',
       workspace: { kind: 'git-worktree', id: 'worktree-a' },
       executionHostId: 'local'
-    })) as { id: string }
+    })) as { id: string; version: number }
     const result = (await call('workflow.runPrepare', {
       requestId: 'prepare-unassigned',
       runId: run.id
@@ -343,7 +407,7 @@ describe('workflow run RPC', () => {
       projectIdentity: 'project-a',
       workspace: { kind: 'git-worktree', id: 'worktree-a' },
       executionHostId: 'local'
-    })) as { id: string }
+    })) as { id: string; version: number }
     for (const [nodeId, slotId, lifecycle, paneKey] of [
       ['spec-produce', 'spec-author', 'author', 'pane-author'],
       ['spec-review', 'spec-reviewers', 'reviewer', 'pane-reviewer']
@@ -359,7 +423,10 @@ describe('workflow run RPC', () => {
     await call('workflow.runUpdate', {
       requestId: 'objective',
       runId: run.id,
-      objective: 'Complete M1 without dispatching any prompt.'
+      expectedVersion: run.version + 2,
+      objective: 'Complete M1 without dispatching any prompt.',
+      policyOverrides: null,
+      promptOverrides: null
     })
     const result = (await call('workflow.runPrepare', {
       requestId: 'prepare',

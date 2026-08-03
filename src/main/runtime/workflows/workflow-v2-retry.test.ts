@@ -98,8 +98,8 @@ function readySingleAgent(
             execution: 'single',
             prompt: {
               variants: [
-                { when: 'first-visit', template: 'first {{goal}}' },
-                { when: 'repeat-visit', template: 'repeat {{goal}}' }
+                { when: 'first-visit', template: 'first {{goal}} {{criteria}}' },
+                { when: 'repeat-visit', template: 'repeat {{goal}} {{criteria}}' }
               ],
               completionCriteria: 'done'
             },

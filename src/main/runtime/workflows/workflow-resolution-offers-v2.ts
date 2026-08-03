@@ -9,6 +9,7 @@ import { workflowV2StepById } from '../../../shared/workflow-v2-graph'
 
 const OFFER_TTL_MS = 24 * 60 * 60 * 1_000
 export const WORKFLOW_V2_HUMAN_ROUTE_PREFIX = 'v2-human:' as const
+export const WORKFLOW_V2_ROUTE_EXTENSION_PREFIX = 'v2-route-extension:' as const
 
 export function isWorkflowV2HumanRouteTransition(transitionId: string): boolean {
   return transitionId.startsWith(WORKFLOW_V2_HUMAN_ROUTE_PREFIX)
@@ -50,7 +51,7 @@ function buildV2HumanRouteOffers(run: WorkflowRunRecord): WorkflowResolutionOffe
   if (!expiresAt) {
     return []
   }
-  return human.routes.map((route) => {
+  const routeOffers = human.routes.map((route) => {
     const targetsEnd =
       workflowV2StepById(run.templateSnapshot as never, route.targetStepId)?.kind === 'end'
     const action: WorkflowResolutionAction = targetsEnd ? 'approve' : 'revise'
@@ -69,6 +70,26 @@ function buildV2HumanRouteOffers(run: WorkflowRunRecord): WorkflowResolutionOffe
       displayLabel: route.label
     })
   })
+  const exhaustedRouteId = run.resolutionContext?.v2ExhaustedRouteId
+  if (!exhaustedRouteId) {
+    return routeOffers
+  }
+  return [
+    makeOffer(run, {
+      waitingReason: 'decision-invalid',
+      action: 'extend-route-budget',
+      originDecisionStepId: run.resolutionContext?.originDecisionStepId ?? '',
+      reviewNodeId: stepId,
+      resolutionTransitionId: `${WORKFLOW_V2_ROUTE_EXTENSION_PREFIX}${exhaustedRouteId}`,
+      expiresAt,
+      preconditions: ['run-version-current', 'v2-route-exhausted', exhaustedRouteId],
+      requiresReason: true,
+      requiresConfirmation: true,
+      requiredPermission: 'workflow-operate',
+      displayLabel: 'Extend route budget'
+    }),
+    ...routeOffers
+  ]
 }
 
 function buildV2RecoveryOffers(run: WorkflowRunRecord): WorkflowResolutionOffer[] {

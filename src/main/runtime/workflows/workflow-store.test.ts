@@ -136,9 +136,11 @@ describe('WorkflowStore templates', () => {
       mutation('user-a', 'update-template', 'workflow.templateUpdate', { templateId: template.id })
     )
     expect(updated.currentVersion).toBe(2)
-    expect(store.showRun(run.id, 'user-a').templateSnapshot.nodes[0]!.name).not.toBe(
-      'Updated authoring'
-    )
+    const snapshot = store.showRun(run.id, 'user-a').templateSnapshot
+    if (snapshot.schemaVersion !== 1) {
+      throw new Error('expected V1 run snapshot')
+    }
+    expect(snapshot.nodes[0]!.name).not.toBe('Updated authoring')
   })
 
   it('archives custom templates without hiding history and replays mutations idempotently', () => {
@@ -419,7 +421,7 @@ describe('WorkflowStore runs', () => {
       .prepare('SELECT count(*) AS count FROM workflow_events WHERE run_id = ?')
       .get(run.id) as { count: number }
     inspection.close()
-    expect(eventCount.count).toBe(4)
+    expect(eventCount.count).toBe(5)
   })
 
   it('rejects assignment context drift', () => {

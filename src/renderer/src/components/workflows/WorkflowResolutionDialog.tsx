@@ -41,10 +41,11 @@ export function WorkflowResolutionDialog({
 }): React.JSX.Element {
   const label = offer ? workflowResolutionActionLabel(offer.action) : ''
   const invalidBudget =
-    offer?.action === 'revise' &&
+    (offer?.action === 'revise' || offer?.action === 'extend-route-budget') &&
     (!Number.isInteger(reviewRoundBudget) ||
       reviewRoundBudget < 1 ||
-      reviewRoundBudget > WORKFLOW_REVIEW_ROUND_BUDGET_MAX)
+      reviewRoundBudget >
+        (offer.action === 'extend-route-budget' ? 50 : WORKFLOW_REVIEW_ROUND_BUDGET_MAX))
   return (
     <Dialog open={Boolean(offer)} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px]">
@@ -70,8 +71,12 @@ export function WorkflowResolutionDialog({
             className="min-h-24"
           />
         ) : null}
-        {offer?.action === 'revise' ? (
-          <ReviewRoundBudget value={reviewRoundBudget} onChange={onReviewRoundBudgetChange} />
+        {offer?.action === 'revise' || offer?.action === 'extend-route-budget' ? (
+          <ReviewRoundBudget
+            value={reviewRoundBudget}
+            routeExtension={offer.action === 'extend-route-budget'}
+            onChange={onReviewRoundBudgetChange}
+          />
         ) : null}
         {offer?.action === 'reassign-agent' ? (
           <div className="space-y-2">
@@ -116,29 +121,41 @@ export function WorkflowResolutionDialog({
 
 function ReviewRoundBudget({
   value,
+  routeExtension,
   onChange
 }: {
   value: number
+  routeExtension: boolean
   onChange: (value: number) => void
 }): React.JSX.Element {
   return (
     <div className="space-y-2">
       <div className="space-y-1">
         <Label htmlFor="workflow-review-round-budget">
-          {translate('workflows.resolution.reviewRoundBudget', 'Review rounds after intervention')}
+          {routeExtension
+            ? translate('workflows.resolution.routeBudget', 'Additional route traversals')
+            : translate(
+                'workflows.resolution.reviewRoundBudget',
+                'Review rounds after intervention'
+              )}
         </Label>
         <p className="text-xs text-muted-foreground">
-          {translate(
-            'workflows.resolution.reviewRoundBudgetHint',
-            'Each completed Review consumes one round. The workflow pauses again when this budget reaches zero.'
-          )}
+          {routeExtension
+            ? translate(
+                'workflows.resolution.routeBudgetHint',
+                'The extension is recorded separately and does not change the original Run policy.'
+              )
+            : translate(
+                'workflows.resolution.reviewRoundBudgetHint',
+                'Each completed Review consumes one round. The workflow pauses again when this budget reaches zero.'
+              )}
         </p>
       </div>
       <Input
         id="workflow-review-round-budget"
         type="number"
         min={1}
-        max={WORKFLOW_REVIEW_ROUND_BUDGET_MAX}
+        max={routeExtension ? 50 : WORKFLOW_REVIEW_ROUND_BUDGET_MAX}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />

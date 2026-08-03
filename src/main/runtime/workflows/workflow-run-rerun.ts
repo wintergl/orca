@@ -8,7 +8,7 @@ import {
   assertRerunRequirements,
   parseWorkflowRunPolicyOverrides,
   parseWorkflowRunPromptOverrides,
-  type WorkflowRunPolicyOverridesV1,
+  type WorkflowRunPolicyOverrides,
   type WorkflowRunPromptOverrides
 } from '../../../shared/workflow-run-lineage'
 import { WorkflowError } from './workflow-error'
@@ -25,7 +25,7 @@ export function createWorkflowRunRerun(
     rerunReason?: string | null
     noAdditionalRequirements?: boolean
     objective?: string
-    policyOverrides?: WorkflowRunPolicyOverridesV1 | null
+    policyOverrides?: WorkflowRunPolicyOverrides | null
     promptOverrides?: WorkflowRunPromptOverrides | null
     copyAssignments?: boolean
   },
@@ -50,8 +50,14 @@ export function createWorkflowRunRerun(
         error instanceof Error ? error.message : String(error)
       )
     }
-    const policyOverrides = parseWorkflowRunPolicyOverrides(params.policyOverrides)
-    const promptOverrides = parseWorkflowRunPromptOverrides(params.promptOverrides)
+    const policyOverrides =
+      params.policyOverrides === undefined
+        ? parent.policyOverrides
+        : parseWorkflowRunPolicyOverrides(params.policyOverrides)
+    const promptOverrides =
+      params.promptOverrides === undefined
+        ? parent.promptOverrides
+        : parseWorkflowRunPromptOverrides(params.promptOverrides)
     // Why: runs.show() omits steps; lineageCycle = parentBase + parentLocalMaxRound.
     const parentMaxRound = db
       .prepare(

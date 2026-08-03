@@ -6,6 +6,7 @@ import type {
   WorkflowRunRecord
 } from '../../../shared/workflow-definition-types'
 import { WorkflowError } from './workflow-error'
+import type { WorkflowHistoryEntryV2 } from '../../../shared/workflow-definition-v2-types'
 
 const MAX_EXPORT_BYTES = 16 * 1024 * 1024
 const SECRET_KEY_RE =
@@ -16,17 +17,19 @@ const POSIX_USER_PATH_RE = /\/Users\/[^/]+|\/home\/[^/]+/g
 const WINDOWS_USER_PATH_RE = /[A-Za-z]:\\Users\\[^\\]+/g
 
 type WorkflowExportSnapshot = {
-  schema: 'workflow.run-export/v1'
+  schema: 'workflow.run-export/v2'
   run: WorkflowRunRecord
   events: WorkflowEventRecord[]
+  v2History: WorkflowHistoryEntryV2[]
 }
 
 export function exportWorkflowRun(
   run: WorkflowRunRecord,
   events: WorkflowEventRecord[],
-  format: WorkflowRunExportFormat
+  format: WorkflowRunExportFormat,
+  v2History: WorkflowHistoryEntryV2[] = []
 ): WorkflowRunExportResult {
-  const snapshot = redactSnapshot({ schema: 'workflow.run-export/v1', run, events })
+  const snapshot = redactSnapshot({ schema: 'workflow.run-export/v2', run, events, v2History })
   const canonical = JSON.stringify(snapshot)
   const snapshotDigest = sha256(canonical)
   const content =
@@ -96,6 +99,8 @@ function renderMarkdown(snapshot: WorkflowExportSnapshot, snapshotDigest: string
       `- Run: \`${run.id}\``,
       `- Status: \`${run.status}\``,
       `- Template: \`${run.templateId}@${run.templateVersion}\``,
+      `- Parent / root: \`${run.parentRunId ?? 'none'}\` / \`${run.rootRunId}\``,
+      `- Lineage cycle base: ${run.lineageCycleBase}`,
       `- Workspace: \`${run.workspace.kind}:${run.workspace.id}\``,
       `- Execution Host: \`${run.executionHostId}\``,
       `- Started: ${run.startedAt ?? 'not started'}`,
@@ -103,6 +108,15 @@ function renderMarkdown(snapshot: WorkflowExportSnapshot, snapshotDigest: string
       `- Snapshot digest: \`${snapshotDigest}\``
     ].join('\n'),
     markdownSection('Root objective', run.objective),
+    markdownSection('Rerun reason', run.rerunReason ?? 'No additional requirements.'),
+    markdownSection(
+      'Run policy overrides',
+      codeBlock(JSON.stringify(run.policyOverrides, null, 2), 'json')
+    ),
+    markdownSection(
+      'Run prompt overrides',
+      codeBlock(JSON.stringify(run.promptOverrides, null, 2), 'json')
+    ),
     ...run.steps.flatMap((step) => [
       `## Step: ${step.nodeName}`,
       [
@@ -125,6 +139,10 @@ function renderMarkdown(snapshot: WorkflowExportSnapshot, snapshotDigest: string
       codeBlock(JSON.stringify(run.reviewAggregates, null, 2), 'json')
     ),
     markdownSection('Decisions', codeBlock(JSON.stringify(run.decisions, null, 2), 'json')),
+    markdownSection(
+      'V2 append-only history',
+      codeBlock(JSON.stringify(snapshot.v2History, null, 2), 'json')
+    ),
     markdownSection('Event timeline', renderEvents(snapshot.events))
   ]
   return `${sections.join('\n\n')}\n`

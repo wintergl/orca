@@ -19,6 +19,8 @@ export type WorkflowResolutionContext = {
   artifactRevisionId: string
   approveTransitionId: string
   reviseTransitionId: string
+  v2ExhaustedRouteId?: string
+  v2ExhaustedTargetStepId?: string
 }
 
 export type WorkflowDecision = 'approve' | 'revise' | 'request-human' | 'stop-at-review'

@@ -1,11 +1,13 @@
 import type {
   WorkflowAgentAssignment,
-  WorkflowDefinitionV1,
   WorkflowNodeDefinitionV1,
   WorkflowResolutionAction,
   WorkflowWaitingReason,
   WorkflowWorkspaceRef
 } from './workflow-definition-types'
+import type { WorkflowStepKindV2 } from './workflow-definition-v2-types'
+import type { WorkflowHistoryEntryV2 } from './workflow-definition-v2-types'
+import type { WorkflowTemplateSnapshot } from './workflow-definition-types'
 import type { WorkflowArtifactRevision } from './workflow-artifact-types'
 import type {
   WorkflowDecisionRecord,
@@ -40,6 +42,7 @@ export type WorkflowDeliveryState = 'prepared' | 'delivering' | 'delivered' | 'u
 
 export type WorkflowEventType =
   | 'run-created'
+  | 'run-configuration-updated'
   | 'template-applied'
   | 'agent-assigned'
   | 'run-started'
@@ -60,6 +63,7 @@ export type WorkflowEventType =
   | 'decision-made'
   | 'revision-requested'
   | 'human-action'
+  | 'route-budget-extended'
   | 'agent-reassigned'
   | 'step-retried'
   | 'run-paused'
@@ -78,7 +82,7 @@ export type WorkflowStepRunRecord = {
   runId: string
   nodeId: string
   nodeName: string
-  nodeType: WorkflowNodeDefinitionV1['type']
+  nodeType: WorkflowNodeDefinitionV1['type'] | WorkflowStepKindV2
   round: number
   attempt: number
   status: WorkflowStepRunStatus
@@ -141,11 +145,7 @@ export type WorkflowRunRecord = {
   templateId: string
   templateVersion: number
   templateName: string
-  /**
-   * Execution snapshot. Typed as V1 for existing call sites; V2 runs cast via
-   * isWorkflowRunSnapshotV2 / requireWorkflowDefinitionV2 at runtime.
-   */
-  templateSnapshot: WorkflowDefinitionV1
+  templateSnapshot: WorkflowTemplateSnapshot
   ownerIdentity: string
   projectIdentity: string
   workspace: WorkflowWorkspaceRef
@@ -176,6 +176,9 @@ export type WorkflowRunRecord = {
   artifacts: WorkflowArtifactRevision[]
   reviewAggregates: WorkflowReviewAggregate[]
   decisions: WorkflowDecisionRecord[]
+  v2History?: WorkflowHistoryEntryV2[]
+  v2RouteTraversals?: Record<string, number>
+  v2RouteBudgetExtensions?: Record<string, number>
   createdAt: string
   updatedAt: string
 }
@@ -210,6 +213,10 @@ export type WorkflowRunSummary = {
   parentRunId: string | null
   rootRunId: string
   isRerun: boolean
+  policyOverrideVersion?: WorkflowRunPolicyOverrides['policyVersion'] | null
+  promptOverrideNodeIds?: string[]
+  failureCode?: string | null
+  businessBudgetSummary?: string | null
   startedAt: string | null
   completedAt: string | null
   createdAt: string
@@ -240,6 +247,9 @@ export type WorkflowPreflightCheck = {
     | 'workflow-exit'
     | 'workspace-capability'
     | 'decision-protocol'
+    | 'prompt-boundaries'
+    | 'prompt-history'
+    | 'graph-routes'
   status: 'passed' | 'failed'
   nodeId: string | null
   message: string
@@ -249,5 +259,13 @@ export type WorkflowPreflightCheck = {
 export type WorkflowPreflightResult = {
   ready: boolean
   checks: WorkflowPreflightCheck[]
+  promptPreviews: WorkflowPromptPreview[]
   run: WorkflowRunRecord
+}
+
+export type WorkflowPromptPreview = {
+  nodeId: string
+  nodeName: string
+  firstVisit: string
+  repeatVisit: string
 }

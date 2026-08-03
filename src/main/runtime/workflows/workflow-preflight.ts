@@ -14,6 +14,7 @@ export function buildWorkflowPreflightChecks(
     capabilityAvailable: boolean
     unavailableAgentLifecycleIds: string[]
     unavailableAgentReasons?: Record<string, WorkflowAgentUnavailableReason>
+    promptHistoryIssues?: string[]
   }
 ): WorkflowPreflightCheck[] {
   if (isWorkflowRunSnapshotV2(run.templateSnapshot)) {

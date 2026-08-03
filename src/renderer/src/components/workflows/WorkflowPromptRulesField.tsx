@@ -3,23 +3,15 @@ import { Braces } from 'lucide-react'
 import type {
   WorkflowDefinitionV1,
   WorkflowNodeDefinitionV1,
-  WorkflowPromptRulesV1,
-  WorkflowPromptRuleWhen
+  WorkflowPromptRulesV1
 } from '../../../../shared/workflow-definition-types'
 import {
   defaultWorkflowPromptInstructions,
   inspectWorkflowPromptInstructions
 } from '../../../../shared/workflow-prompt-instructions'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { translate } from '@/i18n/i18n'
 import { WorkflowHistoryReferencePicker } from './WorkflowHistoryReferencePicker'
@@ -36,145 +28,169 @@ export function WorkflowPromptRulesField({
   updateNode: (update: (node: WorkflowNodeDefinitionV1) => WorkflowNodeDefinitionV1) => void
 }): React.JSX.Element {
   const promptRules = useMemo(() => effectivePromptRules(node), [node])
-  const [selectedRuleId, setSelectedRuleId] = useState(promptRules.rules[0]?.id ?? '')
-  const selectedRule =
-    promptRules.rules.find((rule) => rule.id === selectedRuleId) ?? promptRules.rules[0]
+  const [historyTarget, setHistoryTarget] = useState(
+    () => promptRules.rules.find((rule) => rule.when === 'repeat-visit')?.id ?? ''
+  )
 
   const updatePromptRules = (next: WorkflowPromptRulesV1): void => {
     updateNode((current) => ({ ...current, promptRules: next }))
   }
-  const updateSelectedRule = (
+  const updateRule = (
+    ruleId: string,
     update: (rule: WorkflowPromptRulesV1['rules'][number]) => WorkflowPromptRulesV1['rules'][number]
   ): void => {
-    if (!selectedRule) {
-      return
-    }
     updatePromptRules({
       ...promptRules,
-      rules: promptRules.rules.map((rule) => (rule.id === selectedRule.id ? update(rule) : rule))
+      rules: promptRules.rules.map((rule) => (rule.id === ruleId ? update(rule) : rule))
     })
   }
-  const appendToken = (token: string): void => {
-    updateSelectedRule((rule) => ({
+  const appendToken = (ruleId: string, token: string): void => {
+    updateRule(ruleId, (rule) => ({
       ...rule,
       template: `${rule.template}${rule.template.endsWith('\n') ? '' : '\n'}${token}`
     }))
   }
-  const inspection = selectedRule ? inspectWorkflowPromptInstructions(selectedRule.template) : null
 
   return (
     <div className="space-y-4">
-      <section className="space-y-2">
-        <div>
-          <h4 className="text-xs font-semibold">
-            {translate('workflows.prompt.rulesTitle', 'Prompt rules')}
-          </h4>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {translate(
-              'workflows.prompt.rulesHint',
-              'Orca selects one rule from the node visit state before sending the message.'
-            )}
-          </p>
-        </div>
-        <Tabs value={selectedRule?.id} onValueChange={setSelectedRuleId}>
-          <TabsList className="grid h-auto w-full grid-cols-2">
-            {promptRules.rules.map((rule) => (
-              <TabsTrigger key={rule.id} value={rule.id} className="min-w-0 px-2 py-1.5">
-                <span className="truncate">{rule.name}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      <section>
+        <h4 className="text-xs font-semibold">
+          {translate('workflows.prompt.rulesTitle', 'Prompt rules')}
+        </h4>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {translate(
+            'workflows.prompt.rulesBoundaryHint',
+            'First visit and repeat visit are separate required boundaries. Both remain visible while editing.'
+          )}
+        </p>
       </section>
 
-      {selectedRule ? (
-        <section className="space-y-3 rounded-lg border border-border bg-background p-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2">
-            <label className="space-y-1">
-              <span className="text-[11px] font-medium">
-                {translate('workflows.prompt.ruleName', 'Rule name')}
-              </span>
-              <Input
-                value={selectedRule.name}
-                readOnly={readOnly}
-                onChange={(event) =>
-                  updateSelectedRule((rule) => ({ ...rule, name: event.target.value }))
-                }
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-[11px] font-medium">
-                {translate('workflows.prompt.enterWhen', 'Use when')}
-              </span>
-              <Select
-                value={selectedRule.when}
-                disabled={readOnly}
-                onValueChange={(when) =>
-                  updateSelectedRule((rule) => ({
-                    ...rule,
-                    when: when as WorkflowPromptRuleWhen
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="first-visit">
-                    {translate('workflows.prompt.firstVisit', 'First visit')}
-                  </SelectItem>
-                  <SelectItem value="repeat-visit">
-                    {translate('workflows.prompt.repeatVisit', 'Repeat visit')}
-                  </SelectItem>
-                  <SelectItem value="always">
-                    {translate('workflows.prompt.always', 'Always')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-medium">
-              {translate('workflows.prompt.template', 'Editable prompt template')}
-            </span>
-            <Textarea
-              value={selectedRule.template}
-              readOnly={readOnly}
-              aria-invalid={inspection?.malformed === true || Boolean(inspection?.unknown.length)}
-              className="min-h-44 max-h-[40vh] resize-y overflow-y-auto overscroll-contain text-xs leading-relaxed"
-              onChange={(event) =>
-                updateSelectedRule((rule) => ({ ...rule, template: event.target.value }))
-              }
-            />
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              ['{{goal}}', translate('workflows.prompt.goalVariable', 'Goal')],
-              ['{{criteria}}', translate('workflows.prompt.criteriaVariable', 'Criteria')],
-              ['{{currentRound}}', translate('workflows.prompt.roundVariable', 'Current round')]
-            ].map(([token, label]) => (
-              <Button
-                key={token}
-                type="button"
-                size="xs"
-                variant="outline"
-                disabled={readOnly}
-                onClick={() => appendToken(token)}
-              >
-                <Braces />
-                {label}
-              </Button>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <div className="grid gap-3 xl:grid-cols-2">
+        {promptRules.rules.map((rule) => {
+          const inspection = inspectWorkflowPromptInstructions(rule.template)
+          const negativeHistory = inspection.historyReferences.some(
+            (reference) => typeof reference.round === 'number' && reference.round < 0
+          )
+          const boundaryError =
+            rule.when === 'first-visit' && negativeHistory
+              ? translate(
+                  'workflows.prompt.firstNegativeHistory',
+                  'First visit cannot reference a negative history cycle.'
+                )
+              : rule.when === 'repeat-visit' &&
+                  inspection.historyReferences.length === 0 &&
+                  promptRules.repeatVisitHistoryMode !== 'not-required'
+                ? translate(
+                    'workflows.prompt.repeatNeedsHistory',
+                    'Add a history reference or explicitly declare that history is not required.'
+                  )
+                : null
+          return (
+            <section
+              key={rule.id}
+              className="space-y-3 rounded-lg border border-border bg-background p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold">{boundaryLabel(rule.when)}</p>
+                  <p className="text-[11px] text-muted-foreground">{rule.name}</p>
+                </div>
+                <Button
+                  size="xs"
+                  type="button"
+                  variant={historyTarget === rule.id ? 'secondary' : 'ghost'}
+                  disabled={readOnly}
+                  onClick={() => setHistoryTarget(rule.id)}
+                >
+                  {translate('workflows.prompt.historyTarget', 'History target')}
+                </Button>
+              </div>
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium">
+                  {translate('workflows.prompt.ruleName', 'Rule name')}
+                </span>
+                <Input
+                  value={rule.name}
+                  readOnly={readOnly}
+                  onChange={(event) =>
+                    updateRule(rule.id, (current) => ({ ...current, name: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium">
+                  {translate('workflows.prompt.template', 'Editable prompt template')}
+                </span>
+                <Textarea
+                  value={rule.template}
+                  readOnly={readOnly}
+                  aria-invalid={
+                    inspection.malformed ||
+                    Boolean(inspection.unknown.length) ||
+                    Boolean(boundaryError)
+                  }
+                  className="scrollbar-sleek min-h-48 max-h-[40vh] resize-y overflow-y-auto text-xs leading-relaxed"
+                  onFocus={() => setHistoryTarget(rule.id)}
+                  onChange={(event) =>
+                    updateRule(rule.id, (current) => ({
+                      ...current,
+                      template: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ['{{goal}}', translate('workflows.prompt.goalVariable', 'Goal')],
+                  ['{{criteria}}', translate('workflows.prompt.criteriaVariable', 'Criteria')],
+                  ['{{currentRound}}', translate('workflows.prompt.roundVariable', 'Current round')]
+                ].map(([token, label]) => (
+                  <Button
+                    key={token}
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    disabled={readOnly}
+                    onClick={() => appendToken(rule.id, token)}
+                  >
+                    <Braces />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {boundaryError ? (
+                <p className="text-[11px] text-destructive">{boundaryError}</p>
+              ) : null}
+            </section>
+          )
+        })}
+      </div>
 
       <WorkflowHistoryReferencePicker
         definition={definition}
         node={node}
-        readOnly={readOnly || !selectedRule}
-        onInsert={appendToken}
+        readOnly={readOnly || !historyTarget}
+        onInsert={(token) => appendToken(historyTarget, token)}
       />
+
+      <label className="flex items-start gap-2 rounded-md border border-border p-3 text-xs">
+        <Checkbox
+          checked={promptRules.repeatVisitHistoryMode === 'not-required'}
+          disabled={readOnly}
+          onCheckedChange={(checked) =>
+            updatePromptRules({
+              ...promptRules,
+              repeatVisitHistoryMode: checked === true ? 'not-required' : 'required'
+            })
+          }
+        />
+        <span>
+          {translate(
+            'workflows.prompt.noRepeatHistory',
+            'Repeat visits intentionally do not read prior history.'
+          )}
+        </span>
+      </label>
 
       <label className="block space-y-1">
         <span className="text-xs font-medium">
@@ -188,49 +204,55 @@ export function WorkflowPromptRulesField({
             updatePromptRules({ ...promptRules, completionCriteria: event.target.value })
           }
         />
-        <span className="block text-[11px] text-muted-foreground">
-          {translate(
-            'workflows.prompt.criteriaHint',
-            'Insert {{criteria}} wherever the Agent should receive this condition.'
-          )}
-        </span>
       </label>
     </div>
   )
 }
 
+function boundaryLabel(when: string): string {
+  return when === 'repeat-visit'
+    ? translate('workflows.prompt.repeatVisit', 'Repeat visit')
+    : translate('workflows.prompt.firstVisit', 'First visit')
+}
+
 function effectivePromptRules(node: WorkflowNodeDefinitionV1): WorkflowPromptRulesV1 {
-  if (node.promptRules) {
-    return node.promptRules
-  }
   const legacy =
     node.promptInstructions ?? defaultWorkflowPromptInstructions(node.promptTemplateKey)
-  const compatibleTemplate = withCompletionCriteria(legacy || '{{goal}}')
+  const source = node.promptRules
+  const fallback = withCompletionCriteria(legacy || '{{goal}}')
+  const first =
+    source?.rules.find((rule) => rule.when === 'first-visit') ??
+    source?.rules.find((rule) => rule.when === 'always')
+  const repeat =
+    source?.rules.find((rule) => rule.when === 'repeat-visit') ??
+    source?.rules.find((rule) => rule.when === 'always')
   return {
     rules: [
       {
         id: 'first-visit',
-        name: translate('workflows.prompt.firstVersion', 'Generate first version'),
+        name: first?.name ?? 'First visit',
         when: 'first-visit',
-        template: compatibleTemplate
+        template: first?.template ?? fallback
       },
       {
         id: 'repeat-visit',
-        name: translate('workflows.prompt.reviseFromHistory', 'Revise from history'),
+        name: repeat?.name ?? 'Repeat visit',
         when: 'repeat-visit',
-        template: compatibleTemplate
+        template: repeat?.template ?? fallback
       }
     ],
-    completionCriteria: translate(
-      'workflows.prompt.defaultCriteria',
-      'Return a complete final response that satisfies the workflow goal.'
-    )
+    completionCriteria:
+      source?.completionCriteria ??
+      translate(
+        'workflows.prompt.defaultCriteria',
+        'Return a complete final response that satisfies the workflow goal.'
+      ),
+    repeatVisitHistoryMode: source?.repeatVisitHistoryMode
   }
 }
 
 function withCompletionCriteria(template: string): string {
-  if (inspectWorkflowPromptInstructions(template).placeholders.includes('criteria')) {
-    return template
-  }
-  return `${template}\n\n完成条件：\n{{criteria}}`
+  return inspectWorkflowPromptInstructions(template).placeholders.includes('criteria')
+    ? template
+    : `${template}\n\n完成条件：\n{{criteria}}`
 }

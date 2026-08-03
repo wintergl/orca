@@ -35,6 +35,14 @@ export type ConcurrencyWorkerData =
       receiptId: string
       run: WorkflowRunRecord
     }
+  | {
+      kind: 'consume-v2'
+      dbPath: string
+      sab: SharedArrayBuffer
+      role: string
+      receiptId: string
+      run: WorkflowRunRecord
+    }
 
 type WorkerResult =
   | {
@@ -49,7 +57,7 @@ type WorkerResult =
   | {
       ok: true
       role: string
-      kind: 'consume'
+      kind: 'consume' | 'consume-v2'
       stepId: string | null
       attempt: number | null
     }
@@ -150,9 +158,42 @@ function runConsume(data: Extract<ConcurrencyWorkerData, { kind: 'consume' }>): 
   }
 }
 
+function runConsumeV2(data: Extract<ConcurrencyWorkerData, { kind: 'consume-v2' }>): WorkerResult {
+  const host = openMutationHost(data.dbPath)
+  try {
+    const record = getWorkflowCompletion(host.persistenceDb, data.receiptId)
+    const step = record ? host.getStep(record.stepRunId) : null
+    if (!record || !step) {
+      markReady(data.sab)
+      return {
+        ok: false,
+        role: data.role,
+        kind: 'consume-v2',
+        code: null,
+        message: `missing V2 receipt or step ${data.receiptId}`
+      }
+    }
+    markReady(data.sab)
+    waitForGo(data.sab)
+    const retry = consumeWorkflowRetryOutbox(host, data.run, record)
+    return {
+      ok: true,
+      role: data.role,
+      kind: 'consume-v2',
+      stepId: retry?.id ?? null,
+      attempt: retry?.attempt ?? null
+    }
+  } finally {
+    host.close()
+  }
+}
+
 function run(): WorkerResult {
   const data = workerData as ConcurrencyWorkerData
-  return data.kind === 'receive' ? runReceive(data) : runConsume(data)
+  if (data.kind === 'receive') {
+    return runReceive(data)
+  }
+  return data.kind === 'consume-v2' ? runConsumeV2(data) : runConsume(data)
 }
 
 try {

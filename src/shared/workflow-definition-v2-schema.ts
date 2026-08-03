@@ -24,9 +24,23 @@ const promptSchema = z
       )
       .min(1)
       .max(3),
-    completionCriteria: z.string().trim().min(1).max(4_000)
+    completionCriteria: z.string().trim().min(1).max(4_000),
+    repeatVisitHistoryMode: z.enum(['required', 'not-required']).optional()
   })
   .strict()
+  .superRefine((prompt, context) => {
+    const conditions = new Set<string>()
+    for (const variant of prompt.variants) {
+      if (conditions.has(variant.when)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['variants'],
+          message: `Only one ${variant.when} prompt variant is allowed`
+        })
+      }
+      conditions.add(variant.when)
+    }
+  })
 
 const routeSchema = z
   .object({
@@ -47,6 +61,20 @@ const roleSlotSchema = z
     allowedAgentStates: z.tuple([z.literal('idle')])
   })
   .strict()
+  .superRefine((slot, context) => {
+    if (slot.minAgents > slot.maxAgents) {
+      context.addIssue({ code: 'custom', message: 'minAgents cannot exceed maxAgents' })
+    }
+    if (slot.required && slot.minAgents < 1) {
+      context.addIssue({ code: 'custom', message: 'Required role slots need at least one agent' })
+    }
+    if (!slot.required && slot.minAgents !== 0) {
+      context.addIssue({ code: 'custom', message: 'Optional role slots must allow zero agents' })
+    }
+    if (slot.execution === 'single' && slot.maxAgents !== 1) {
+      context.addIssue({ code: 'custom', message: 'Single role slots allow exactly one agent' })
+    }
+  })
 
 const agentStepSchema = z
   .object({
@@ -93,7 +121,9 @@ const humanStepSchema = z
             label: z.string().trim().min(1).max(120),
             targetStepId: idSchema,
             requiresText: z.boolean(),
-            requiresConfirmation: z.boolean()
+            requiresConfirmation: z.boolean(),
+            maxTraversals: z.number().int().min(0).max(50).optional(),
+            onExhaustedStepId: idSchema.optional()
           })
           .strict()
       )
@@ -101,6 +131,15 @@ const humanStepSchema = z
       .max(12)
   })
   .strict()
+  .superRefine((step, context) => {
+    const ids = new Set<string>()
+    for (const route of step.routes) {
+      if (ids.has(route.id)) {
+        context.addIssue({ code: 'custom', message: `Duplicate human route id ${route.id}` })
+      }
+      ids.add(route.id)
+    }
+  })
 
 const endStepSchema = z
   .object({
@@ -138,6 +177,10 @@ export const workflowDefinitionV2Schema = z
     if (!ids.has(definition.entryStepId)) {
       context.addIssue({ code: 'custom', message: 'entryStepId must reference a step' })
     }
+    const entry = definition.steps.find((step) => step.id === definition.entryStepId)
+    if (entry && entry.kind !== 'agent' && entry.kind !== 'decision') {
+      context.addIssue({ code: 'custom', message: 'entryStepId must reference agent or decision' })
+    }
     if (!definition.steps.some((step) => step.kind === 'end')) {
       context.addIssue({ code: 'custom', message: 'V2 workflow requires an end step' })
     }
@@ -149,6 +192,35 @@ export const workflowDefinitionV2Schema = z
             context.addIssue({
               code: 'custom',
               message: `Step ${step.id} references unknown role slot ${slotId}`
+            })
+          }
+        }
+      }
+    }
+    for (const step of definition.steps) {
+      const routes =
+        step.kind === 'agent'
+          ? [step.next]
+          : step.kind === 'decision'
+            ? [step.routes.whenTrue, step.routes.whenFalse, step.routes.whenInvalid]
+            : step.kind === 'human'
+              ? step.routes
+              : []
+      for (const route of routes) {
+        if (!ids.has(route.targetStepId)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Step ${step.id} route references unknown target ${route.targetStepId}`
+          })
+        }
+        if (route.onExhaustedStepId) {
+          const exhausted = definition.steps.find(
+            (candidate) => candidate.id === route.onExhaustedStepId
+          )
+          if (!exhausted || (exhausted.kind !== 'human' && exhausted.kind !== 'end')) {
+            context.addIssue({
+              code: 'custom',
+              message: `Step ${step.id} exhausted route must target a human or end step`
             })
           }
         }

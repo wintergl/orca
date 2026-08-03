@@ -5,8 +5,10 @@ import type {
   WorkflowReviewAggregate,
   WorkflowRunRecord,
   WorkflowStepRunRecord,
-  WorkflowTransitionV1
+  WorkflowTransitionV1,
+  WorkflowNodeDefinitionV1
 } from '../../../shared/workflow-definition-types'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { workflowRecordId } from './workflow-runtime-records'
@@ -117,7 +119,8 @@ export function workflowDecisionBindings(
   aggregate: WorkflowReviewAggregate
 ) {
   const reviewTransition = requiredWorkflowTransition(run, aggregate.reviewNodeId, 'step:succeeded')
-  const decision = run.templateSnapshot.nodes.find(
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 decision binding')
+  const decision = definition.nodes.find(
     (node) => node.id === reviewTransition.to && node.type === 'decide'
   )
   if (decision?.type !== 'decide') {
@@ -135,7 +138,8 @@ export function requiredWorkflowTransition(
   from: string,
   when: WorkflowTransitionV1['when']
 ): WorkflowTransitionV1 {
-  const transition = run.templateSnapshot.transitions.find(
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 transition lookup')
+  const transition = definition.transitions.find(
     (candidate) => candidate.from === from && candidate.when === when
   )
   if (!transition) {
@@ -181,7 +185,8 @@ function applyTransition(
     completeRun(store, run, null, context)
     return
   }
-  const target = run.templateSnapshot.nodes.find((node) => node.id === transition.to)
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 transition apply')
+  const target = definition.nodes.find((node) => node.id === transition.to)
   if (target?.type === 'complete') {
     completeRun(store, run, target, context)
     return
@@ -228,7 +233,7 @@ function applyTransition(
 function completeRun(
   store: WorkflowRuntimePersistence,
   run: WorkflowRunRecord,
-  complete: WorkflowRunRecord['templateSnapshot']['nodes'][number] | null,
+  complete: WorkflowNodeDefinitionV1 | null,
   context: object
 ): void {
   if (complete?.type === 'complete') {

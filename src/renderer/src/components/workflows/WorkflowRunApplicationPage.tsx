@@ -18,7 +18,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { translate } from '@/i18n/i18n'
 import { WorkflowAgentAssignmentConfiguration } from './WorkflowAgentAssignmentConfiguration'
 import { WorkflowReviewPolicySummary } from './WorkflowReviewPolicySummary'
+import { WorkflowRunPolicyConfiguration } from './WorkflowRunPolicyConfiguration'
+import { WorkflowRunPromptOverrideFields } from './WorkflowRunPromptOverrides'
+import { WorkflowRunPromptPreviews } from './WorkflowRunPromptPreviews'
 import { useWorkflowRunApplicationActions } from './use-workflow-run-application-actions'
+import {
+  workflowAssignableUnits,
+  workflowRoleSlots
+} from '../../../../shared/workflow-definition-access'
 
 export function WorkflowRunApplicationPage({
   run,
@@ -49,13 +56,8 @@ export function WorkflowRunApplicationPage({
   onBack: () => void
   onStarted: () => void
 }): React.JSX.Element {
-  const { objective, setObjective, busy, prepare, start } = useWorkflowRunApplicationActions({
-    run,
-    target,
-    onRunUpdated,
-    onPreflightUpdated,
-    onStarted
-  })
+  const { objective, setObjective, policy, setPolicy, prompts, setPrompts, busy, prepare, start } =
+    useWorkflowRunApplicationActions({ run, target, onRunUpdated, onPreflightUpdated, onStarted })
   const assignmentProgress = requiredAssignmentProgress(run)
 
   return (
@@ -144,7 +146,12 @@ export function WorkflowRunApplicationPage({
               />
             </div>
           </section>
-          <WorkflowReviewPolicySummary definition={run.templateSnapshot} />
+          {run.templateSnapshot.schemaVersion === 1 ? (
+            <WorkflowReviewPolicySummary definition={run.templateSnapshot} />
+          ) : null}
+          <WorkflowRunPolicyConfiguration run={run} value={policy} onChange={setPolicy} />
+          <WorkflowRunPromptOverrideFields run={run} value={prompts} onChange={setPrompts} />
+          <WorkflowRunPromptPreviews previews={preflight?.promptPreviews ?? []} />
         </div>
 
         <div className="min-w-0">
@@ -250,7 +257,9 @@ function requiredAssignmentProgress(run: WorkflowRunRecord): {
   required: number
 } {
   const requiredSlots = new Map(
-    run.templateSnapshot.roleSlots.filter((slot) => slot.required).map((slot) => [slot.id, slot])
+    workflowRoleSlots(run.templateSnapshot)
+      .filter((slot) => slot.required)
+      .map((slot) => [slot.id, slot])
   )
   const assignmentCounts = new Map<string, number>()
   for (const assignment of run.assignments) {
@@ -259,7 +268,7 @@ function requiredAssignmentProgress(run: WorkflowRunRecord): {
   }
   let assigned = 0
   let required = 0
-  for (const node of run.templateSnapshot.nodes) {
+  for (const node of workflowAssignableUnits(run.templateSnapshot)) {
     for (const slotId of node.roleSlotIds) {
       const slot = requiredSlots.get(slotId)
       if (!slot) {

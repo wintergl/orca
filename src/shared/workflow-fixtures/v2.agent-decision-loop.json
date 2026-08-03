@@ -86,7 +86,9 @@
             "label": "再走一轮",
             "targetStepId": "produce",
             "requiresText": true,
-            "requiresConfirmation": true
+            "requiresConfirmation": true,
+            "maxTraversals": 2,
+            "onExhaustedStepId": "end"
           },
           {
             "id": "end",

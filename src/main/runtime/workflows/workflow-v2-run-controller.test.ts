@@ -265,6 +265,7 @@ describe('Workflow V2 run controller', () => {
     const runId = readyV2Run(store, template.id, [
       ['research', 'researcher', 'researcher'],
       ['write', 'writer', 'writer'],
+      ['write', 'writer', 'writer-b'],
       ['judge', 'judge', 'judge']
     ])
     let run = store.beginRun({ runId, baseline: {} }, mutation('start-multi'))
@@ -278,13 +279,23 @@ describe('Workflow V2 run controller', () => {
     })
     run = store.showRun(runId, 'user-a')
     expect(run.currentNodeId).toBe('write')
-    const write = run.steps.find((step) => step.nodeId === 'write' && step.status === 'queued')!
+    const writers = run.steps.filter((step) => step.nodeId === 'write' && step.status === 'queued')
+    expect(writers).toHaveLength(2)
     completeWorkflowV2AgentStep({
       store: surface(store),
       db: store.persistenceDb,
       run,
-      step: write,
-      finalText: 'draft article'
+      step: writers[0]!,
+      finalText: 'draft article A'
+    })
+    run = store.showRun(runId, 'user-a')
+    expect(run.currentNodeId).toBe('write')
+    completeWorkflowV2AgentStep({
+      store: surface(store),
+      db: store.persistenceDb,
+      run,
+      step: writers[1]!,
+      finalText: 'draft article B'
     })
     run = store.showRun(runId, 'user-a')
     const judge = run.steps.find((step) => step.nodeId === 'judge' && step.status === 'queued')!
@@ -320,5 +331,6 @@ describe('Workflow V2 run controller', () => {
       ['judge', 'decision'],
       ['human', 'human']
     ])
+    expect(history.find((entry) => entry.stepId === 'write')?.agentOutputs).toHaveLength(2)
   })
 })

@@ -8,6 +8,7 @@ import type { WorkflowDefinitionV2 } from '../../../shared/workflow-definition-v
 import { workflowV2StepById, type WorkflowV2GraphAdvance } from '../../../shared/workflow-v2-graph'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowV2RuntimeSurface } from './workflow-v2-run-controller'
+import { hasWorkflowV2StepVisitedInCycle } from './workflow-v2-history-store'
 
 export type WorkflowV2AdvanceResult = {
   nextSteps: WorkflowStepRunRecord[]
@@ -49,7 +50,10 @@ export function applyWorkflowV2Advance(
     return { nextSteps: [], terminal: true, waitingHuman: false }
   }
   if (advance.kind === 'wait-human') {
-    return parkWaitingHuman(store, run, advance.stepId)
+    return parkWaitingHuman(store, run, advance.stepId, {
+      exhaustedRouteId: advance.exhaustedRouteId,
+      exhaustedTargetStepId: advance.exhaustedTargetStepId
+    })
   }
   if (advance.kind === 'retry-decision') {
     return parkWaitingHuman(store, run, run.currentNodeId ?? definition.entryStepId)
@@ -67,9 +71,14 @@ export function applyWorkflowV2Advance(
   if (target?.kind === 'human') {
     return parkWaitingHuman(store, run, target.id)
   }
-  // Same business cycle for forward edges; increment only on explicit return routes.
-  const nextRound =
-    advance.routeId?.includes(':false') || advance.routeId?.startsWith('human:') ? round + 1 : round
+  const lineageCycle = Math.max(0, run.lineageCycleBase) + round
+  const returnsToVisitedStep = hasWorkflowV2StepVisitedInCycle(
+    store.db,
+    run.id,
+    advance.stepId,
+    lineageCycle
+  )
+  const nextRound = returnsToVisitedStep ? round + 1 : round
   const nextSteps = insertWorkflowV2Steps(store, run, definition, advance.stepId, nextRound)
   store.db
     .prepare(
@@ -112,7 +121,8 @@ export function insertWorkflowV2Steps(
 function parkWaitingHuman(
   store: WorkflowV2RuntimeSurface,
   run: WorkflowRunRecord,
-  stepId: string
+  stepId: string,
+  exhausted?: { exhaustedRouteId?: string; exhaustedTargetStepId?: string }
 ): WorkflowV2AdvanceResult {
   const context = {
     originDecisionStepId: '',
@@ -120,7 +130,9 @@ function parkWaitingHuman(
     reviewNodeId: stepId,
     artifactRevisionId: '',
     approveTransitionId: 'v2-human',
-    reviseTransitionId: 'v2-human'
+    reviseTransitionId: 'v2-human',
+    v2ExhaustedRouteId: exhausted?.exhaustedRouteId,
+    v2ExhaustedTargetStepId: exhausted?.exhaustedTargetStepId
   }
   store.db
     .prepare(

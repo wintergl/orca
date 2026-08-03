@@ -1,21 +1,27 @@
 import type {
   WorkflowArtifactRevision,
+  WorkflowNodeDefinitionV1,
   WorkflowReviewAggregate,
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
+import type Database from '../../sqlite/sync-database'
 import {
   defaultWorkflowPromptInstructions,
   renderWorkflowPromptInstructions,
   type WorkflowPromptHistoryEntry,
   type WorkflowPromptPlaceholderValues
 } from '../../../shared/workflow-prompt-instructions'
+import { listWorkflowV1PromptHistoryWithLineage } from './workflow-v1-lineage-history'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export function renderWorkflowNodeInstructions(
   run: WorkflowRunRecord,
-  step: WorkflowStepRunRecord
+  step: WorkflowStepRunRecord,
+  db?: Database.Database
 ): string {
-  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === step.nodeId)
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 prompt rendering')
+  const node = definition.nodes.find((candidate) => candidate.id === step.nodeId)
   if (!node || node.type === 'human-gate' || node.type === 'complete') {
     return ''
   }
@@ -27,8 +33,8 @@ export function renderWorkflowNodeInstructions(
     workflowName: `${run.templateName} v${run.templateVersion}`,
     nodeName: step.nodeName,
     nodeId: step.nodeId,
-    currentRound: String(step.round),
-    round: String(step.round)
+    currentRound: String(workflowLineageCycle(run, step)),
+    round: String(workflowLineageCycle(run, step))
   }
   if (node.promptRules) {
     values.criteria = node.promptRules.completionCriteria
@@ -53,9 +59,15 @@ export function renderWorkflowNodeInstructions(
   }
   values.humanInstructions = humanInstructions(run, aggregate)
   return renderWorkflowPromptInstructions(template, values, {
-    currentRound: step.round,
-    history: workflowPromptHistory(run, step)
+    currentRound: workflowLineageCycle(run, step),
+    history: db
+      ? listWorkflowV1PromptHistoryWithLineage(db, run.id, step.id)
+      : workflowPromptHistory(run, step)
   })
+}
+
+function workflowLineageCycle(run: WorkflowRunRecord, step: WorkflowStepRunRecord): number {
+  return Math.max(0, run.lineageCycleBase ?? 0) + step.round
 }
 
 function humanInstructions(
@@ -95,7 +107,7 @@ function decisionReviewNodeId(input: unknown): string | null {
 function selectPromptTemplate(
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord,
-  node: NonNullable<WorkflowRunRecord['templateSnapshot']['nodes'][number]>
+  node: WorkflowNodeDefinitionV1
 ): string {
   const repeated =
     (run.lineageCycleBase ?? 0) > 0 ||
@@ -137,7 +149,7 @@ function workflowPromptHistory(
     step.id !== currentStep.id && step.status === 'succeeded' && step.conclusionMarkdown
       ? [
           {
-            round: step.round,
+            round: Math.max(0, run.lineageCycleBase ?? 0) + step.round,
             nodeId: step.nodeId,
             output: step.conclusionMarkdown,
             sequence

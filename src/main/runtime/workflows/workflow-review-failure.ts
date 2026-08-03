@@ -3,6 +3,7 @@ import type {
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export function failWorkflowReviewer(
   store: WorkflowRuntimePersistence,
@@ -48,9 +49,11 @@ export function failWorkflowReviewer(
       current.id,
       { code: params.code, attempt: current.attempt }
     )
-    const node = params.run.templateSnapshot.nodes.find(
-      (candidate) => candidate.id === current.nodeId
+    const definition = requireWorkflowDefinitionV1(
+      params.run.templateSnapshot,
+      'V1 reviewer failure'
     )
+    const node = definition.nodes.find((candidate) => candidate.id === current.nodeId)
     if (node?.type !== 'review' || !current.assignment) {
       failReviewerRun(store, params)
       return null
@@ -102,15 +105,16 @@ function failureResolutionContext(
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord
 ): WorkflowRunRecord['resolutionContext'] {
-  const reviewTransition = run.templateSnapshot.transitions.find(
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 review resolution')
+  const reviewTransition = definition.transitions.find(
     (transition) => transition.from === step.nodeId && transition.when === 'step:succeeded'
   )
   const decisionNodeId =
     typeof reviewTransition?.to === 'string' ? reviewTransition.to : step.nodeId
-  const approve = run.templateSnapshot.transitions.find(
+  const approve = definition.transitions.find(
     (transition) => transition.from === decisionNodeId && transition.when === 'decision:approve'
   )
-  const revise = run.templateSnapshot.transitions.find(
+  const revise = definition.transitions.find(
     (transition) => transition.from === decisionNodeId && transition.when === 'decision:revise'
   )
   return {
@@ -127,7 +131,8 @@ export function reviewFailureCanRetry(
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord
 ): boolean {
-  const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === step.nodeId)
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 reviewer retry')
+  const node = definition.nodes.find((candidate) => candidate.id === step.nodeId)
   return Boolean(
     node?.type === 'review' && step.assignment && step.attempt < node.retryPolicy.maxAttempts
   )

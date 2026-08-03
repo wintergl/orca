@@ -194,13 +194,14 @@ export class WorkflowStepDispatcher {
       return buildReviewPrompt({
         run,
         step,
-        artifact: this.inputArtifact(run, step)
+        artifact: this.inputArtifact(run, step),
+        db: this.store.persistenceDb
       })
     }
     if (step.nodeType === 'decide') {
-      return buildDecisionPrompt({ run, step })
+      return buildDecisionPrompt({ run, step, db: this.store.persistenceDb })
     }
-    return buildProducePrompt({ run, step })
+    return buildProducePrompt({ run, step, db: this.store.persistenceDb })
   }
 
   private async validateAssignment(

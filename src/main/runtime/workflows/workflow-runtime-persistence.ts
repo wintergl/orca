@@ -6,8 +6,8 @@ import type {
   WorkflowDecisionRecord,
   WorkflowEventType,
   WorkflowMessageSource,
+  WorkflowNodeDefinitionV1,
   WorkflowRunEventsResult,
-  WorkflowRunRecord,
   WorkflowReviewAggregate,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
@@ -177,7 +177,7 @@ export class WorkflowRuntimePersistence {
 
   insertStep(
     runId: string,
-    node: WorkflowRunRecord['templateSnapshot']['nodes'][number],
+    node: WorkflowNodeDefinitionV1,
     assignment: WorkflowAgentAssignment | null,
     inputArtifactRevisionId: string | null,
     status: WorkflowStepRunRecord['status'] = 'queued',

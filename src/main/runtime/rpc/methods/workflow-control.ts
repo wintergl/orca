@@ -36,6 +36,7 @@ const runResolveParams = z
     offerId: id,
     reason: z.string().trim().min(1).max(20_000).optional(),
     reviewRoundBudget: z.number().int().min(1).max(20).optional(),
+    routeTraversalBudget: z.number().int().min(1).max(50).optional(),
     confirmation: z.boolean()
   })
   .strict()

@@ -16,6 +16,7 @@ export type WorkflowPromptVariantV2 = {
 export type WorkflowPromptV2 = {
   variants: WorkflowPromptVariantV2[]
   completionCriteria: string
+  repeatVisitHistoryMode?: 'required' | 'not-required'
 }
 
 export type WorkflowRouteV2 = {
@@ -36,6 +37,8 @@ export type WorkflowHumanRouteV2 = {
   targetStepId: string
   requiresText: boolean
   requiresConfirmation: boolean
+  maxTraversals?: number
+  onExhaustedStepId?: string
 }
 
 export type WorkflowRoleSlotV2 = {

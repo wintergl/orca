@@ -34,6 +34,15 @@ import {
 } from '../../../shared/workflow-definition-access'
 import { createWorkflowRunRerun } from './workflow-run-rerun'
 import { switchWorkflowRunTemplate } from './workflow-run-template-switch'
+import {
+  parseWorkflowRunPolicyOverrides,
+  parseWorkflowRunPromptOverrides,
+  type WorkflowRunPolicyOverrides,
+  type WorkflowRunPromptOverrides
+} from '../../../shared/workflow-run-lineage'
+import { workflowPromptHistoryPreflightIssues } from './workflow-prompt-history-preflight'
+import { assertWorkflowRunPolicyMatchesSnapshot } from './workflow-run-policy-validation'
+import { buildWorkflowPromptPreviews } from './workflow-prompt-previews'
 
 export class WorkflowRunStore {
   constructor(
@@ -122,20 +131,52 @@ export class WorkflowRunStore {
     return listWorkflowRunHistory(this.db, filter, callerIdentity)
   }
 
-  updateObjective(
-    params: { runId: string; objective: string },
+  updateConfiguration(
+    params: {
+      runId: string
+      expectedVersion: number
+      objective: string
+      policyOverrides: WorkflowRunPolicyOverrides | null
+      promptOverrides: WorkflowRunPromptOverrides | null
+    },
     mutation: WorkflowMutation
   ): WorkflowRunRecord {
     return runWorkflowMutation(this.db, mutation, () => {
       const run = this.show(params.runId, mutation.callerIdentity)
       assertWorkflowRunConfigurable(run)
-      this.db
+      if (run.version !== params.expectedVersion) {
+        throw new WorkflowError(
+          'workflow_version_conflict',
+          'Workflow run changed. Reload and try again.'
+        )
+      }
+      const policyOverrides = parseWorkflowRunPolicyOverrides(params.policyOverrides)
+      const promptOverrides = parseWorkflowRunPromptOverrides(params.promptOverrides)
+      assertWorkflowRunPolicyMatchesSnapshot(run.templateSnapshot, policyOverrides)
+      const result = this.db
         .prepare(
           `UPDATE workflow_runs
-           SET objective = ?, status = 'draft', version = version + 1, updated_at = datetime('now')
+           SET objective = ?, policy_overrides_json = ?, prompt_overrides_json = ?,
+               status = 'draft', version = version + 1, updated_at = datetime('now')
            WHERE id = ? AND version = ?`
         )
-        .run(params.objective, run.id, run.version)
+        .run(
+          params.objective,
+          policyOverrides ? JSON.stringify(policyOverrides) : null,
+          promptOverrides ? JSON.stringify(promptOverrides) : null,
+          run.id,
+          run.version
+        )
+      if (result.changes !== 1) {
+        throw new WorkflowError(
+          'workflow_version_conflict',
+          'Workflow run changed. Reload and try again.'
+        )
+      }
+      insertWorkflowEvent(this.db, run.id, 'run-configuration-updated', null, {
+        policyVersion: policyOverrides?.policyVersion ?? null,
+        promptOverrideNodeIds: Object.keys(promptOverrides ?? {})
+      })
       return this.show(run.id, mutation.callerIdentity)
     })
   }
@@ -237,7 +278,10 @@ export class WorkflowRunStore {
     return runWorkflowMutation(this.db, mutation, () => {
       const run = this.show(params.runId, mutation.callerIdentity)
       assertWorkflowRunConfigurable(run)
-      const checks = buildWorkflowPreflightChecks(run, params)
+      const checks = buildWorkflowPreflightChecks(run, {
+        ...params,
+        promptHistoryIssues: workflowPromptHistoryPreflightIssues(this.db, run)
+      })
       const ready = checks.every((check) => check.status === 'passed')
       this.db
         .prepare(
@@ -245,7 +289,13 @@ export class WorkflowRunStore {
            SET status = ?, version = version + 1, updated_at = datetime('now') WHERE id = ?`
         )
         .run(ready ? 'ready' : 'draft', run.id)
-      return { ready, checks, run: this.show(run.id, mutation.callerIdentity) }
+      const preparedRun = this.show(run.id, mutation.callerIdentity)
+      return {
+        ready,
+        checks,
+        promptPreviews: buildWorkflowPromptPreviews(this.db, preparedRun),
+        run: preparedRun
+      }
     })
   }
 }

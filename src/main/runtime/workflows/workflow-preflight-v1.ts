@@ -11,6 +11,8 @@ import {
   type WorkflowAgentUnavailableReason
 } from './workflow-agent-assignment-availability'
 import { preflightCheck } from './workflow-preflight-check'
+import { validateWorkflowPromptBoundaries } from '../../../shared/workflow-prompt-boundary-validation'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export function buildWorkflowV1PreflightChecks(
   run: WorkflowRunRecord,
@@ -19,8 +21,10 @@ export function buildWorkflowV1PreflightChecks(
     capabilityAvailable: boolean
     unavailableAgentLifecycleIds: string[]
     unavailableAgentReasons?: Record<string, WorkflowAgentUnavailableReason>
+    promptHistoryIssues?: string[]
   }
 ): WorkflowPreflightCheck[] {
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 preflight')
   const assignmentCount = new Map<string, number>()
   for (const assignment of run.assignments) {
     const key = `${assignment.nodeId}\0${assignment.slotId}`
@@ -28,9 +32,9 @@ export function buildWorkflowV1PreflightChecks(
   }
   const requiredFailures: string[] = []
   const minimumFailures: string[] = []
-  for (const node of run.templateSnapshot.nodes) {
+  for (const node of definition.nodes) {
     for (const slotId of node.roleSlotIds) {
-      const slot = run.templateSnapshot.roleSlots.find((candidate) => candidate.id === slotId)
+      const slot = definition.roleSlots.find((candidate) => candidate.id === slotId)
       if (!slot) {
         continue
       }
@@ -48,10 +52,8 @@ export function buildWorkflowV1PreflightChecks(
     unavailable.has(assignment.agentLifecycleId)
   )
   const unavailableDetails = unavailableAssignments.map((assignment) => {
-    const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === assignment.nodeId)
-    const slot = run.templateSnapshot.roleSlots.find(
-      (candidate) => candidate.id === assignment.slotId
-    )
+    const node = definition.nodes.find((candidate) => candidate.id === assignment.nodeId)
+    const slot = definition.roleSlots.find((candidate) => candidate.id === assignment.slotId)
     const target = `${node?.name ?? assignment.nodeId} / ${slot?.label ?? assignment.slotId}`
     const agent = assignment.runtimeAgent ? ` (${assignment.runtimeAgent})` : ''
     const reason = context.unavailableAgentReasons?.[assignment.agentLifecycleId]
@@ -59,7 +61,7 @@ export function buildWorkflowV1PreflightChecks(
       reason ? workflowAgentUnavailableReasonLabel(reason) : 'Agent is unavailable'
     }`
   })
-  const reviews = run.templateSnapshot.nodes.filter((node) => node.type === 'review')
+  const reviews = definition.nodes.filter((node) => node.type === 'review')
   const reviewBoundsValid = reviews.every(
     (node) =>
       node.reviewPolicy.maxReviewRounds >= 1 &&
@@ -67,13 +69,13 @@ export function buildWorkflowV1PreflightChecks(
       run.assignments.filter((assignment) => assignment.nodeId === node.id).length >=
         node.reviewPolicy.minReviewers
   )
-  const hasExit = run.templateSnapshot.nodes.some((node) => node.type === 'complete')
-  const protocolConflicts = run.templateSnapshot.nodes
+  const hasExit = definition.nodes.some((node) => node.type === 'complete')
+  const protocolConflicts = definition.nodes
     .filter((node) => node.type === 'review' || node.type === 'decide')
     .filter((node) => hasWorkflowDecisionProtocolConflict(node.promptInstructions ?? ''))
     .map((node) => node.name)
-  const explicitV2 =
-    run.templateSnapshot.decisionProtocolVersion === WORKFLOW_DECISION_PROTOCOL_VERSION_V2
+  const explicitV2 = definition.decisionProtocolVersion === WORKFLOW_DECISION_PROTOCOL_VERSION_V2
+  const promptIssues = validateWorkflowPromptBoundaries(definition)
   return [
     preflightCheck(
       'required-slots',
@@ -148,6 +150,22 @@ export function buildWorkflowV1PreflightChecks(
       explicitV2
         ? 'Use a V2 free-form template (schemaVersion 2) for 完成/不完成'
         : 'Remove “完成/不完成” first-line constraints from Review/Decision business prompts'
+    ),
+    preflightCheck(
+      'prompt-boundaries',
+      promptIssues.length === 0,
+      promptIssues.length
+        ? promptIssues.map((issue) => `${issue.nodeId}: ${issue.message}`).join('; ')
+        : 'First-visit and repeat-visit prompt boundaries are valid',
+      'Fix the listed prompt boundary or explicitly declare that repeat visits do not read history'
+    ),
+    preflightCheck(
+      'prompt-history',
+      (context.promptHistoryIssues?.length ?? 0) === 0,
+      context.promptHistoryIssues?.length
+        ? context.promptHistoryIssues.join('; ')
+        : 'Required prompt history is available',
+      'Choose an available cycle and stable node ID, or remove the reference'
     )
   ]
 }

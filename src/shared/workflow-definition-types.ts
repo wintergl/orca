@@ -15,6 +15,7 @@ export type {
   WorkflowDeliveryState,
   WorkflowMessageSource,
   WorkflowPreflightCheck,
+  WorkflowPromptPreview,
   WorkflowPreflightResult,
   WorkflowResolutionOffer,
   WorkflowRunEventsResult,
@@ -50,6 +51,7 @@ export const WORKFLOW_RESOLUTION_ACTIONS = [
   'approve',
   'revise',
   'continue-round',
+  'extend-route-budget',
   'retry-step',
   'retry-with-duplicate-risk',
   'reassign-agent',
@@ -115,6 +117,7 @@ export type WorkflowPromptRuleV1 = {
 export type WorkflowPromptRulesV1 = {
   rules: WorkflowPromptRuleV1[]
   completionCriteria: string
+  repeatVisitHistoryMode?: 'required' | 'not-required'
 }
 
 export type WorkflowNodeBase = {

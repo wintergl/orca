@@ -4,14 +4,25 @@ import type {
   WorkflowPreflightResult,
   WorkflowRunRecord
 } from '../../../../shared/workflow-definition-types'
+import type {
+  WorkflowRunPolicyOverrides,
+  WorkflowRunPromptOverrides
+} from '../../../../shared/workflow-run-lineage'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { translate } from '@/i18n/i18n'
 import {
   prepareWorkflowRun,
   showWorkflowRun,
   startWorkflowRun,
-  updateWorkflowRunObjective
+  updateWorkflowRunConfiguration
 } from './workflow-runtime-client'
+import {
+  effectivePromptOverrides,
+  effectiveRunPolicy,
+  runConfigurationChanged,
+  runPolicyOverrideForSave,
+  runPromptOverridesForSave
+} from './workflow-run-configuration-state'
 
 export function useWorkflowRunApplicationActions({
   run,
@@ -28,24 +39,35 @@ export function useWorkflowRunApplicationActions({
 }): {
   objective: string
   setObjective: (objective: string) => void
+  policy: WorkflowRunPolicyOverrides
+  setPolicy: (policy: WorkflowRunPolicyOverrides) => void
+  prompts: WorkflowRunPromptOverrides
+  setPrompts: (prompts: WorkflowRunPromptOverrides) => void
   busy: boolean
   prepare: () => Promise<void>
   start: () => Promise<void>
 } {
   const [objective, setObjective] = useState(run.objective)
+  const [policy, setPolicy] = useState(() => effectiveRunPolicy(run))
+  const [prompts, setPrompts] = useState(() => effectivePromptOverrides(run))
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setObjective(run.objective)
-  }, [run.id, run.objective])
+    setPolicy(effectiveRunPolicy(run))
+    setPrompts(effectivePromptOverrides(run))
+  }, [run])
 
   const prepare = useCallback(async (): Promise<void> => {
     setBusy(true)
     try {
-      const savedRun =
-        objective !== run.objective
-          ? await updateWorkflowRunObjective(target, run.id, objective)
-          : run
+      const savedRun = runConfigurationChanged(run, objective, policy, prompts)
+        ? await updateWorkflowRunConfiguration(target, run, {
+            objective,
+            policyOverrides: runPolicyOverrideForSave(run, policy),
+            promptOverrides: runPromptOverridesForSave(prompts)
+          })
+        : run
       onRunUpdated(savedRun)
       const result = await prepareWorkflowRun(target, savedRun.id)
       onPreflightUpdated(result)
@@ -63,7 +85,7 @@ export function useWorkflowRunApplicationActions({
     } finally {
       setBusy(false)
     }
-  }, [objective, onPreflightUpdated, onRunUpdated, run, target])
+  }, [objective, onPreflightUpdated, onRunUpdated, policy, prompts, run, target])
 
   const start = useCallback(async (): Promise<void> => {
     if (run.status !== 'ready') {
@@ -86,7 +108,7 @@ export function useWorkflowRunApplicationActions({
     }
   }, [onRunUpdated, onStarted, run.id, run.status, target])
 
-  return { objective, setObjective, busy, prepare, start }
+  return { objective, setObjective, policy, setPolicy, prompts, setPrompts, busy, prepare, start }
 }
 
 function showError(error: unknown, fallback: string): void {

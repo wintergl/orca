@@ -51,6 +51,10 @@ export function resolutionActionLabel(action: WorkflowResolutionAction): string 
     approve: translate('workflows.visual.actionApprove', 'Approve'),
     revise: translate('workflows.visual.actionRevise', 'Request changes'),
     'continue-round': translate('workflows.visual.actionContinueReview', 'Continue review'),
+    'extend-route-budget': translate(
+      'workflows.visual.actionExtendRouteBudget',
+      'Extend route budget'
+    ),
     'retry-step': translate('workflows.visual.actionRetry', 'Retry step'),
     'retry-with-duplicate-risk': translate(
       'workflows.visual.actionRetryRisk',

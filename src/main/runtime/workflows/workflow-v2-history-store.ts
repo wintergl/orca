@@ -23,7 +23,46 @@ export function ensureWorkflowV2HistoryTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_v2_history_run
       ON workflow_v2_history(run_id, sequence);
+    CREATE TABLE IF NOT EXISTS workflow_v2_route_budget_extensions (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      route_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      actor_identity TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_v2_route_budget_extensions_run
+      ON workflow_v2_route_budget_extensions(run_id, route_id);
   `)
+}
+
+export function getWorkflowV2RouteBudgetExtensions(
+  db: Database.Database,
+  runId: string
+): Record<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT route_id, SUM(amount) AS amount
+       FROM workflow_v2_route_budget_extensions WHERE run_id = ? GROUP BY route_id`
+    )
+    .all(runId) as { route_id: string; amount: number }[]
+  return Object.fromEntries(rows.map((row) => [row.route_id, row.amount]))
+}
+
+export function addWorkflowV2RouteBudgetExtension(
+  db: Database.Database,
+  params: { runId: string; routeId: string; amount: number; actorIdentity: string }
+): void {
+  db.prepare(
+    `INSERT INTO workflow_v2_route_budget_extensions
+       (id, run_id, route_id, amount, actor_identity) VALUES (?, ?, ?, ?, ?)`
+  ).run(
+    workflowRecordId('workflow_v2_route_budget_extension'),
+    params.runId,
+    params.routeId,
+    params.amount,
+    params.actorIdentity
+  )
 }
 
 export function appendWorkflowV2History(
@@ -103,6 +142,22 @@ export function listWorkflowV2History(
   }))
 }
 
+export function hasWorkflowV2StepVisitedInCycle(
+  db: Database.Database,
+  runId: string,
+  stepId: string,
+  cycle: number
+): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM workflow_v2_history
+         WHERE run_id = ? AND step_id = ? AND cycle = ? LIMIT 1`
+      )
+      .get(runId, stepId, cycle)
+  )
+}
+
 /** Merge ancestor V2 histories for child-run prompt lineage. */
 export function listWorkflowV2HistoryWithLineage(
   db: Database.Database,
@@ -166,4 +221,14 @@ export function setWorkflowV2RouteTraversalCounts(
   db.prepare(
     `UPDATE workflow_runs SET baseline_json = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(JSON.stringify(base), runId)
+}
+
+export function incrementWorkflowV2RouteTraversal(
+  db: Database.Database,
+  runId: string,
+  routeId: string
+): void {
+  const counts = getWorkflowV2RouteTraversalCounts(db, runId)
+  counts[routeId] = (counts[routeId] ?? 0) + 1
+  setWorkflowV2RouteTraversalCounts(db, runId, counts)
 }

@@ -34,7 +34,7 @@ export function readyV2Run(
     { runId: created.id, objective: 'Run the free-form V2 workflow end to end.' },
     mutation(`objective-${templateId}`)
   )
-  return store.prepareRun(
+  const prepared = store.prepareRun(
     {
       runId: created.id,
       workspaceAvailable: true,
@@ -42,7 +42,15 @@ export function readyV2Run(
       unavailableAgentLifecycleIds: []
     },
     mutation(`prepare-${templateId}`)
-  ).run.id
+  )
+  if (!prepared.ready) {
+    const failed = prepared.checks
+      .filter((check) => check.status === 'failed')
+      .map((check) => `${check.id}: ${check.message}`)
+      .join('; ')
+    throw new Error(`V2 fixture ${templateId} failed preflight: ${failed}`)
+  }
+  return prepared.run.id
 }
 
 export function queueV2Completion(

@@ -13,6 +13,9 @@ export function WorkflowReviewProgress({
   run: WorkflowRunRecord
   onOpenStep: (step: WorkflowStepRunRecord) => void
 }): React.JSX.Element | null {
+  if (run.templateSnapshot.schemaVersion !== 1) {
+    return null
+  }
   const reviewNode =
     run.templateSnapshot.nodes.find(
       (node) => node.id === run.currentNodeId && node.type === 'review'

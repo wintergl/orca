@@ -17,6 +17,7 @@ import {
   type WorkflowWorkspaceBaseline
 } from './workflow-workspace-snapshot'
 import { WorkflowError } from './workflow-error'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export async function freezeWorkflowArtifact(params: {
   store: WorkflowStore
@@ -26,9 +27,8 @@ export async function freezeWorkflowArtifact(params: {
   baseline: WorkflowWorkspaceBaseline
   workerFilesModified: string[]
 }): Promise<WorkflowArtifactRevision> {
-  const node = params.run.templateSnapshot.nodes.find(
-    (candidate) => candidate.id === params.step.nodeId
-  )
+  const definition = requireWorkflowDefinitionV1(params.run.templateSnapshot, 'Artifact freeze')
+  const node = definition.nodes.find((candidate) => candidate.id === params.step.nodeId)
   if (!node || node.type !== 'produce') {
     throw new WorkflowError('workflow_artifact_unavailable', 'Produce node is unavailable.')
   }

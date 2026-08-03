@@ -9,6 +9,7 @@ import { stampWorkflowDecisionProtocolVersionV1 } from '../../../shared/workflow
 import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
+import { assertWorkflowTemplateBoundaries } from './workflow-template-boundary-validation'
 import {
   parseStoredWorkflowDefinition,
   toWorkflowTemplateRecord,
@@ -65,6 +66,7 @@ export class WorkflowTemplateStore {
     const definition = isWorkflowDefinitionV2(parsed)
       ? parsed
       : stampWorkflowDecisionProtocolVersionV1(parsed)
+    assertWorkflowTemplateBoundaries(definition)
     return runWorkflowMutation(this.db, mutation, () => {
       this.assertProjectScope(params.scope, params.projectIdentity)
       this.assertNameAvailable(
@@ -110,6 +112,7 @@ export class WorkflowTemplateStore {
     const definition = isWorkflowDefinitionV2(parsed)
       ? parsed
       : stampWorkflowDecisionProtocolVersionV1(parsed)
+    assertWorkflowTemplateBoundaries(definition)
     return runWorkflowMutation(this.db, mutation, () => {
       const row = this.getRow(params.templateId)
       this.assertMutable(row, mutation.callerIdentity, params.projectIdentity)

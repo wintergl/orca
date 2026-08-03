@@ -15,6 +15,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { addWorkflowV2Step, removeWorkflowV2Step } from './workflow-definition-editing-v2'
 import { WorkflowV2StepInspector } from './WorkflowV2StepInspector'
+import { WorkflowV2RoleSlotFields } from './WorkflowV2RoleSlotFields'
 
 const STEP_KINDS: WorkflowStepKindV2[] = ['agent', 'decision', 'human', 'end']
 
@@ -142,12 +143,19 @@ export function WorkflowTemplateV2Editor({
       </aside>
       <div className="scrollbar-sleek min-h-0 overflow-auto p-3">
         {selected ? (
-          <WorkflowV2StepInspector
-            definition={definition}
-            selected={selected}
-            readOnly={readOnly}
-            onChange={onChange}
-          />
+          <div className="mx-auto max-w-3xl space-y-3">
+            <WorkflowV2RoleSlotFields
+              definition={definition}
+              readOnly={readOnly}
+              onChange={onChange}
+            />
+            <WorkflowV2StepInspector
+              definition={definition}
+              selected={selected}
+              readOnly={readOnly}
+              onChange={onChange}
+            />
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">
             {translate('workflows.templates.selectStep', 'Select a step')}

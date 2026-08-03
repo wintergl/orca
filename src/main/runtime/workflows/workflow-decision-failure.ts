@@ -4,6 +4,7 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { resolutionContextForAggregate } from './workflow-transition-engine'
+import { requireWorkflowDefinitionV1 } from '../../../shared/workflow-definition-access'
 
 export function failWorkflowDecision(
   store: WorkflowRuntimePersistence,
@@ -40,7 +41,11 @@ export function failWorkflowDecision(
         params.rawAgentText?.trim() || null,
         current.id
       )
-    const node = params.run.templateSnapshot.nodes.find(
+    const definition = requireWorkflowDefinitionV1(
+      params.run.templateSnapshot,
+      'V1 decision failure'
+    )
+    const node = definition.nodes.find(
       (candidate) => candidate.id === current.nodeId && candidate.type === 'decide'
     )
     const canRetry =
@@ -97,7 +102,8 @@ export function decisionFailureCanRetry(
   run: WorkflowRunRecord,
   step: WorkflowStepRunRecord
 ): boolean {
-  const node = run.templateSnapshot.nodes.find(
+  const definition = requireWorkflowDefinitionV1(run.templateSnapshot, 'V1 decision retry')
+  const node = definition.nodes.find(
     (candidate) => candidate.id === step.nodeId && candidate.type === 'decide'
   )
   return Boolean(

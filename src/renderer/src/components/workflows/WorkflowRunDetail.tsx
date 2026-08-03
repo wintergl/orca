@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Circle, Download, FileText, LoaderCircle, XCircle } from 'lucide-react'
+import { Clipboard, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
   WorkflowEventRecord,
@@ -16,6 +16,14 @@ import { setWorkflowSelectedStep } from './workflow-renderer-state'
 import { WorkflowReviewAggregatePanel } from './WorkflowReviewAggregatePanel'
 import { WorkflowResolutionPanel } from './WorkflowResolutionPanel'
 import { WorkflowRunRerunButton } from './WorkflowRunRerunButton'
+import {
+  WorkflowRunConfigurationSnapshot,
+  WorkflowRunV2HistoryPanel
+} from './WorkflowRunConfigurationSnapshot'
+import { WorkflowRunV2BudgetSnapshot } from './WorkflowRunV2BudgetSnapshot'
+import { WorkflowRunV1BudgetSnapshot } from './WorkflowRunV1BudgetSnapshot'
+import { buildWorkflowDiagnosticSummary } from './workflow-diagnostic-summary'
+import { ArtifactPanel, ContentPanel, StepIdentity, StepStateIcon } from './WorkflowRunStepPanels'
 
 export function WorkflowRunDetail({
   run,
@@ -133,10 +141,11 @@ export function WorkflowRunDetail({
                 {selectedStep
                   ? translate(
                       'workflows.run.stepMetadata',
-                      '{{type}} · round {{round}} · attempt {{attempt}}',
+                      '{{type}} · local cycle {{round}} · lineage cycle {{lineageCycle}} · attempt {{attempt}}',
                       {
                         type: selectedStep.nodeType,
                         round: selectedStep.round,
+                        lineageCycle: run.lineageCycleBase + selectedStep.round,
                         attempt: selectedStep.attempt
                       }
                     )
@@ -144,6 +153,13 @@ export function WorkflowRunDetail({
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void copyDiagnosticSummary(run, events)}
+              >
+                <Clipboard /> {translate('workflows.run.copyDiagnostics', 'Copy diagnostics')}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -175,6 +191,9 @@ export function WorkflowRunDetail({
               )}
             </p>
           ) : null}
+          <WorkflowRunConfigurationSnapshot run={run} />
+          <WorkflowRunV1BudgetSnapshot run={run} />
+          <WorkflowRunV2BudgetSnapshot run={run} />
           {run.failureMessage ? (
             <section className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
               <h3 className="text-sm font-medium text-destructive">{run.failureMessage}</h3>
@@ -198,7 +217,10 @@ export function WorkflowRunDetail({
             <>
               <StepIdentity step={selectedStep} />
               <ContentPanel
-                title={translate('workflows.run.prompt', 'Actual prompt')}
+                title={`${translate('workflows.run.prompt', 'Actual prompt')} · ${promptSourceLabel(
+                  run,
+                  selectedStep
+                )}`}
                 content={selectedStep.prompt}
                 empty={translate('workflows.run.promptPending', 'Prompt has not been delivered.')}
               />
@@ -216,6 +238,7 @@ export function WorkflowRunDetail({
               {selectedAggregate ? (
                 <WorkflowReviewAggregatePanel aggregate={selectedAggregate} run={run} />
               ) : null}
+              {(run.v2History?.length ?? 0) > 0 ? <WorkflowRunV2HistoryPanel run={run} /> : null}
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -228,121 +251,21 @@ export function WorkflowRunDetail({
   )
 }
 
-function StepIdentity({ step }: { step: WorkflowStepRunRecord }): React.JSX.Element {
-  return (
-    <section className="grid gap-2 rounded-lg border border-border bg-card p-4 text-xs sm:grid-cols-2">
-      <Identity label={translate('workflows.run.stepRun', 'Step Run')} value={step.id} />
-      <Identity
-        label={translate('workflows.run.agent', 'Agent')}
-        value={step.assignment?.agentLifecycleId ?? 'Engine'}
-      />
-      <Identity label={translate('workflows.run.task', 'Task')} value={step.taskId ?? 'pending'} />
-      <Identity
-        label={translate('workflows.run.dispatch', 'Dispatch')}
-        value={step.dispatchId ?? 'pending'}
-      />
-      <Identity label={translate('workflows.run.delivery', 'Delivery')} value={step.deliveryId} />
-      <Identity
-        label={translate('workflows.run.source', 'Source')}
-        value={step.messageSource ?? 'pending'}
-      />
-    </section>
-  )
+async function copyDiagnosticSummary(
+  run: WorkflowRunRecord,
+  events: readonly WorkflowEventRecord[]
+): Promise<void> {
+  await navigator.clipboard.writeText(buildWorkflowDiagnosticSummary(run, events))
+  toast.success(translate('workflows.run.diagnosticsCopied', 'Diagnostic summary copied'))
 }
 
-function Identity({ label, value }: { label: string; value: string }): React.JSX.Element {
-  return (
-    <p className="min-w-0">
-      <span className="text-muted-foreground">{label}: </span>
-      <span className="break-all font-mono">{value}</span>
-    </p>
-  )
-}
-
-function ContentPanel({
-  title,
-  content,
-  empty
-}: {
-  title: string
-  content: string | null
-  empty: string
-}): React.JSX.Element {
-  return (
-    <section className="rounded-lg border border-border bg-card">
-      <h3 className="border-b border-border px-4 py-3 text-sm font-medium">{title}</h3>
-      {content ? (
-        <pre className="scrollbar-sleek max-h-[28rem] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs">
-          {content}
-        </pre>
-      ) : (
-        <p className="p-4 text-xs text-muted-foreground">{empty}</p>
-      )}
-    </section>
-  )
-}
-
-function ArtifactPanel({
-  run,
-  step
-}: {
-  run: WorkflowRunRecord
-  step: WorkflowStepRunRecord
-}): React.JSX.Element | null {
-  const artifactId = step.outputArtifactRevisionId ?? step.inputArtifactRevisionId
-  const artifact = run.artifacts.find((candidate) => candidate.id === artifactId)
-  if (!artifact) {
-    return null
+function promptSourceLabel(run: WorkflowRunRecord, step: WorkflowStepRunRecord): string {
+  const override = run.promptOverrides?.[step.nodeId]
+  const repeated = run.lineageCycleBase + step.round > 1
+  if (repeated ? override?.repeatVisit : override?.firstVisit) {
+    return translate('workflows.run.promptSourceOverride', 'Run override')
   }
-  return (
-    <section className="rounded-lg border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <FileText className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">
-          {translate('workflows.run.artifact', 'Artifact Revision')} {artifact.revision}
-        </h3>
-        <Badge variant="outline" className="ml-auto">
-          {artifact.snapshotState}
-        </Badge>
-      </div>
-      <pre className="scrollbar-sleek max-h-[24rem] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs">
-        {JSON.stringify(
-          {
-            id: artifact.id,
-            executionHostId: artifact.executionHostId,
-            digest: artifact.digest,
-            locator: artifact.locator,
-            materializedPath:
-              artifact.executionHostId === 'local' ? artifact.materializedPath : null,
-            remoteReference:
-              artifact.executionHostId === 'local'
-                ? null
-                : 'Artifact remains on its execution host and is not opened as a local path.',
-            manifest: artifact.manifest
-          },
-          null,
-          2
-        )}
-      </pre>
-    </section>
-  )
-}
-
-function StepStateIcon({ step }: { step: WorkflowStepRunRecord }): React.JSX.Element {
-  if (step.status === 'succeeded') {
-    return <CheckCircle2 className="mt-0.5 size-4 text-status-success" />
-  }
-  if (step.status === 'running' || step.status === 'delivering') {
-    return <LoaderCircle className="mt-0.5 size-4 animate-spin text-muted-foreground" />
-  }
-  if (
-    step.status === 'failed' ||
-    step.status === 'timed-out' ||
-    step.status === 'completion-incomplete'
-  ) {
-    return <XCircle className="mt-0.5 size-4 text-destructive" />
-  }
-  return <Circle className="mt-0.5 size-4 text-muted-foreground" />
+  return translate('workflows.run.promptSourceTemplate', 'Template snapshot')
 }
 
 function formatTimestamp(value: string): string {

@@ -61,12 +61,20 @@ export const runCreateParams = z
   })
   .strict()
 
-const policyOverridesSchema = z
-  .object({
-    policyVersion: z.literal('v1-review-rounds'),
-    maxReviewRoundsByNodeId: z.record(z.string(), z.number().int().min(1).max(20))
-  })
-  .strict()
+const policyOverridesSchema = z.discriminatedUnion('policyVersion', [
+  z
+    .object({
+      policyVersion: z.literal('v1-review-rounds'),
+      maxReviewRoundsByNodeId: z.record(z.string(), z.number().int().min(1).max(20))
+    })
+    .strict(),
+  z
+    .object({
+      policyVersion: z.literal('v2-route-traversals'),
+      maxTraversalsByRouteId: z.record(z.string(), z.number().int().min(0).max(50))
+    })
+    .strict()
+])
 
 const promptOverrideEntrySchema = z
   .object({
@@ -150,7 +158,14 @@ export const runExportParams = z
   .object({ runId: id, format: z.enum(['markdown', 'json']) })
   .strict()
 export const runUpdateParams = z
-  .object({ ...mutationBase, runId: id, objective: z.string().max(100_000) })
+  .object({
+    ...mutationBase,
+    runId: id,
+    expectedVersion: z.number().int().min(1),
+    objective: z.string().max(100_000),
+    policyOverrides: policyOverridesSchema.nullable(),
+    promptOverrides: z.record(z.string(), promptOverrideEntrySchema).nullable()
+  })
   .strict()
 export const runSwitchTemplateParams = z
   .object({

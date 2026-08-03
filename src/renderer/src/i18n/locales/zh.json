@@ -14440,7 +14440,32 @@
       "noSteps": "尚未创建工作流步骤。",
       "artifact": "产出版本",
       "reviewAggregate": "评审汇总",
-      "reviewAggregateMetadata": "第 {{round}} 轮 · {{count}} 份原始评审 · {{waitingReason}}"
+      "reviewAggregateMetadata": "第 {{round}} 轮 · {{count}} 份原始评审 · {{waitingReason}}",
+      "configurationSnapshot": "Run configuration snapshot",
+      "rootRun": "Root Run",
+      "parentRun": "Parent Run",
+      "localCycle": "Local Run cycle",
+      "lineageCycle": "Lineage cycle",
+      "v2History": "Append-only workflow history",
+      "copyDiagnostics": "Copy diagnostics",
+      "rerunBanner": "Another round from {{parent}}. Re-executes from the template entry with read-only parent history — not a checkpoint resume.",
+      "diagnosticsCopied": "Diagnostic summary copied",
+      "promptSourceOverride": "Run override",
+      "promptSourceTemplate": "Template snapshot",
+      "anotherRound": "Another round",
+      "anotherRoundHint": "Create a child Draft from the workflow entry. The completed parent remains immutable.",
+      "additionalRequirements": "Additional requirements",
+      "additionalRequirementsPlaceholder": "Describe what should change in this round",
+      "noAdditionalRequirements": "No additional requirements; repeat with the same objective",
+      "copyAssignments": "Copy current Agent assignments",
+      "createChildDraft": "Create child Draft",
+      "rerunCreated": "Child Draft created for another round.",
+      "rerunFailed": "Could not create another round.",
+      "reviewBudgets": "Review round budgets",
+      "reviewBudgetAudit": "template {{template}} · override {{override}} · extension +{{extension}} · used {{used}} / {{effective}}",
+      "routeBudgets": "Route traversal budgets",
+      "routeBudgetAudit": "template {{template}} · override {{override}} · extension +{{extension}} · used {{used}} / {{effective}}",
+      "historyEntryMeta": "{{step}} · lineage cycle {{cycle}} · visit {{visit}} · attempt {{attempt}}"
     },
     "templates": {
       "untitled": "未命名工作流",
@@ -14472,7 +14497,13 @@
       "manage": "管理流程",
       "manageTitle": "工作流管理",
       "manageDescription": "集中新建、查找、打开、复制和归档工作流模板。",
-      "newWorkflow": "新建工作流"
+      "newWorkflow": "新建工作流",
+      "v2Graph": "V2 free-form graph",
+      "v2Valid": "V2 definition is valid",
+      "selectStep": "Select a step",
+      "blankRequiresV2": "Blank workflows require the V2 feature gate. Clone a runnable built-in template instead.",
+      "v1ReadOnlyAfterV2": "V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.",
+      "valid": "Workflow definition is valid"
     },
     "scope": {
       "personal": "个人",
@@ -14528,7 +14559,9 @@
         "resolve-permission": "处理权限问题",
         "regenerate-artifact": "重新生成产出",
         "end-workflow": "结束工作流"
-      }
+      },
+      "routeBudget": "Additional route traversals",
+      "routeBudgetHint": "The extension is recorded separately and does not change the original Run policy."
     },
     "export": {
       "complete": "Workflow export created: {{filename}}",
@@ -14549,7 +14582,12 @@
       "createdTo": "结束日期",
       "loading": "Loading history…",
       "empty": "No matching Workflow runs.",
-      "selectRun": "Select a Workflow run."
+      "selectRun": "Select a Workflow run.",
+      "lineage": "Lineage",
+      "rootRun": "Root Run",
+      "anotherRoundNumber": "Another round {{count}}",
+      "runPolicy": "Run policy",
+      "promptOverrides": "Prompt overrides"
     },
     "tab": {
       "title": "工作流"
@@ -14737,7 +14775,40 @@
       "canvasSelect": "选择",
       "zoomIn": "放大",
       "zoomOut": "缩小",
-      "fitWorkflow": "适应工作流"
+      "fitWorkflow": "适应工作流",
+      "removeStep": "Remove step",
+      "kindAgent": "Agent",
+      "kindDecision": "Decision",
+      "kindHuman": "Human",
+      "kindEnd": "End",
+      "maxAttempts": "Max attempts",
+      "backoffMs": "Backoff (ms)",
+      "onExhausted": "When exhausted",
+      "removeRole": "Remove role",
+      "requiredRole": "Required role",
+      "roleNumber": "Role {{count}}",
+      "executionSingle": "Single",
+      "executionParallel": "Parallel",
+      "executionSequential": "Sequential",
+      "maxTraversals": "Max traversals",
+      "exhaustedTarget": "Exhausted target",
+      "setEntry": "Set as entry",
+      "endOutcome": "Outcome",
+      "nextStep": "Next step",
+      "whenTrue": "When 完成",
+      "whenFalse": "When 不完成",
+      "whenInvalid": "When invalid",
+      "routeLabel": "Label",
+      "routeTarget": "Target",
+      "requiresText": "Requires text",
+      "requiresConfirmation": "Requires confirmation",
+      "addRoute": "Add route",
+      "role": "Role",
+      "humanContinue": "Continue",
+      "humanEnd": "End",
+      "decisionStep": "Decision step",
+      "actionExtendRouteBudget": "Extend route budget",
+      "routeNumber": "Route {{count}}"
     },
     "status": {
       "draft": "配置中",
@@ -14785,7 +14856,14 @@
       "reviseRule": "任一要求修改或存在 blocker → 退回修改",
       "humanRule": "请求人工或评审结论冲突 → 进入人工处理",
       "humanBudgetRule": "人工退回会填写修改要求，并开启新的可消耗轮次额度；继续前由人工设定额度大小。",
-      "humanActions": "人工可执行操作"
+      "humanActions": "人工可执行操作",
+      "agentStep": "Complete an Agent step",
+      "runBudget": "Run budget",
+      "runBudgetHint": "These limits apply only to this run and are frozen when it starts.",
+      "noRunBudgets": "This workflow has no bounded routes.",
+      "promptOverrides": "Run prompt overrides",
+      "promptOverridesHint": "First visit and repeat visit are separate. Blank values keep the template prompt.",
+      "useTemplatePrompt": "Use template prompt"
     },
     "runs": {
       "title": "工作流运行",
@@ -14838,7 +14916,28 @@
       "criteriaHint": "在需要 Agent 接收判定条件的位置插入 {{criteria}}。",
       "firstVersion": "生成第一版",
       "reviseFromHistory": "根据历史结果修订",
-      "defaultCriteria": "返回完整的最终内容，并满足本工作流目标。"
+      "defaultCriteria": "返回完整的最终内容，并满足本工作流目标。",
+      "previousSameNode": "Previous result from this node",
+      "previousUpstreamNode": "Previous upstream result",
+      "protocolAppended": "Engine appends this decision protocol (not editable):",
+      "rulesBoundaryHint": "First visit and repeat visit are separate required boundaries. Both remain visible while editing.",
+      "firstNegativeHistory": "First visit cannot reference a negative history cycle.",
+      "repeatNeedsHistory": "Add a history reference or explicitly declare that history is not required.",
+      "historyTarget": "History target",
+      "noRepeatHistory": "Repeat visits intentionally do not read prior history.",
+      "actualPreviews": "Actual prompt previews",
+      "actualPreviewsHint": "Rendered from this Run snapshot and its read-only lineage history. Engine protocol text remains protected.",
+      "previewEmpty": "No content is rendered.",
+      "previousCycle": "Previous (-1)",
+      "twoCyclesBack": "Two cycles back (-2)",
+      "cycleOne": "Cycle 1",
+      "currentCycle": "Current cycle",
+      "required": "This prompt boundary is required.",
+      "invalidPlaceholders": "This prompt has invalid placeholders.",
+      "criteriaRequired": "Include the completion criteria variable."
     }
+  },
+  "common": {
+    "cancel": "Cancel"
   }
 }

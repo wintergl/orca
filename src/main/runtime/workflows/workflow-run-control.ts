@@ -3,7 +3,6 @@ import type {
   WorkflowResolutionOffer,
   WorkflowRunRecord
 } from '../../../shared/workflow-definition-types'
-import { WORKFLOW_REVIEW_ROUND_BUDGET_MAX } from '../../../shared/workflow-review-round-budget'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
 import { buildWorkflowResolutionOffers } from './workflow-resolution-offers'
@@ -11,10 +10,8 @@ import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { workflowRecordId } from './workflow-runtime-records'
 import { WorkflowStepControl } from './workflow-step-control'
 import { applyHumanReviewDecision } from './workflow-transition-engine'
-import {
-  tryResolveWorkflowV2HumanOffer,
-  validateWorkflowV2OfferInput
-} from './workflow-run-control-v2-resolve'
+import { tryResolveWorkflowV2HumanOffer } from './workflow-run-control-v2-resolve'
+import { validateWorkflowResolutionInput } from './workflow-resolution-input-validation'
 
 export class WorkflowRunControl {
   private readonly steps: WorkflowStepControl
@@ -120,6 +117,7 @@ export class WorkflowRunControl {
       offerId: string
       reason?: string
       reviewRoundBudget?: number
+      routeTraversalBudget?: number
       confirmation: boolean
     },
     mutation: WorkflowMutation
@@ -132,13 +130,15 @@ export class WorkflowRunControl {
       if (!offer || offer.expectedRunVersion !== run.version) {
         throw conflict('Resolution Offer is stale, expired, or does not belong to this state.')
       }
-      this.validateOfferInput(offer, params)
+      validateWorkflowResolutionInput(offer, params)
       if (
         tryResolveWorkflowV2HumanOffer({
           store: this.store,
           run,
           offer,
-          reason: params.reason
+          reason: params.reason,
+          routeTraversalBudget: params.routeTraversalBudget,
+          actorIdentity: mutation.callerIdentity
         })
       ) {
         // V2 human route handled.
@@ -169,7 +169,8 @@ export class WorkflowRunControl {
         offer,
         mutation,
         params.reason?.trim() || null,
-        params.reviewRoundBudget ?? null
+        params.reviewRoundBudget ?? null,
+        params.routeTraversalBudget ?? null
       )
       return this.showRun(run.id, mutation.callerIdentity)
     })
@@ -214,39 +215,6 @@ export class WorkflowRunControl {
     return run
   }
 
-  private validateOfferInput(
-    offer: WorkflowResolutionOffer,
-    params: { reason?: string; reviewRoundBudget?: number; confirmation: boolean }
-  ): void {
-    if (offer.requiresReason && !params.reason?.trim()) {
-      throw new WorkflowError('workflow_action_forbidden', 'This action requires a reason.')
-    }
-    if (offer.requiresConfirmation && !params.confirmation) {
-      throw new WorkflowError('workflow_action_forbidden', 'This action requires confirmation.')
-    }
-    if (validateWorkflowV2OfferInput(offer, params)) {
-      return
-    }
-    if (
-      offer.action === 'revise' &&
-      params.reviewRoundBudget !== undefined &&
-      (!Number.isInteger(params.reviewRoundBudget) ||
-        params.reviewRoundBudget < 1 ||
-        params.reviewRoundBudget > WORKFLOW_REVIEW_ROUND_BUDGET_MAX)
-    ) {
-      throw new WorkflowError(
-        'workflow_action_forbidden',
-        `Review round budget must be between 1 and ${WORKFLOW_REVIEW_ROUND_BUDGET_MAX}.`
-      )
-    }
-    if (offer.action !== 'revise' && params.reviewRoundBudget !== undefined) {
-      throw new WorkflowError(
-        'workflow_action_forbidden',
-        'Review round budget is valid only when returning for revision.'
-      )
-    }
-  }
-
   private endAtReview(run: WorkflowRunRecord, reason: string): void {
     this.store.db
       .prepare(
@@ -268,7 +236,8 @@ export class WorkflowRunControl {
     offer: WorkflowResolutionOffer,
     mutation: WorkflowMutation,
     reason: string | null,
-    reviewRoundBudget: number | null
+    reviewRoundBudget: number | null,
+    routeTraversalBudget: number | null
   ): void {
     const aggregate = before.reviewAggregates.toReversed()[0]
     this.store.db
@@ -298,6 +267,7 @@ export class WorkflowRunControl {
       actor: mutation.callerIdentity,
       reason,
       reviewRoundBudget,
+      routeTraversalBudget,
       beforeStatus: before.status,
       afterStatus: after.status
     })

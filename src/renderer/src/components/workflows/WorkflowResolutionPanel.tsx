@@ -20,6 +20,7 @@ const DIRECT_ACTIONS = new Set<WorkflowResolutionOffer['action']>([
   'approve',
   'revise',
   'continue-round',
+  'extend-route-budget',
   'retry-step',
   'retry-with-duplicate-risk',
   'reassign-agent',
@@ -59,9 +60,12 @@ export function WorkflowResolutionPanel({
     (candidate) => candidate.id === run.resolutionContext?.artifactRevisionId
   )
   const primaryAction = primaryActionFor(run)
-  const reviewNode = run.templateSnapshot.nodes.find(
-    (node) => node.id === run.resolutionContext?.reviewNodeId && node.type === 'review'
-  )
+  const reviewNode =
+    run.templateSnapshot.schemaVersion === 1
+      ? run.templateSnapshot.nodes.find(
+          (node) => node.id === run.resolutionContext?.reviewNodeId && node.type === 'review'
+        )
+      : undefined
   const remainingRounds = aggregate
     ? workflowReviewRoundsRemaining(run, aggregate.reviewNodeId, aggregate.round)
     : null
@@ -122,6 +126,8 @@ export function WorkflowResolutionPanel({
           : await resolveWorkflowRun(target, run.id, selectedOffer, {
               reason: reason.trim() || undefined,
               reviewRoundBudget: selectedOffer.action === 'revise' ? reviewRoundBudget : undefined,
+              routeTraversalBudget:
+                selectedOffer.action === 'extend-route-budget' ? reviewRoundBudget : undefined,
               confirmation: true
             })
       onRunUpdated(updated)

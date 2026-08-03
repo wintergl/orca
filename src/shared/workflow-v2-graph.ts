@@ -11,7 +11,12 @@ import type { WorkflowRunPolicyOverridesV2 } from './workflow-definition-v2-type
 export type WorkflowV2GraphAdvance =
   | { kind: 'goto'; stepId: string; routeId: string | null }
   | { kind: 'end'; outcome: 'succeeded' | 'cancelled' | 'failed' }
-  | { kind: 'wait-human'; stepId: string }
+  | {
+      kind: 'wait-human'
+      stepId: string
+      exhaustedRouteId?: string
+      exhaustedTargetStepId?: string
+    }
   | { kind: 'retry-decision'; reason: string }
 
 export function workflowV2StepById(
@@ -85,7 +90,11 @@ export function resolveWorkflowV2Human(
   }
   return resolveRoute(
     definition,
-    { targetStepId: route.targetStepId, maxTraversals: undefined },
+    {
+      targetStepId: route.targetStepId,
+      maxTraversals: route.maxTraversals,
+      onExhaustedStepId: route.onExhaustedStepId
+    },
     `human:${stepId}:${routeId}`,
     usedTraversalsByRouteId,
     policyOverrides
@@ -128,11 +137,16 @@ function resolveRoute(
           return { kind: 'end', outcome: exhausted.outcome }
         }
         if (exhausted.kind === 'human') {
-          return { kind: 'wait-human', stepId: exhausted.id }
+          return {
+            kind: 'wait-human',
+            stepId: exhausted.id,
+            exhaustedRouteId: routeId,
+            exhaustedTargetStepId: route.targetStepId
+          }
         }
         return { kind: 'goto', stepId: exhausted.id, routeId: `${routeId}:exhausted` }
       }
-      return { kind: 'wait-human', stepId: route.targetStepId }
+      throw new Error(`Route ${routeId} exhausted without a human/end target.`)
     }
   }
   if (target.kind === 'end') {

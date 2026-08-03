@@ -15,13 +15,15 @@ import type {
 import { createWorkflowTables } from './workflow-database-schema'
 import { seedBuiltinWorkflowTemplates } from './workflow-database-seed'
 import { WorkflowRunStore } from './workflow-run-store'
-import { exportWorkflowRun } from './workflow-run-export'
-import { buildWorkflowResolutionOffers } from './workflow-resolution-offers'
 import { WorkflowRuntimeStore } from './workflow-runtime-store'
 import { WorkflowTemplateStore } from './workflow-template-store'
 import { hardenWorkflowDatabaseFiles } from './workflow-database-permissions'
 import { bindWorkflowStepDispatchIdentity } from './workflow-delivery-store'
 import { failWorkflowRunInTransaction } from './workflow-runtime-terminal-transitions'
+import { exportStoredWorkflowRun } from './workflow-run-export-facade'
+import { updateWorkflowRunObjective } from './workflow-run-objective-update'
+import { recordWorkflowLateCompletionIgnored } from './workflow-late-completion-event'
+import { hydrateWorkflowRunDetail } from './workflow-run-detail-hydration'
 
 export class WorkflowStore {
   private readonly db: Database.Database
@@ -100,14 +102,7 @@ export class WorkflowStore {
 
   showRun(runId: string, callerIdentity: string): WorkflowRunRecord {
     const run = this.runs.show(runId, callerIdentity)
-    const complete = {
-      ...run,
-      steps: this.runtime.listSteps(runId),
-      artifacts: this.runtime.listArtifacts(runId),
-      reviewAggregates: this.runtime.listReviewAggregates(runId),
-      decisions: this.runtime.listDecisions(runId)
-    }
-    return { ...complete, resolutionOffers: buildWorkflowResolutionOffers(complete) }
+    return hydrateWorkflowRunDetail(this.persistenceDb, this.runtime, run)
   }
 
   getArtifact(artifactId: string): WorkflowArtifactRevision | null {
@@ -124,13 +119,25 @@ export class WorkflowStore {
     callerIdentity: string
   ): WorkflowRunExportResult {
     const run = this.showRun(runId, callerIdentity)
-    return exportWorkflowRun(run, this.runtime.events(runId).events, format)
+    return exportStoredWorkflowRun(
+      this.persistenceDb,
+      run,
+      this.runtime.events(runId).events,
+      format
+    )
+  }
+
+  updateRunConfiguration(
+    ...params: Parameters<WorkflowRunStore['updateConfiguration']>
+  ): WorkflowRunRecord {
+    return this.runs.updateConfiguration(...params)
   }
 
   updateRunObjective(
-    ...params: Parameters<WorkflowRunStore['updateObjective']>
+    params: { runId: string; objective: string },
+    mutation: Parameters<WorkflowRunStore['updateConfiguration']>[1]
   ): WorkflowRunRecord {
-    return this.runs.updateObjective(...params)
+    return updateWorkflowRunObjective(this.runs, params, mutation)
   }
 
   switchRunTemplate(...params: Parameters<WorkflowRunStore['switchTemplate']>): WorkflowRunRecord {
@@ -347,15 +354,6 @@ export class WorkflowStore {
     stepRunId: string,
     payload: Record<string, unknown>
   ): void {
-    if (
-      this.runtime
-        .events(runId)
-        .events.some(
-          (event) => event.type === 'late-completion-ignored' && event.stepRunId === stepRunId
-        )
-    ) {
-      return
-    }
-    this.runtime.insertEvent(runId, 'late-completion-ignored', stepRunId, payload)
+    recordWorkflowLateCompletionIgnored(this.runtime, runId, stepRunId, payload)
   }
 }

@@ -82,7 +82,7 @@
           "variants": [
             {
               "when": "always",
-              "template": "目标：\n{{goal}}\n\n文稿：\n{{ history[currentRound].nodes[\"write\"].output }}\n\n第一条非空行只能是完成或不完成。"
+              "template": "目标：\n{{goal}}\n\n文稿：\n{{ history[currentRound].nodes[\"write\"].output }}\n\n第一条非空行只能是完成或不完成。\n\n完成条件：\n{{criteria}}"
             }
           ],
           "completionCriteria": "文稿可用。"
@@ -105,7 +105,9 @@
             "label": "退回撰写",
             "targetStepId": "write",
             "requiresText": true,
-            "requiresConfirmation": true
+            "requiresConfirmation": true,
+            "maxTraversals": 2,
+            "onExhaustedStepId": "end"
           },
           {
             "id": "accept",
