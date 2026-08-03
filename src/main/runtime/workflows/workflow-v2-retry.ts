@@ -207,27 +207,95 @@ export function insertV2RetryStep(
   return match
 }
 
-/** Emit step-retried and restore Run to running after outbox ownership is claimed. */
+export type WorkflowV2RunFenceStatus =
+  | 'running'
+  | 'waiting-human'
+  | 'paused'
+  | 'cancelled'
+  | 'completed'
+  | 'failed'
+  | 'draft'
+  | 'ready'
+  | 'review-limit-reached'
+
+export function readWorkflowRunStatus(
+  db: Database.Database,
+  runId: string
+): { status: WorkflowV2RunFenceStatus; version: number } | null {
+  const row = db.prepare(`SELECT status, version FROM workflow_runs WHERE id = ?`).get(runId) as
+    | { status: WorkflowV2RunFenceStatus; version: number }
+    | undefined
+  return row ?? null
+}
+
+export function isWorkflowV2TerminalRunStatus(status: string): boolean {
+  return status === 'cancelled' || status === 'completed' || status === 'failed'
+}
+
+/**
+ * Emit step-retried and fence-update the Run after outbox ownership is claimed.
+ * - running / waiting-human / review-limit-reached → resume running
+ * - paused → keep paused (retry stays queued)
+ * - terminal → throw so caller rolls back
+ */
 export function publishV2RetryStep(
   store: WorkflowV2FailureHost,
   run: WorkflowRunRecord,
   failed: WorkflowStepRunRecord,
   retry: WorkflowStepRunRecord
 ): WorkflowStepRunRecord {
+  const live = readWorkflowRunStatus(store.db, run.id)
+  if (!live) {
+    throw new WorkflowError('workflow_not_found', `Workflow run ${run.id} was not found.`)
+  }
+  if (isWorkflowV2TerminalRunStatus(live.status)) {
+    throw new WorkflowError(
+      'workflow_action_forbidden',
+      `Cannot publish V2 retry while Run is ${live.status}.`
+    )
+  }
   store.insertEvent(run.id, 'step-retried', retry.id, {
     retryOfStepRunId: failed.id,
     attempt: retry.attempt,
     schemaVersion: 2
   })
-  store.db
-    .prepare(
-      `UPDATE workflow_runs
-       SET status = 'running', current_node_id = ?, waiting_reason = NULL,
-           resolution_context_json = NULL, failure_code = NULL, failure_message = NULL,
-           recovery = NULL, completed_at = NULL, version = version + 1,
-           updated_at = datetime('now') WHERE id = ?`
-    )
-    .run(failed.nodeId, run.id)
+  if (live.status === 'paused') {
+    const paused = store.db
+      .prepare(
+        `UPDATE workflow_runs
+         SET current_node_id = ?, waiting_reason = NULL,
+             resolution_context_json = NULL, failure_code = NULL, failure_message = NULL,
+             recovery = NULL, completed_at = NULL, version = version + 1,
+             updated_at = datetime('now')
+         WHERE id = ? AND status = 'paused' AND version = ?`
+      )
+      .run(failed.nodeId, run.id, live.version)
+    if (paused.changes !== 1) {
+      throw new WorkflowError(
+        'workflow_offer_conflict',
+        'Paused Run changed before V2 retry publish.'
+      )
+    }
+  } else {
+    const resumed = store.db
+      .prepare(
+        `UPDATE workflow_runs
+         SET status = 'running', current_node_id = ?, waiting_reason = NULL,
+             resolution_context_json = NULL, failure_code = NULL, failure_message = NULL,
+             recovery = NULL, completed_at = NULL, version = version + 1,
+             updated_at = datetime('now')
+         WHERE id = ? AND version = ? AND status IN (
+           'running', 'waiting-human', 'review-limit-reached', 'ready', 'draft'
+         )`
+      )
+      .run(failed.nodeId, run.id, live.version)
+    if (resumed.changes !== 1) {
+      throw new WorkflowError(
+        'workflow_offer_conflict',
+        'Run status changed before V2 retry publish.'
+      )
+    }
+  }
   const refreshed = store.getStep(retry.id)
   if (!refreshed) {
     throw new WorkflowError('workflow_not_found', 'V2 retry step disappeared after publish.')

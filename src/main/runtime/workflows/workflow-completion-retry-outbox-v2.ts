@@ -4,17 +4,22 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import type Database from '../../sqlite/sync-database'
 import type { WorkflowMutationHost } from './workflow-completion-retry-outbox'
-import { insertV2RetryStep, publishV2RetryStep } from './workflow-v2-retry'
+import {
+  insertV2RetryStep,
+  isWorkflowV2TerminalRunStatus,
+  publishV2RetryStep,
+  readWorkflowRunStatus
+} from './workflow-v2-retry'
 
 /**
  * Returns:
  * - undefined when not a V2 produce outbox item
  * - retry step when claimed and published
- * - null when lost claim race or already consumed
- * Throws on insert/storage failure so the outer transaction rolls back and outbox stays pending.
+ * - null when lost claim race, already consumed, or terminal-fenced
+ * Throws on insert/storage/fence failure so the outer transaction rolls back
+ * (except terminal fence which consumes outbox without a Step).
  *
- * Order: re-check pending → insert Step → CAS outbox → publish event/Run.
- * CAS losers delete only the Step (no step-retried / Run version).
+ * Order: re-read Run fence → re-check pending → insert Step → CAS outbox → publish.
  */
 export function tryConsumeV2RetryOutbox(
   store: WorkflowMutationHost,
@@ -28,6 +33,19 @@ export function tryConsumeV2RetryOutbox(
     (run.templateSnapshot as { schemaVersion?: number }).schemaVersion !== 2
   ) {
     return undefined
+  }
+  const live = readWorkflowRunStatus(db, run.id)
+  if (!live) {
+    return null
+  }
+  if (isWorkflowV2TerminalRunStatus(live.status)) {
+    // Consume without reopening terminal Runs.
+    db.prepare(
+      `UPDATE workflow_completion_reconciliations
+       SET retry_outbox_state = 'consumed', updated_at = datetime('now')
+       WHERE receipt_id = ? AND retry_outbox_state = 'pending'`
+    ).run(receiptId)
+    return null
   }
   const current = db
     .prepare(
@@ -73,6 +91,17 @@ export function tryConsumeV2RetryOutbox(
       )
       .get(receiptId) as { retry_step_run_id: string | null } | undefined
     return winner?.retry_step_run_id ? store.getStep(winner.retry_step_run_id) : null
+  }
+  // Re-fence immediately before publish in case cancel raced after insert.
+  const afterClaim = readWorkflowRunStatus(db, run.id)
+  if (!afterClaim || isWorkflowV2TerminalRunStatus(afterClaim.status)) {
+    db.prepare('DELETE FROM workflow_step_runs WHERE id = ?').run(retry.id)
+    db.prepare(
+      `UPDATE workflow_completion_reconciliations
+       SET retry_step_run_id = NULL, updated_at = datetime('now') WHERE receipt_id = ?`
+    ).run(receiptId)
+    // Outbox stays consumed; do not reopen terminal Runs.
+    return null
   }
   return publishV2RetryStep(host, run, failed, retry)
 }
