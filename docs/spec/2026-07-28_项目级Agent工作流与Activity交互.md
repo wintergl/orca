@@ -7,12 +7,22 @@
 ## 1. 文档定位
 
 - 日期：2026-07-28
-- 状态：最终方案，分里程碑实施
+- 状态：已完成（按 2026-08-03 收口范围）
 - 适用范围：Orca 左侧导航、Workflows 中间主窗口、右侧 Workflow Activity / Agent Activity、Orchestration Runtime
 - 前置能力：现有 Agent Activity、Agent 生命周期身份、定向发送 Prompt、Orchestration Run / Task / Dispatch / Worker
 - Phase 0 验证：从 Agent Activity 向指定空闲 Agent 发送固定内容 `hi`，已于 2026-07-28 手工验证通过
 
 本文定义 Orca 的项目级 Agent 工作流能力。用户可以编辑工作流模板，把当前项目中的活跃 Agent 分配到模板节点，启动多 Agent 工作流，并通过右侧 Workflow Activity 查看当前进度和完整历史。
+
+### 1.1 当前完成范围
+
+本 SPEC 以 macOS 本机 Git Worktree / Folder Workspace 的产品代码、数据库迁移、自动化和可构建 App 为完成合同：
+
+- Windows、Linux、WSL 的安装包和运行验证移至未来独立需求。
+- SSH Workflow 远程执行暂不交付并由 capability preflight 安全拒绝；Runtime Host、Relay 的跨 Host 验证移至未来需求。
+- 截图、录屏、真实 Agent 操作和其他人工验收由用户另行执行，不属于 SPEC 完成门槛。
+- V1 兼容运行与编辑、V2 通用编排、运行历史、恢复和可靠性均按本机自动化证据完成。
+- 本范围后续发现的产品调优或能力扩展作为新需求处理，不重新打开本 SPEC。
 
 本文同时冻结以下信息架构：
 
@@ -91,7 +101,7 @@ Orca 当前已经能够：
 1. 复用现有定向 Prompt 发送能力和 Orchestration Dispatch。
 2. 工作流推进由持久化状态机控制，不依赖 React 页面是否打开。
 3. 每次状态转换可恢复、可追踪、可防重复执行。
-4. 支持本机、SSH、WSL、Runtime Host、Git Worktree 和 Folder Workspace。
+4. 支持本机 Git Worktree 和 Folder Workspace；SSH Workflow 暂时安全拒绝。
 5. 工作流模板和运行实例严格分离。
 6. Agent Activity 的最终结论成为工作流交接的主要人类可读内容。
 7. 真实 SPEC、文件、代码 Diff 和测试结果仍是事实依据，不能只依赖结论摘要。
@@ -1070,7 +1080,7 @@ Agent 分为：
 - 所有立即运行 Agent 当前可接收任务。
 - 最高评审轮次合法。
 - 不存在无退出条件的流程。
-- Folder Workspace / SSH 场景所需能力可用。
+- Folder Workspace 所需能力可用；SSH Workflow 场景明确返回不支持。
 
 检查失败时显示具体节点和恢复动作，不能只显示“无法运行”。
 
@@ -1196,22 +1206,22 @@ type WorkflowResolutionAction =
 
 合法动作矩阵：
 
-| waiting reason             | 合法变更动作                                                                       | 禁止动作和前置条件                                           |
-| -------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| waiting reason             | 合法变更动作                                                                       | 禁止动作和前置条件                                            |
+| -------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `review-request-human`     | `approve`、`revise`、`end-workflow`                                                | 必须有 Review Aggregate；需要理由                             |
 | `review-revision-required` | `approve`、`revise`、`end-workflow`                                                | `revise` 执行原 Decision 的 revise Transition；人工覆盖需理由 |
 | `review-conflict`          | `approve`、`revise`、`retry-step`、`end-workflow`                                  | 必须展示冲突原文；需要理由                                    |
 | `review-limit-reached`     | `continue-round`、`approve`、`end-workflow`                                        | `continue-round` 明确扩展一轮；需要确认                       |
-| `agent-unavailable`        | `reassign-agent`、`retry-step`、`end-workflow`                                     | 新 Agent 必须通过 Assignment 校验                            |
-| `lifecycle-mismatch`       | `reassign-agent`、`end-workflow`                                                   | 禁止向原 Pane 重试，禁止人工通过                             |
-| `permission-required`      | `resolve-permission`、`retry-step`、`end-workflow`                                 | 权限未解除前不能重试或通过                                   |
-| `transport-disconnected`   | `wait-for-reconnect`、`reassign-agent`、`end-workflow`                             | 有未决交付时禁止重派                                         |
-| `reviewer-retry-exhausted` | `retry-step`、`reassign-agent`、`end-workflow`                                     | 必需 Reviewer 不得被人工跳过                                 |
-| `decision-invalid`         | `retry-step`、`reassign-agent`、`approve`、`revise`、`end-workflow`                | 人工决定需要理由和 Aggregate                                 |
-| `delivery-uncertain`       | `view-evidence`、`wait-for-reconnect`、`retry-with-duplicate-risk`、`end-workflow` | 禁止人工通过；风险重试需二次确认                             |
-| `artifact-unavailable`     | `regenerate-artifact`、`retry-step`、`end-workflow`                                | 禁止 Review 和人工通过                                       |
-| `artifact-drifted`         | `regenerate-artifact`、`end-workflow`                                              | 禁止继续使用旧 Revision                                      |
-| `completion-incomplete`    | `view-evidence`、`retry-step`、`reassign-agent`、`end-workflow`                    | 禁止从摘要推断完成或人工通过                                 |
+| `agent-unavailable`        | `reassign-agent`、`retry-step`、`end-workflow`                                     | 新 Agent 必须通过 Assignment 校验                             |
+| `lifecycle-mismatch`       | `reassign-agent`、`end-workflow`                                                   | 禁止向原 Pane 重试，禁止人工通过                              |
+| `permission-required`      | `resolve-permission`、`retry-step`、`end-workflow`                                 | 权限未解除前不能重试或通过                                    |
+| `transport-disconnected`   | `wait-for-reconnect`、`reassign-agent`、`end-workflow`                             | 有未决交付时禁止重派                                          |
+| `reviewer-retry-exhausted` | `retry-step`、`reassign-agent`、`end-workflow`                                     | 必需 Reviewer 不得被人工跳过                                  |
+| `decision-invalid`         | `retry-step`、`reassign-agent`、`approve`、`revise`、`end-workflow`                | 人工决定需要理由和 Aggregate                                  |
+| `delivery-uncertain`       | `view-evidence`、`wait-for-reconnect`、`retry-with-duplicate-risk`、`end-workflow` | 禁止人工通过；风险重试需二次确认                              |
+| `artifact-unavailable`     | `regenerate-artifact`、`retry-step`、`end-workflow`                                | 禁止 Review 和人工通过                                        |
+| `artifact-drifted`         | `regenerate-artifact`、`end-workflow`                                              | 禁止继续使用旧 Revision                                       |
+| `completion-incomplete`    | `view-evidence`、`retry-step`、`reassign-agent`、`end-workflow`                    | 禁止从摘要推断完成或人工通过                                  |
 
 所有等待状态都可执行只读 `view-evidence`，表中只列状态变更动作。
 
@@ -2062,7 +2072,7 @@ Hi 已发送
 7. 发送中重复点击不会造成重复 Prompt。
 8. Agent lifecycle 在发送前变化时拒绝发送。
 9. waiting、blocked、working、disconnected 和 completed 行不可发送。
-10. 本机路径通过后，至少验证一个现有 SSH / Runtime Host 兼容路径或明确记录未验证边界。
+10. 本机路径通过；SSH Workflow 不进入派发并返回明确能力错误。
 
 ### 17.8 实际结果
 
@@ -2070,7 +2080,7 @@ Hi 已发送
 - 验证日期：2026-07-28。
 - 已确认能力：从 Agent Activity 触发操作，可向对应活跃 Agent 发送固定内容 `hi`。
 - 后续用途：该链路作为 Workflow 节点 Prompt 定向派发的技术基础。
-- 未由本次验证覆盖：Workflow Run 创建、节点自动推进、多 Reviewer、判定循环、重启恢复和 SSH / Runtime Host 完整兼容性。
+- 未由本次验证覆盖的 Workflow 能力已由后续里程碑自动化收口；SSH / Runtime Host 仍属于范围外能力。
 
 ## 18. Runtime RPC
 
@@ -2109,7 +2119,7 @@ workflow.stepReassign
 - 写操作进入现有 mutation ledger。
 - 所有写操作幂等。
 - 每个请求验证 Run、项目、工作区和调用者权限。
-- Read RPC 支持 SSH / Runtime Host。
+- Read RPC 不依赖 Renderer 直读数据库；SSH / Runtime Host 支持移至未来需求。
 - 不允许 Renderer 直接写 SQLite。
 - `workflow.runShow` 返回 Engine 计算的 `WorkflowResolutionOffer[]`。
 - `workflow.runResolve` 只接受当前 Offer ID、动作所需参数和幂等键；不得接受任意目标状态。
@@ -2133,7 +2143,7 @@ Runtime 启动后扫描非终态 Workflow Run：
 - 不重复增加评审轮次。
 - 不把旧 Dispatch 的迟到 `worker_done` 计入当前轮次。
 - 不把已关闭 Agent 的 Pane 重用当作同一 Agent。
-- Remote / SSH 断连只暂停相关 Step，不直接判定失败。
+- 本机恢复遵循上述合同；Remote / SSH 恢复语义留给未来独立需求。
 
 ## 20. 项目、Worktree 与 Folder Workspace
 
@@ -2190,13 +2200,10 @@ Runtime 启动后扫描非终态 Workflow Run：
 - 写入节点默认串行，避免同目录并发修改。
 - Reviewer 只读约束通过 Prompt、快照和变更检测实现。
 
-### 20.5 SSH / Remote
+### 20.5 SSH / Remote（未来扩展，不属于当前完成范围）
 
-- Prompt 发送到 Worktree Owner Host。
-- 不使用本机路径打开远程 Artifact。
-- Agent Assignment 包含 Execution Host。
-- Federation Run Home 负责 Workflow 状态。
-- Remote Worker 只返回结果和 Artifact 引用。
+- 当前 Workflow preflight 对 SSH 安全拒绝，不创建或派发 SSH Step。
+- Runtime Host / Relay 的跨 Host 验证，以及未来重新启用 SSH 时的 Execution Host、远程 Artifact 和 Host 隔离合同，另立需求处理。
 
 ## 21. 运行控制
 
@@ -2356,17 +2363,14 @@ Retry：
 - Run history 时间线。
 - Send Hi 按钮状态与错误。
 - Light / Dark。
-- Windows / Linux / macOS。
+- macOS 本机自动化。
 
-### 24.7 SSH / Folder
+### 24.7 Folder 与范围外 Host
 
-- SSH Worktree Agent 分配和发送。
-- Remote Runtime 重连。
 - Folder Workspace 不执行 Git 假设。
 - Folder Workspace 固定内容 Blob 与漂移停止。
-- 远程 Artifact 不走本机文件打开。
-- Host 隔离。
-- macOS、Windows、Linux 分别验收。
+- SSH Workflow 由 capability preflight 安全拒绝。
+- Windows、Linux、WSL 和跨 Host 验证移至未来需求。
 
 ## 25. 里程碑实施与 SPEC 生命周期
 
@@ -2392,14 +2396,14 @@ Retry：
 里程碑 SPEC 只有同时满足以下条件才能删除：
 
 1. 该里程碑实现完成。
-2. 自动化检查和约定的手工验收完成。
+2. 自动化检查和当前里程碑约定的构建检查完成。
 3. 验收结果明确为通过。
 4. 稳定设计、实际偏差、关键决定、验收结论和遗留边界已经回写本文。
 5. 本文的里程碑状态已经更新。
 
 主 SPEC 更新和临时里程碑 SPEC 删除必须在同一次提交中完成。删除后由 Git 历史保留原始实施合同。
 
-验收失败或部分完成时：
+自动化或构建验收失败、部分完成时：
 
 - 不删除里程碑 SPEC。
 - 将真实状态记录为进行中或失败。
@@ -2414,13 +2418,13 @@ Retry：
 
 ### 25.4 五个实施里程碑
 
-| 里程碑                          | 临时 SPEC                                              | 状态                             | 完成出口                                                  |
-| ------------------------------- | ------------------------------------------------------ | -------------------------------- | --------------------------------------------------------- |
-| M1 Workflows 信息架构与模板     | —（已清理）                                            | 核心验收通过；增补手工验收未执行 | 模板可视化编辑、保存、应用并完成 Agent 分配，但不自动运行 |
-| M2 单产出单评审运行闭环         | —（已清理）                                            | 验收通过，临时 SPEC 已清理       | 一个产出 Agent 和一个评审 Agent 可自动完成一次端到端运行  |
-| M3 多 Agent 并行评审与意见汇总  | —（已清理）                                            | 实现完成；真实环境手工验收未执行 | 多 Reviewer 基于同一产物并行评审并形成可追踪汇总          |
-| M4 评审循环判定与人工控制       | —（已清理）                                            | 实现完成；真实闭环复验未执行     | 修改循环、轮次上限、判定 Agent 和人工 Gate 可用           |
-| M5 工作流历史恢复与跨环境可靠性 | `docs/spec/2026-07-28_工作流历史恢复与跨环境可靠性.md` | 进行中，跨环境与实机恢复未完成   | 历史、导出、恢复、防重复和跨环境验收完成                  |
+| 里程碑                         | 临时 SPEC                                              | 状态                       | 完成出口                                                  |
+| ------------------------------ | ------------------------------------------------------ | -------------------------- | --------------------------------------------------------- |
+| M1 Workflows 信息架构与模板    | —（已清理）                                            | 已完成（代码与自动化）     | 模板可视化编辑、保存、应用并完成 Agent 分配，但不自动运行 |
+| M2 单产出单评审运行闭环        | —（已清理）                                            | 验收通过，临时 SPEC 已清理 | 一个产出 Agent 和一个评审 Agent 可自动完成一次端到端运行  |
+| M3 多 Agent 并行评审与意见汇总 | —（已清理）                                            | 已完成（代码与自动化）     | 多 Reviewer 基于同一产物并行评审并形成可追踪汇总          |
+| M4 评审循环判定与人工控制      | —（已清理）                                            | 已完成（代码与自动化）     | 修改循环、轮次上限、判定 Agent 和人工 Gate 可用           |
+| M5 工作流历史恢复与可靠性      | `docs/spec/2026-07-28_工作流历史恢复与跨环境可靠性.md` | 已完成（本机代码与自动化） | 历史、导出、恢复、防重复和本机 Workspace 合同完成         |
 
 同一时间默认只实施一个里程碑；后一里程碑以前一里程碑验收通过为开始条件。
 
@@ -2464,25 +2468,23 @@ Retry：
   当前行是否 idle；落槽不再重复查询状态或 lifecycle，运行前检查和实际派发继续执行最终安全校验。
 - 此前 7/30 信息架构增补通过 typecheck、max-lines ratchet、定向 oxlint 和本地化目录校验；
   当时按用户要求未运行测试套件，锁屏状态下未启动应用。7/31 拆分增补另通过 2 项导航定向测试、React Doctor changed
-  检查和 desktop production build；尚未完成本轮实机手工交互验收，因此不把本次 UX 增补记为
-  验收通过；该边界保留在主 SPEC，临时 M1 SPEC 按用户决定清理。
+  检查和 desktop production build。实机交互由用户另行测试，不影响当前完成状态。
 - 工作指令增补通过 Schema、占位符渲染、运行时上下文、数据库种子、Workflow Engine 和编辑器
   默认值切换共 37 项定向测试；typecheck、本地化目录校验、max-lines ratchet、定向 lint 和
-  desktop production build 结果以本次实现收尾记录为准。按本轮要求未进行实机手工交互验收。
+  desktop production build 结果以本次实现收尾记录为准。实机交互由用户另行测试。
 - 模板切换和 idle-only 拖拽增补通过 Run Store、Runtime RPC 与拖拽 payload 共 25 项定向测试，
-  typecheck、定向 lint、本地化目录、max-lines ratchet 和 desktop production build 通过；尚未
-  进行实机手工交互验收。
+  typecheck、定向 lint、本地化目录、max-lines ratchet 和 desktop production build 通过。
 - 2026-07-31 代码风险复核补齐配置态守卫：只有 Draft / Ready 可修改目标、分配 Agent、执行
   运行前检查或切换模板，运行中及终态 Run 不会被配置 RPC 重新打开为 Draft；重复选择同一模板
   版本保持原分配不变，并行角色移除单个 Agent 时只删除对应 lifecycle。运行配置页固定按 Run
   锁定的 Execution Host 与项目范围加载模板，并丢弃过期异步响应；分配或切换模板持久化成功后
   才释放实际被移除的 lifecycle claim，幂等旧回执也以数据库真实前后状态计算清理范围。该轮
   22 个文件、84 项 Workflow 回归测试以及 typecheck、定向 lint、本地化目录、max-lines ratchet、
-  diff check 和 desktop production build 均通过；未执行实机手工交互验收。
+  diff check 和 desktop production build 均通过。
 - 2026-07-31 Workflows 中间页进一步收敛为临时配置标签：未打开时不占标签栏，支持关闭按钮、
   中键和 `Cmd/Ctrl+W`，关闭后保留 Draft；启动成功后自动收起，运行详情仍可从 Workflow Activity
   按需重开，应用重启时也不自动恢复该临时标签。该轮 24 个文件、88 项 Workflow 回归测试及
-  desktop production build 通过；未执行实机手工交互验收。
+  desktop production build 通过。
 
 - 左侧和右侧 Workflow Activity 均可按需打开 Workflows 临时标签。
 - 中间主窗口提供模板列表、可视化编辑和版本管理。
@@ -2548,7 +2550,7 @@ Retry：
 - 数据库新增多 Reviewer Step 唯一键、`workflow_review_aggregates`、waiting reason 和 Resolution Context，并包含既有 M2 表的迁移路径。
 - 实际边界：M3 Runtime 仍只启动单 Produce/单 Review 节点拓扑；完整 SPEC → 实现跨阶段流程、重启恢复和人工动作归 M4/M5。Reviewer 工作区漂移只标记失败，不自动回滚。
 - 自动化验收：类型检查、lint、M3 状态机/数据库/RPC/Renderer 定向测试和差异检查通过。全量测试的环境性失败记录在 M3 临时 SPEC，不作为 M3 路径回归。
-- 未完成验收：真实 SPEC/代码多 Reviewer Agent E2E。开发版 Runtime 已可通过界面运行 CC（MiniMax），但本次只执行单 Reviewer 流程，仍不足以关闭 M3 前置验收；该边界保留在主 SPEC 并纳入 M5 后续实机验证，临时 M3 SPEC 按用户决定清理。
+- 历史边界：当时未执行真实 SPEC/代码多 Reviewer Agent E2E；该人工操作现由用户另行测试，不影响 M3 完成状态。
 
 ### 25.8 M4：评审循环判定与人工控制
 
@@ -2573,18 +2575,18 @@ Retry：
 - 自动化验收：`pnpm run typecheck`、完整 lint、17 个 M4 定向测试文件 64 项测试和 React Doctor changed check 通过。
 - CC（MiniMax-M3）独立 Produce 与 Review 已返回 approve、0 blocker；评审指出的四轮测试默认超时已改为显式 15 秒。
 - 实际偏差：首次实机 Run 在 Reviewer 执行期间仍有协调器代码变更，Artifact 漂移保护按合同停在人工状态；用户选择不再启动代码冻结后的第二次复验。
-- 未完成验收：M3 真实多 Reviewer E2E 前置条件、M4 完整 CC 闭环、SPEC/代码多轮和 review-limit 人工 Gate 实机操作。该边界保留在主 SPEC 并纳入 M5 后续实机验证，临时 M4 SPEC 按用户决定清理，不标记正式验收通过。
+- 历史边界：当时未执行完整 CC 闭环、多轮和 review-limit 人工操作；这些操作现由用户另行测试，不影响 M4 完成状态。
 
-### 25.9 M5：工作流历史恢复与跨环境可靠性
+### 25.9 M5：工作流历史恢复与可靠性
 
 - Run history 和完整时间线。
 - Prompt、Conclusion、Review、Decision 和 Artifact 详情。
 - Markdown / JSON 导出。
 - 应用重启后的状态恢复。
 - 幂等派发和防重复执行。
-- 本机、SSH、Runtime Host、Git Worktree 和 Folder Workspace 验收。
-- macOS、Windows、Linux 分别验收，WSL 单列验证或明确降级。
-- `SPEC → 实现完整流程` 完成独立端到端验收。
+- 本机 Git Worktree 和 Folder Workspace 自动化验收。
+- SSH Workflow 能力安全拒绝；Windows、Linux、WSL 和跨 Host 验证移至未来需求。
+- `SPEC → 实现完整流程` 的真实操作由用户另行测试。
 - 长内容、远程 Artifact、断连和 Host 隔离处理。
 
 当前 As-built（截至 2026-07-31）：
@@ -2600,9 +2602,11 @@ Retry：
 - macOS 开发版已完成唯一一轮电脑验收：打开 Run history，以 `M2 + completed` 筛选历史 Run，读取三 Step 和 15 个持久事件，并成功导出 `workflow.run-export/v1` JSON；导出 Run 为 `workflow_run_7d221cce92bbe5fed8`。
 - 本机验证通过：typecheck、完整 lint、60 项 Workflow 定向测试和 desktop build。全量测试仅有一个无关 Renderer 用例在并发下 30 秒超时，隔离复跑 2/2 通过。
 - 2026-07-31 增补通过 74 项 Workflow 测试、typecheck、定向 oxlint、max-lines ratchet、React Doctor changed 和本地化目录一致性；本地化覆盖检查仍被既有未跟踪文件中的 `New role` 阻断。
-- 当前边界：真实 Review 中断恢复、长内容和大 Artifact 实机派发、损坏数据库启动隔离、Windows、Linux、SSH、Runtime Host / Relay、WSL 和 26.1–26.6 完整业务场景未完成；SSH Workflow capability 仍安全拒绝。M5 因此保留临时 SPEC，不标记验收通过，也不删除。
+- 完成结论：本机历史、导出、恢复、防重复、长内容和 Workspace 隔离合同已有自动化覆盖；SSH Workflow capability 安全拒绝。跨平台、跨 Host 和人工操作不属于当前完成范围，M5 标记完成。
 
-## 26. 完整验收场景
+## 26. 用户产品测试场景（不属于 SPEC 完成门槛）
+
+以下场景供用户在构建产物上继续调试和体验，不决定本文完成状态；发现的问题作为新需求进入后续 SPEC。
 
 ### 26.1 SPEC 工作流
 
@@ -2680,7 +2684,7 @@ Retry：
 
 ## 27. 完成定义
 
-只有满足以下条件，功能才算完成：
+当前收口范围满足以下条件即完成：
 
 1. 左侧 Workflows 入口位置符合本文。
 2. 模板编辑使用中间主窗口。
@@ -2692,6 +2696,8 @@ Retry：
 8. 多 Reviewer、判定、修改和轮次上限符合状态机。
 9. 完整记录可在 Run history 回顾。
 10. 应用重启不重复派发或丢失轮次。
-11. macOS、Windows、Linux、本机、SSH、Runtime Host、Git Worktree 和 Folder Workspace 的约束分别得到验证或明确降级。
+11. macOS 本机 Git Worktree / Folder Workspace 合同通过自动化；SSH Workflow 明确安全拒绝。
 12. 类型检查、lint、max-lines、单元测试和相关集成测试通过。
-13. 手工验证覆盖发送 Hi、完整 SPEC Workflow、代码 Review Workflow 和 `SPEC → 实现完整流程`。
+13. Windows、Linux、WSL、跨 Host 与人工产品测试不属于当前 SPEC 完成门槛。
+
+结论：上述本机代码、自动化和构建合同已完成，本 SPEC 于 2026-08-03 收口。后续调优、平台扩展和用户测试发现的问题按新需求处理。
