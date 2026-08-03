@@ -3,18 +3,13 @@ import type {
   WorkflowTemplateRecord
 } from '../../../../shared/workflow-definition-types'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
 import {
   workflowAssignableUnits,
   workflowRoleSlots
 } from '../../../../shared/workflow-definition-access'
+import { WorkflowTemplateSelectGroups } from './WorkflowTemplateSelectGroups'
 
 export function WorkflowActivityLauncher({
   templates,
@@ -54,17 +49,17 @@ export function WorkflowActivityLauncher({
           {translate('workflows.activity.chooseWorkflow', 'Choose workflow')}
         </span>
         <Select value={selectedTemplate?.id} disabled={!templates.length} onValueChange={onSelect}>
-          <SelectTrigger size="sm" className="w-full text-xs">
+          <SelectTrigger
+            size="sm"
+            className="w-full text-xs"
+            aria-label={translate('workflows.activity.chooseWorkflow', 'Choose workflow')}
+          >
             <SelectValue
               placeholder={translate('workflows.activity.noTemplates', 'No workflows available')}
             />
           </SelectTrigger>
           <SelectContent>
-            {templates.map((template) => (
-              <SelectItem key={template.id} value={template.id}>
-                {template.name}
-              </SelectItem>
-            ))}
+            <WorkflowTemplateSelectGroups templates={templates} />
           </SelectContent>
         </Select>
       </label>

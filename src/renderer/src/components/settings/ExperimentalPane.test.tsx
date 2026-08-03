@@ -120,7 +120,7 @@ describe('ExperimentalPane', () => {
     expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Agent sleep')
   })
 
-  it('renders and enables the Workflow V2 runtime-host gate', async () => {
+  it('renders and can disable the default-on Workflow V2 runtime-host gate', async () => {
     const settings = getDefaultSettings('/tmp')
     const updateSettings = vi.fn()
     const { root, container } = await renderExperimentalPane({ settings, updateSettings })
@@ -131,10 +131,10 @@ describe('ExperimentalPane', () => {
       throw new Error('Workflow V2 switch was not rendered')
     }
 
-    expect(settings['workflows.v2.enabled']).toBe(false)
+    expect(settings['workflows.v2.enabled']).toBe(true)
     expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Workflow V2')
     await act(async () => switchButton.click())
-    expect(updateSettings).toHaveBeenCalledWith({ 'workflows.v2.enabled': true })
+    expect(updateSettings).toHaveBeenCalledWith({ 'workflows.v2.enabled': false })
     root.unmount()
   })
 

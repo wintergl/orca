@@ -30,7 +30,7 @@ export function WorkflowV2ExperimentalSetting({
           <p className="text-xs text-muted-foreground">
             {translate(
               'workflows.settings.v2.copy',
-              'Allows V2 templates to be created and run on this host. Keep it off when you only need stable V1 workflows and history.'
+              'Allows V2 templates to be created and run on this host. Turn it off to restrict this host to stable V1 workflows.'
             )}
           </p>
         </div>

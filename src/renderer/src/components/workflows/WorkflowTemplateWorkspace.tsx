@@ -13,13 +13,7 @@ import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
 import {
   archiveWorkflowTemplate,
@@ -34,6 +28,7 @@ import {
 } from './workflow-template-draft'
 import { WorkflowTemplateManager } from './WorkflowTemplateManager'
 import { WorkflowTemplateDefinitionSurface } from './WorkflowTemplateDefinitionSurface'
+import { WorkflowTemplateSelectGroups } from './WorkflowTemplateSelectGroups'
 
 type EditorDraft = {
   kind: 'new' | 'existing'
@@ -240,17 +235,16 @@ export function WorkflowTemplateWorkspace({
               )
             }
           >
-            <SelectTrigger className="w-[min(22rem,42vw)] border-0 bg-transparent px-1 text-sm font-semibold shadow-none">
+            <SelectTrigger
+              className="w-[min(22rem,42vw)] border-0 bg-transparent px-1 text-sm font-semibold shadow-none"
+              aria-label={translate('workflows.activity.chooseWorkflow', 'Choose workflow')}
+            >
               <SelectValue
                 placeholder={translate('workflows.templates.select', 'Select a workflow template')}
               />
             </SelectTrigger>
             <SelectContent>
-              {templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name}
-                </SelectItem>
-              ))}
+              <WorkflowTemplateSelectGroups templates={templates} />
             </SelectContent>
           </Select>
           {selected ? (
