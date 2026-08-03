@@ -7,7 +7,7 @@ import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-acc
 import { retryWorkflowStepWithDuplicateRiskInTransaction } from './workflow-completion-retry-outbox'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
-import { insertV2RetryStep } from './workflow-v2-retry'
+import { createAndPublishV2RetryStep } from './workflow-v2-retry'
 
 export class WorkflowStepControl {
   constructor(private readonly store: WorkflowRuntimePersistence) {}
@@ -90,7 +90,7 @@ export class WorkflowStepControl {
       if (!assignment) {
         throw new WorkflowError('workflow_context_mismatch', 'V2 retry requires an assignment.')
       }
-      return insertV2RetryStep(
+      return createAndPublishV2RetryStep(
         {
           db: this.store.db,
           getStep: (id) => this.store.getStep(id) ?? null,

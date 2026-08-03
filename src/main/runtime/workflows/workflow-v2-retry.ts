@@ -99,7 +99,7 @@ export function applyWorkflowV2StepFailure(
     if (params.deferRetry) {
       return null
     }
-    return insertV2RetryStep(store, params.run, current)
+    return createAndPublishV2RetryStep(store, params.run, current)
   }
   if (policy?.onExhausted === 'human') {
     parkV2RecoveryWaitingHuman(store, params.run, current)
@@ -151,6 +151,10 @@ export function parkV2RecoveryWaitingHuman(
   })
 }
 
+/**
+ * Insert only the successor Step (native attempt). Does not emit events or mutate Run.
+ * Callers that own outbox CAS must publish after claim succeeds.
+ */
 export function insertV2RetryStep(
   store: WorkflowV2FailureHost,
   run: WorkflowRunRecord,
@@ -200,9 +204,19 @@ export function insertV2RetryStep(
   if (!match) {
     throw new WorkflowError('workflow_context_mismatch', 'V2 retry step was not created.')
   }
-  store.insertEvent(run.id, 'step-retried', match.id, {
+  return match
+}
+
+/** Emit step-retried and restore Run to running after outbox ownership is claimed. */
+export function publishV2RetryStep(
+  store: WorkflowV2FailureHost,
+  run: WorkflowRunRecord,
+  failed: WorkflowStepRunRecord,
+  retry: WorkflowStepRunRecord
+): WorkflowStepRunRecord {
+  store.insertEvent(run.id, 'step-retried', retry.id, {
     retryOfStepRunId: failed.id,
-    attempt: nextAttempt,
+    attempt: retry.attempt,
     schemaVersion: 2
   })
   store.db
@@ -214,9 +228,20 @@ export function insertV2RetryStep(
            updated_at = datetime('now') WHERE id = ?`
     )
     .run(failed.nodeId, run.id)
-  const refreshed = store.getStep(match.id)
+  const refreshed = store.getStep(retry.id)
   if (!refreshed) {
-    throw new WorkflowError('workflow_not_found', 'V2 retry step disappeared after insert.')
+    throw new WorkflowError('workflow_not_found', 'V2 retry step disappeared after publish.')
   }
   return refreshed
+}
+
+/** Operator/manual retry path: insert Step and publish Run side effects together. */
+export function createAndPublishV2RetryStep(
+  store: WorkflowV2FailureHost,
+  run: WorkflowRunRecord,
+  failed: WorkflowStepRunRecord,
+  assignment: WorkflowStepRunRecord['assignment'] = failed.assignment
+): WorkflowStepRunRecord {
+  const retry = insertV2RetryStep(store, run, failed, assignment)
+  return publishV2RetryStep(store, run, failed, retry)
 }

@@ -27,13 +27,14 @@ export function buildWorkflowV2ResolutionOffers(
   if (run.status !== 'waiting-human') {
     return null
   }
+  // Why: only specialize known V2 reasons; null lets generic delivery/lifecycle offers apply.
   if (run.waitingReason === 'decision-invalid') {
     return buildV2HumanRouteOffers(run)
   }
   if (run.waitingReason === 'completion-incomplete') {
     return buildV2RecoveryOffers(run)
   }
-  return []
+  return null
 }
 
 function buildV2HumanRouteOffers(run: WorkflowRunRecord): WorkflowResolutionOffer[] {

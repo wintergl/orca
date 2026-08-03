@@ -4,14 +4,17 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import type Database from '../../sqlite/sync-database'
 import type { WorkflowMutationHost } from './workflow-completion-retry-outbox'
-import { insertV2RetryStep } from './workflow-v2-retry'
+import { insertV2RetryStep, publishV2RetryStep } from './workflow-v2-retry'
 
 /**
  * Returns:
  * - undefined when not a V2 produce outbox item
- * - retry step when claimed
- * - null when lost claim race (winner elsewhere)
+ * - retry step when claimed and published
+ * - null when lost claim race or already consumed
  * Throws on insert/storage failure so the outer transaction rolls back and outbox stays pending.
+ *
+ * Order: re-check pending → insert Step → CAS outbox → publish event/Run.
+ * CAS losers delete only the Step (no step-retried / Run version).
  */
 export function tryConsumeV2RetryOutbox(
   store: WorkflowMutationHost,
@@ -26,23 +29,35 @@ export function tryConsumeV2RetryOutbox(
   ) {
     return undefined
   }
-  const retry = insertV2RetryStep(
-    {
-      db,
-      getStep: (id) => store.getStep(id) ?? null,
-      insertEvent: store.insertEvent.bind(store),
-      insertStep: store.insertStep.bind(store),
-      finishEngineStep: (stepRunId, envelope, conclusionMarkdown) => {
-        db.prepare(
-          `UPDATE workflow_step_runs
-           SET status = 'succeeded', conclusion_markdown = ?, result_envelope_json = ?,
-               completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
-        ).run(conclusionMarkdown, JSON.stringify(envelope), stepRunId)
-      }
-    },
-    run,
-    failed
-  )
+  const current = db
+    .prepare(
+      `SELECT retry_outbox_state, retry_step_run_id FROM workflow_completion_reconciliations
+       WHERE receipt_id = ?`
+    )
+    .get(receiptId) as { retry_outbox_state: string; retry_step_run_id: string | null } | undefined
+  if (!current) {
+    return null
+  }
+  if (current.retry_outbox_state === 'consumed' && current.retry_step_run_id) {
+    return store.getStep(current.retry_step_run_id)
+  }
+  if (current.retry_outbox_state !== 'pending') {
+    return null
+  }
+  const host = {
+    db,
+    getStep: (id: string) => store.getStep(id) ?? null,
+    insertEvent: store.insertEvent.bind(store),
+    insertStep: store.insertStep.bind(store),
+    finishEngineStep: (stepRunId: string, envelope: unknown, conclusionMarkdown: string) => {
+      db.prepare(
+        `UPDATE workflow_step_runs
+         SET status = 'succeeded', conclusion_markdown = ?, result_envelope_json = ?,
+             completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
+      ).run(conclusionMarkdown, JSON.stringify(envelope), stepRunId)
+    }
+  }
+  const retry = insertV2RetryStep(host, run, failed)
   const claimed = db
     .prepare(
       `UPDATE workflow_completion_reconciliations
@@ -52,7 +67,12 @@ export function tryConsumeV2RetryOutbox(
     .run(retry.id, receiptId)
   if (claimed.changes !== 1) {
     db.prepare('DELETE FROM workflow_step_runs WHERE id = ?').run(retry.id)
-    return null
+    const winner = db
+      .prepare(
+        `SELECT retry_step_run_id FROM workflow_completion_reconciliations WHERE receipt_id = ?`
+      )
+      .get(receiptId) as { retry_step_run_id: string | null } | undefined
+    return winner?.retry_step_run_id ? store.getStep(winner.retry_step_run_id) : null
   }
-  return retry
+  return publishV2RetryStep(host, run, failed, retry)
 }

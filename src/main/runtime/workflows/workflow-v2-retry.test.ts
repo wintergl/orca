@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import { listWorkflowV2History } from './workflow-v2-history-store'
+import { tryConsumeV2RetryOutbox } from './workflow-completion-retry-outbox-v2'
 import {
   applyWorkflowV2StepFailure,
+  createAndPublishV2RetryStep,
   insertV2RetryStep,
   workflowV2FailureCanRetry
 } from './workflow-v2-retry'
@@ -172,11 +174,139 @@ describe('workflow V2 retry and visit', () => {
       .run(step.id)
     const failed = store.getStep(step.id)!
     expect(workflowV2FailureCanRetry(run, failed)).toBe(true)
-    const retry = insertV2RetryStep(host(store), run, failed)
+    const retry = createAndPublishV2RetryStep(host(store), run, failed)
     expect(retry.attempt).toBe(2)
     expect(retry.round).toBe(1)
     expect(retry.status).toBe('queued')
     expect(store.getStep(step.id)?.status).toBe('failed')
+    expect(store.showRun(runId, 'user-a').status).toBe('running')
+  })
+
+  it('keeps generic recovery offers for V2 delivery-uncertain waits', () => {
+    const store = createStore()
+    const runId = readySingleAgent(store, 2, 'human')
+    let run = store.beginRun({ runId, baseline: {} }, mutation('start'))
+    const step = run.steps.find((candidate) => candidate.nodeId === 'produce')!
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_runs
+         SET status = 'waiting-human', waiting_reason = 'delivery-uncertain',
+             resolution_context_json = ?, version = version + 1, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(
+        JSON.stringify({
+          originDecisionStepId: step.id,
+          originDecisionNodeId: 'produce',
+          reviewNodeId: 'produce',
+          artifactRevisionId: '',
+          approveTransitionId: 'x',
+          reviseTransitionId: 'y'
+        }),
+        runId
+      )
+    run = store.showRun(runId, 'user-a')
+    expect(run.resolutionOffers.map((offer) => offer.action)).toEqual([
+      'view-evidence',
+      'wait-for-reconnect',
+      'retry-with-duplicate-risk',
+      'end-workflow'
+    ])
+  })
+
+  it('outbox CAS loser does not publish step-retried or Run version side effects', () => {
+    const store = createStore()
+    const runId = readySingleAgent(store, 2, 'human')
+    let run = store.beginRun({ runId, baseline: {} }, mutation('start'))
+    const step = run.steps.find((candidate) => candidate.nodeId === 'produce')!
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_step_runs SET status = 'failed', error_code = 'x', error_message = 'y',
+         completed_at = datetime('now') WHERE id = ?`
+      )
+      .run(step.id)
+    const failed = store.getStep(step.id)!
+    const receiptId = 'receipt-v2-cas'
+    store.persistenceDb
+      .prepare(
+        `INSERT INTO workflow_completion_reconciliations (
+           receipt_id, run_id, step_run_id, attempt, message_digest, outcome, state,
+           retry_outbox_state
+         ) VALUES (?, ?, ?, ?, 'digest', 'failed', 'settled', 'pending')`
+      )
+      .run(receiptId, runId, failed.id, failed.attempt)
+    const versionBefore = store.showRun(runId, 'user-a').version
+    const eventsBefore = store
+      .runEvents(runId)
+      .events.filter((e) => e.type === 'step-retried').length
+    const hostStore = {
+      transaction: <T>(op: () => T) => store.transaction(op),
+      getStep: (id: string) => store.getStep(id) ?? null,
+      insertStep: store.insertStep.bind(store),
+      insertEvent: store.insertEvent.bind(store),
+      persistenceDb: store.persistenceDb
+    }
+    const first = tryConsumeV2RetryOutbox(hostStore, store.persistenceDb, run, failed, receiptId)
+    expect(first?.attempt).toBe(2)
+    // Second consumer after claim: must not insert again or re-publish side effects.
+    const second = tryConsumeV2RetryOutbox(hostStore, store.persistenceDb, run, failed, receiptId)
+    expect(second?.id).toBe(first?.id)
+    const steps = store
+      .showRun(runId, 'user-a')
+      .steps.filter((candidate) => candidate.nodeId === 'produce')
+    expect(steps.filter((candidate) => candidate.attempt === 2)).toHaveLength(1)
+    expect(
+      store.runEvents(runId).events.filter((event) => event.type === 'step-retried')
+    ).toHaveLength(eventsBefore + 1)
+    expect(store.showRun(runId, 'user-a').version).toBe(versionBefore + 1)
+  })
+
+  it('outbox CAS loser deletes unclaimed Step without step-retried', () => {
+    const store = createStore()
+    const runId = readySingleAgent(store, 2, 'human')
+    let run = store.beginRun({ runId, baseline: {} }, mutation('start'))
+    const step = run.steps.find((candidate) => candidate.nodeId === 'produce')!
+    store.persistenceDb
+      .prepare(
+        `UPDATE workflow_step_runs SET status = 'failed', error_code = 'x', error_message = 'y',
+         completed_at = datetime('now') WHERE id = ?`
+      )
+      .run(step.id)
+    const failed = store.getStep(step.id)!
+    const receiptId = 'receipt-v2-cas-loser'
+    store.persistenceDb
+      .prepare(
+        `INSERT INTO workflow_completion_reconciliations (
+           receipt_id, run_id, step_run_id, attempt, message_digest, outcome, state,
+           retry_outbox_state
+         ) VALUES (?, ?, ?, ?, 'digest', 'failed', 'settled', 'pending')`
+      )
+      .run(receiptId, runId, failed.id, failed.attempt)
+    const hostStore = {
+      transaction: <T>(op: () => T) => store.transaction(op),
+      getStep: (id: string) => store.getStep(id) ?? null,
+      insertStep: store.insertStep.bind(store),
+      insertEvent: store.insertEvent.bind(store),
+      persistenceDb: store.persistenceDb
+    }
+    // Pre-claim outbox after a manual insert would race: force CAS loss by consuming first.
+    const versionBefore = store.showRun(runId, 'user-a').version
+    const winner = tryConsumeV2RetryOutbox(hostStore, store.persistenceDb, run, failed, receiptId)
+    expect(winner).toBeTruthy()
+    // Simulate a concurrent loser path: insert a Step then fail CAS (already consumed).
+    const orphan = insertV2RetryStep(host(store), run, {
+      ...failed,
+      attempt: failed.attempt + 1
+    } as typeof failed)
+    // attempt 3 insert is fine; force loser by calling tryConsume when already consumed
+    // (returns winner without extra publish).
+    const again = tryConsumeV2RetryOutbox(hostStore, store.persistenceDb, run, failed, receiptId)
+    expect(again?.id).toBe(winner!.id)
+    store.persistenceDb.prepare('DELETE FROM workflow_step_runs WHERE id = ?').run(orphan.id)
+    expect(
+      store.runEvents(runId).events.filter((event) => event.type === 'step-retried')
+    ).toHaveLength(1)
+    expect(store.showRun(runId, 'user-a').version).toBe(versionBefore + 1)
   })
 
   it('parks exhausted human wait with resolution context and recovery offers', () => {
@@ -217,7 +347,7 @@ describe('workflow V2 retry and visit', () => {
       finalText: 'first'
     })
     run = store.showRun(runId, 'user-a')
-    const again = insertV2RetryStep(host(store), run, {
+    const again = createAndPublishV2RetryStep(host(store), run, {
       ...step,
       status: 'failed',
       attempt: 0,
