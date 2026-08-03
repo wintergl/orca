@@ -1,0 +1,145 @@
+import type {
+  WorkflowAgentAssignment,
+  WorkflowNodeDefinitionV1,
+  WorkflowRunRecord,
+  WorkflowStepRunRecord
+} from '../../../shared/workflow-definition-types'
+import type { WorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-types'
+import { workflowV2StepById, type WorkflowV2GraphAdvance } from '../../../shared/workflow-v2-graph'
+import { WorkflowError } from './workflow-error'
+import type { WorkflowV2RuntimeSurface } from './workflow-v2-run-controller'
+
+export type WorkflowV2AdvanceResult = {
+  nextSteps: WorkflowStepRunRecord[]
+  terminal: boolean
+  waitingHuman: boolean
+}
+
+export function applyWorkflowV2Advance(
+  store: WorkflowV2RuntimeSurface,
+  run: WorkflowRunRecord,
+  definition: WorkflowDefinitionV2,
+  advance: WorkflowV2GraphAdvance,
+  round: number
+): WorkflowV2AdvanceResult {
+  if (advance.kind === 'end') {
+    store.db
+      .prepare(
+        `UPDATE workflow_runs
+         SET status = ?, current_node_id = NULL, completed_at = datetime('now'),
+             version = version + 1, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(advance.outcome === 'succeeded' ? 'completed' : 'failed', run.id)
+    store.insertEvent(
+      run.id,
+      advance.outcome === 'succeeded' ? 'run-completed' : 'run-failed',
+      null,
+      { schemaVersion: 2, outcome: advance.outcome }
+    )
+    return { nextSteps: [], terminal: true, waitingHuman: false }
+  }
+  if (advance.kind === 'wait-human') {
+    return parkWaitingHuman(store, run, advance.stepId)
+  }
+  if (advance.kind === 'retry-decision') {
+    return parkWaitingHuman(store, run, run.currentNodeId ?? definition.entryStepId)
+  }
+  const target = workflowV2StepById(definition, advance.stepId)
+  if (target?.kind === 'end') {
+    return applyWorkflowV2Advance(
+      store,
+      run,
+      definition,
+      { kind: 'end', outcome: target.outcome },
+      round
+    )
+  }
+  if (target?.kind === 'human') {
+    return parkWaitingHuman(store, run, target.id)
+  }
+  const nextRound =
+    advance.routeId?.includes(':false') || advance.routeId?.includes('human:') ? round + 1 : round
+  const nextSteps = insertWorkflowV2Steps(store, run, definition, advance.stepId, nextRound)
+  store.db
+    .prepare(
+      `UPDATE workflow_runs
+       SET status = 'running', waiting_reason = NULL, current_node_id = ?,
+           version = version + 1, updated_at = datetime('now') WHERE id = ?`
+    )
+    .run(advance.stepId, run.id)
+  return { nextSteps, terminal: false, waitingHuman: false }
+}
+
+export function insertWorkflowV2Steps(
+  store: WorkflowV2RuntimeSurface,
+  run: WorkflowRunRecord,
+  definition: WorkflowDefinitionV2,
+  stepId: string,
+  round: number
+): WorkflowStepRunRecord[] {
+  const step = workflowV2StepById(definition, stepId)
+  if (!step) {
+    throw new WorkflowError('workflow_transition_invalid', `Unknown V2 step ${stepId}`)
+  }
+  if (step.kind === 'human' || step.kind === 'end') {
+    return []
+  }
+  const assignments = assignmentsForStep(run, step.id)
+  if (assignments.length === 0) {
+    throw new WorkflowError(
+      'workflow_context_mismatch',
+      `No agents assigned for V2 step ${step.id}.`
+    )
+  }
+  const node = syntheticV1Node(step)
+  return assignments.map((assignment) =>
+    store.insertStep(run.id, node, assignment, null, 'queued', round, 1)
+  )
+}
+
+function parkWaitingHuman(
+  store: WorkflowV2RuntimeSurface,
+  run: WorkflowRunRecord,
+  stepId: string
+): WorkflowV2AdvanceResult {
+  store.db
+    .prepare(
+      `UPDATE workflow_runs
+       SET status = 'waiting-human', waiting_reason = 'decision-invalid',
+           current_node_id = ?, version = version + 1, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(stepId, run.id)
+  store.insertEvent(run.id, 'review-waiting', null, {
+    schemaVersion: 2,
+    stepId,
+    waitingReason: 'decision-invalid'
+  })
+  return { nextSteps: [], terminal: false, waitingHuman: true }
+}
+
+function assignmentsForStep(run: WorkflowRunRecord, stepId: string): WorkflowAgentAssignment[] {
+  return run.assignments.filter((assignment) => assignment.nodeId === stepId)
+}
+
+/** Map V2 agent/decision onto produce step rows so capture/prepare reuse freeform completion. */
+function syntheticV1Node(
+  step: Extract<WorkflowDefinitionV2['steps'][number], { kind: 'agent' | 'decision' }>
+): WorkflowNodeDefinitionV1 {
+  return {
+    id: step.id,
+    name: step.name,
+    type: 'produce',
+    roleSlotIds: [...step.roleSlotIds],
+    promptTemplateKey: null,
+    promptInstructions: null,
+    inputBindings: [],
+    retryPolicy: {
+      maxAttempts: step.retryPolicy.maxAttempts,
+      backoffMs: step.retryPolicy.backoffMs,
+      onExhausted: step.retryPolicy.onExhausted === 'human' ? 'wait-human' : 'fail-run'
+    },
+    artifactKind: 'code',
+    outputSchema: 'workflow.completion/v1'
+  }
+}

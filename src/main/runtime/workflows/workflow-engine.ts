@@ -18,10 +18,9 @@ import {
   type WorkflowWorkspaceBaseline
 } from './workflow-workspace-snapshot'
 import { prepareWorkflowStepCompletion } from './workflow-completion-prepare'
-import { finishWorkflowProduce } from './workflow-produce-completion'
 import { recoverWorkflowRuns } from './workflow-recovery-coordinator'
-import { finishWorkflowDecision } from './workflow-decision-completion'
 import { captureWorkflowAgentCompletion } from './workflow-agent-output-completion'
+import { completePreparedWorkflowStep } from './workflow-engine-step-complete'
 import {
   WorkflowAgentStatusHandler,
   type WorkflowAgentStatusEvent
@@ -279,33 +278,19 @@ export class WorkflowEngine {
       this.failStep(run, step, new WorkflowError(prepared.code, prepared.message))
       return
     }
-    if (step.nodeType === 'produce') {
-      const reviewNodeId = await finishWorkflowProduce({
-        store: this.store,
-        orchestration: this.orchestration,
-        runtime: this.runtime,
-        run,
-        step,
-        prepared: prepared.prepared
-      })
-      if (reviewNodeId) {
-        const next = this.store.showRun(run.id, callerIdentity)
-        await this.ensureCurrentSteps({ ...next, currentNodeId: reviewNodeId }, callerIdentity)
-      }
-      return
+    const nextNodeId = await completePreparedWorkflowStep({
+      store: this.store,
+      orchestration: this.orchestration,
+      runtime: this.runtime,
+      run,
+      step,
+      prepared: prepared.prepared,
+      callerIdentity
+    })
+    if (nextNodeId) {
+      const next = this.store.showRun(run.id, callerIdentity)
+      await this.ensureCurrentSteps({ ...next, currentNodeId: nextNodeId }, callerIdentity)
     }
-    if (step.nodeType === 'decide') {
-      await finishWorkflowDecision(
-        this.store,
-        this.orchestration,
-        this.runtime,
-        run,
-        step,
-        prepared.prepared
-      )
-      return
-    }
-    throw new WorkflowError('workflow_completion_incomplete', 'Unexpected Workflow Step type.')
   }
 
   private failStep(run: WorkflowRunRecord, step: WorkflowStepRunRecord, error: unknown): void {

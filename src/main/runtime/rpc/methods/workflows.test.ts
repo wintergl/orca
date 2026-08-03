@@ -85,7 +85,7 @@ describe('workflow template RPC', () => {
     const listed = (await call('workflow.templateList', {
       projectIdentity: 'project-a'
     })) as unknown[]
-    expect(listed).toHaveLength(3)
+    expect(listed).toHaveLength(6)
     await expect(
       call('workflow.templateCreate', {
         requestId: 'bad-definition',

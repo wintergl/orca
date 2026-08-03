@@ -47,11 +47,13 @@ export function resolveWorkflowV2Decision(
   try {
     decision = parseWorkflowBinaryDecision(finalText)
   } catch {
-    return {
-      kind: 'goto',
-      stepId: step.routes.whenInvalid.targetStepId,
-      routeId: `decision:${stepId}:invalid`
-    }
+    return resolveRoute(
+      definition,
+      step.routes.whenInvalid,
+      `decision:${stepId}:invalid`,
+      null,
+      null
+    )
   }
   const route = decision ? step.routes.whenTrue : step.routes.whenFalse
   const routeId = decision ? `decision:${stepId}:true` : `decision:${stepId}:false`

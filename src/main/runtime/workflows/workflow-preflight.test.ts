@@ -62,7 +62,7 @@ describe('Workflow M3 preflight', () => {
     })
   })
 
-  it('fail-closes explicit V2 decision protocol templates until V2 runtime ships', () => {
+  it('rejects V2 decision protocol stamped onto a V1 template snapshot', () => {
     const definition = structuredClone(BUILTIN_WORKFLOW_TEMPLATES[0]!.definition)
     definition.decisionProtocolVersion = 'v2-binary-zh'
     const run = {
@@ -80,7 +80,7 @@ describe('Workflow M3 preflight', () => {
 
     expect(checks.find((check) => check.id === 'decision-protocol')).toMatchObject({
       status: 'failed',
-      message: expect.stringMatching(/V2 binary/)
+      message: expect.stringMatching(/V1 template snapshot/)
     })
   })
 })

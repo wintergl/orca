@@ -7,6 +7,7 @@ import {
   migrateWorkflowStepRunReliability
 } from './workflow-database-migrations'
 import { createWorkflowReliabilityTables } from './workflow-database-reliability-schema'
+import { ensureWorkflowV2HistoryTable } from './workflow-v2-history-store'
 
 const RUN_STATUS_CHECK =
   "CHECK(status IN ('draft', 'ready', 'running', 'paused', 'waiting-human', 'review-limit-reached', 'cancelled', 'completed', 'failed'))"
@@ -24,6 +25,7 @@ export function createWorkflowTables(db: Database.Database): void {
   migrateWorkflowStepRunTable(db)
   migrateWorkflowStepRunReliability(db)
   createWorkflowReliabilityTables(db)
+  ensureWorkflowV2HistoryTable(db)
   createMutationLedger(db)
 }
 

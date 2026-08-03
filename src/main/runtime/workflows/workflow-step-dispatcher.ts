@@ -21,6 +21,8 @@ import {
 } from './workflow-prompts'
 import type { WorkflowStore } from './workflow-store'
 import { workspaceGuardDigest, type WorkflowWorkspaceBaseline } from './workflow-workspace-snapshot'
+import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-access'
+import { buildWorkflowV2StepPrompt } from './workflow-v2-run-controller'
 
 export class WorkflowStepDispatcher {
   constructor(
@@ -185,6 +187,9 @@ export class WorkflowStepDispatcher {
   }
 
   private buildPrompt(run: WorkflowRunRecord, step: WorkflowStepRunRecord): string {
+    if (isWorkflowRunSnapshotV2(run.templateSnapshot)) {
+      return buildWorkflowV2StepPrompt(run, step, this.store.persistenceDb)
+    }
     if (step.nodeType === 'review') {
       return buildReviewPrompt({
         run,

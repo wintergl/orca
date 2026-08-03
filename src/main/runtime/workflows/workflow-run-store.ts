@@ -28,7 +28,10 @@ import {
   upsertWorkflowAssignment
 } from './workflow-run-assignment-store'
 import { assertWorkflowRunConfigurable } from './workflow-run-configuration-guard'
-import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
+import {
+  workflowAssignableUnits,
+  workflowRoleSlots
+} from '../../../shared/workflow-definition-access'
 import { createWorkflowRunRerun } from './workflow-run-rerun'
 import { switchWorkflowRunTemplate } from './workflow-run-template-switch'
 
@@ -55,12 +58,6 @@ export class WorkflowRunStore {
       })
       if (template.archivedAt) {
         throw new WorkflowError('workflow_archived', 'Archived templates cannot create runs.')
-      }
-      if (isWorkflowDefinitionV2(template.definition)) {
-        throw new WorkflowError(
-          'workflow_m3_scope_unsupported',
-          'V2 free-form templates are viewable but the V2 run executor is not enabled for this create path yet.'
-        )
       }
       const id = `workflow_run_${randomBytes(9).toString('hex')}`
       this.db
@@ -163,8 +160,10 @@ export class WorkflowRunStore {
     return runWorkflowMutation(this.db, mutation, () => {
       const run = this.show(params.runId, mutation.callerIdentity)
       assertWorkflowRunConfigurable(run)
-      const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === params.nodeId)
-      const slot = run.templateSnapshot.roleSlots.find(
+      const node = workflowAssignableUnits(run.templateSnapshot).find(
+        (candidate) => candidate.id === params.nodeId
+      )
+      const slot = workflowRoleSlots(run.templateSnapshot).find(
         (candidate) => candidate.id === params.slotId
       )
       if (!node?.roleSlotIds.includes(params.slotId) || !slot) {

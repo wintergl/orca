@@ -37,9 +37,8 @@ describe('workflow v2 graph', () => {
 
   it('routes invalid binary decisions to human', () => {
     expect(resolveWorkflowV2Decision(loop, 'judge', 'approve\nnope', {})).toEqual({
-      kind: 'goto',
-      stepId: 'human',
-      routeId: 'decision:judge:invalid'
+      kind: 'wait-human',
+      stepId: 'human'
     })
   })
 

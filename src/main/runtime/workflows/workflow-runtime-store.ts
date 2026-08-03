@@ -38,6 +38,8 @@ import {
   markWorkflowStepDelivering,
   markWorkflowStepWorking
 } from './workflow-delivery-store'
+import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-access'
+import { beginWorkflowV2Run } from './workflow-v2-run-controller'
 
 export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
   private readonly control: WorkflowRunControl
@@ -98,6 +100,10 @@ export class WorkflowRuntimeStore extends WorkflowRuntimePersistence {
       }
       if (run.status !== 'ready') {
         throw new WorkflowError('workflow_preflight_failed', 'Only a ready Run can start.')
+      }
+      if (isWorkflowRunSnapshotV2(run.templateSnapshot)) {
+        beginWorkflowV2Run(this, run, params.baseline)
+        return this.showRunRecord(run.id, mutation.callerIdentity)
       }
       const produce = run.templateSnapshot.nodes.find(
         (node) => node.id === run.templateSnapshot.entryNodeId && node.type === 'produce'
