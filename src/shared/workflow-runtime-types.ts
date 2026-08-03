@@ -142,6 +142,7 @@ export type WorkflowRunRecord = {
   templateId: string
   templateVersion: number
   templateName: string
+  /** V1 execution snapshot. V2 free-form graphs are template-only until the V2 run path is enabled. */
   templateSnapshot: WorkflowDefinitionV1
   ownerIdentity: string
   projectIdentity: string

@@ -1,10 +1,11 @@
 import type Database from '../../sqlite/sync-database'
 import { BUILTIN_WORKFLOW_TEMPLATES } from '../../../shared/workflow-fixtures'
+import { BUILTIN_WORKFLOW_V2_TEMPLATES } from '../../../shared/workflow-v2-fixtures'
 
 export function seedBuiltinWorkflowTemplates(db: Database.Database): void {
   db.exec('BEGIN IMMEDIATE')
   try {
-    for (const fixture of BUILTIN_WORKFLOW_TEMPLATES) {
+    for (const fixture of [...BUILTIN_WORKFLOW_TEMPLATES, ...BUILTIN_WORKFLOW_V2_TEMPLATES]) {
       db.prepare(
         `INSERT OR IGNORE INTO workflow_templates (
            id, name, scope, owner_identity, project_identity, current_version

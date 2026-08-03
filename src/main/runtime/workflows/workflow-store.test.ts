@@ -61,7 +61,7 @@ describe('WorkflowStore templates', () => {
     const { store } = createStore()
     expect(
       store.listTemplates({ callerIdentity: 'user-a', projectIdentity: 'project-a' })
-    ).toHaveLength(3)
+    ).toHaveLength(6)
     const projectTemplate = store.createTemplate(
       {
         name: 'Project flow',
@@ -122,6 +122,9 @@ describe('WorkflowStore templates', () => {
       mutation('user-a', 'create-run', 'workflow.runCreate', { templateId: template.id })
     )
     const changed = structuredClone(template.definition)
+    if (changed.schemaVersion !== 1) {
+      throw new Error('expected V1 personal template in this test')
+    }
     changed.nodes[0]!.name = 'Updated authoring'
     const updated = store.updateTemplate(
       {

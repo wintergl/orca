@@ -188,6 +188,12 @@ export type WorkflowDefinitionV1 = {
   transitions: WorkflowTransitionV1[]
 }
 
+export type { WorkflowDefinitionV2 } from './workflow-definition-v2-types'
+import type { WorkflowDefinitionV2 } from './workflow-definition-v2-types'
+
+/** Template/run snapshot may be V1 or V2 once the V2 gate is enabled. */
+export type WorkflowTemplateSnapshot = WorkflowDefinitionV1 | WorkflowDefinitionV2
+
 export type WorkflowTemplateScope = 'built-in' | 'personal' | 'project'
 
 export type WorkflowTemplateFixtureV1 = {
@@ -218,7 +224,7 @@ export type WorkflowTemplateRecord = {
   archivedAt: string | null
   archivedBy: string | null
   currentVersion: number
-  definition: WorkflowDefinitionV1
+  definition: WorkflowTemplateSnapshot
   createdAt: string
   updatedAt: string
 }

@@ -12,6 +12,13 @@ export type WorkflowRunPolicyOverridesV1 = {
   maxReviewRoundsByNodeId: Record<string, number>
 }
 
+export type WorkflowRunPolicyOverridesV2 = {
+  policyVersion: 'v2-route-traversals'
+  maxTraversalsByRouteId: Record<string, number>
+}
+
+export type WorkflowRunPolicyOverrides = WorkflowRunPolicyOverridesV1 | WorkflowRunPolicyOverridesV2
+
 export type WorkflowRunLineageFields = {
   parentRunId: string | null
   rootRunId: string

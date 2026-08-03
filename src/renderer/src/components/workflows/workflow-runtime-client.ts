@@ -1,6 +1,5 @@
 import type {
   WorkflowAgentAssignment,
-  WorkflowDefinitionV1,
   WorkflowRunEventsResult,
   WorkflowRunExportFormat,
   WorkflowRunExportResult,
@@ -11,6 +10,7 @@ import type {
   WorkflowResolutionOffer,
   WorkflowTemplateRecord,
   WorkflowTemplateScope,
+  WorkflowTemplateSnapshot,
   WorkflowWorkspaceRef
 } from '../../../../shared/workflow-definition-types'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
@@ -42,7 +42,7 @@ export function createWorkflowTemplate(
     name: string
     scope: Exclude<WorkflowTemplateScope, 'built-in'>
     projectIdentity?: string
-    definition: WorkflowDefinitionV1
+    definition: WorkflowTemplateSnapshot
   }
 ): Promise<WorkflowTemplateRecord> {
   return callRuntimeRpc(target, 'workflow.templateCreate', { requestId: requestId(), ...input })
@@ -55,7 +55,7 @@ export function updateWorkflowTemplate(
     expectedVersion: number
     name: string
     projectIdentity?: string
-    definition: WorkflowDefinitionV1
+    definition: WorkflowTemplateSnapshot
   }
 ): Promise<WorkflowTemplateRecord> {
   return callRuntimeRpc(target, 'workflow.templateUpdate', { requestId: requestId(), ...input })

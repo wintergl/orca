@@ -1,0 +1,48 @@
+{
+  "id": "builtin.v2.single-agent-end",
+  "name": "V2 单 Agent 完成",
+  "scope": "built-in",
+  "version": 1,
+  "definition": {
+    "schemaVersion": 2,
+    "decisionProtocolVersion": "v2-binary-zh",
+    "entryStepId": "produce",
+    "roleSlots": [
+      {
+        "id": "worker",
+        "label": "执行 Agent",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      }
+    ],
+    "steps": [
+      {
+        "id": "produce",
+        "name": "执行",
+        "kind": "agent",
+        "roleSlotIds": ["worker"],
+        "execution": "single",
+        "prompt": {
+          "variants": [
+            {
+              "when": "always",
+              "template": "目标：\n{{goal}}\n\n请完成任务并给出完整结论。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "任务完成并可直接结束。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 0, "onExhausted": "fail-run" },
+        "next": { "targetStepId": "end" }
+      },
+      {
+        "id": "end",
+        "name": "完成",
+        "kind": "end",
+        "outcome": "succeeded"
+      }
+    ]
+  }
+}

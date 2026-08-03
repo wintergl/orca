@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import type Database from '../../sqlite/sync-database'
 import type {
-  WorkflowDefinitionV1,
   WorkflowTemplateRecord,
-  WorkflowTemplateScope
+  WorkflowTemplateScope,
+  WorkflowTemplateSnapshot
 } from '../../../shared/workflow-definition-types'
 import { stampWorkflowDecisionProtocolVersionV1 } from '../../../shared/workflow-decision-protocol'
+import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
 import {
@@ -60,9 +61,10 @@ export class WorkflowTemplateStore {
     },
     mutation: WorkflowMutation
   ): WorkflowTemplateRecord {
-    const definition = stampWorkflowDecisionProtocolVersionV1(
-      parseStoredWorkflowDefinition(params.definition)
-    )
+    const parsed = parseStoredWorkflowDefinition(params.definition)
+    const definition = isWorkflowDefinitionV2(parsed)
+      ? parsed
+      : stampWorkflowDecisionProtocolVersionV1(parsed)
     return runWorkflowMutation(this.db, mutation, () => {
       this.assertProjectScope(params.scope, params.projectIdentity)
       this.assertNameAvailable(
@@ -104,9 +106,10 @@ export class WorkflowTemplateStore {
     },
     mutation: WorkflowMutation
   ): WorkflowTemplateRecord {
-    const definition = stampWorkflowDecisionProtocolVersionV1(
-      parseStoredWorkflowDefinition(params.definition)
-    )
+    const parsed = parseStoredWorkflowDefinition(params.definition)
+    const definition = isWorkflowDefinitionV2(parsed)
+      ? parsed
+      : stampWorkflowDecisionProtocolVersionV1(parsed)
     return runWorkflowMutation(this.db, mutation, () => {
       const row = this.getRow(params.templateId)
       this.assertMutable(row, mutation.callerIdentity, params.projectIdentity)
@@ -281,7 +284,7 @@ export class WorkflowTemplateStore {
   private insertVersion(
     templateId: string,
     version: number,
-    definition: WorkflowDefinitionV1,
+    definition: WorkflowTemplateSnapshot,
     createdBy: string
   ): void {
     this.db

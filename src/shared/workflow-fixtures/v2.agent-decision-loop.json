@@ -1,0 +1,108 @@
+{
+  "id": "builtin.v2.agent-decision-loop",
+  "name": "V2 生成判定回路",
+  "scope": "built-in",
+  "version": 1,
+  "definition": {
+    "schemaVersion": 2,
+    "decisionProtocolVersion": "v2-binary-zh",
+    "entryStepId": "produce",
+    "roleSlots": [
+      {
+        "id": "producer",
+        "label": "生成 Agent",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "judge",
+        "label": "判定 Agent",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      }
+    ],
+    "steps": [
+      {
+        "id": "produce",
+        "name": "生成",
+        "kind": "agent",
+        "roleSlotIds": ["producer"],
+        "execution": "single",
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "目标：\n{{goal}}\n\n请生成第一版内容。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "目标：\n{{goal}}\n\n上一轮判定：\n{{ history[-1].nodes[\"judge\"].output }}\n\n上一版：\n{{ history[-1].nodes[\"produce\"].output }}\n\n请修订。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "输出完整可判定内容。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 0, "onExhausted": "human" },
+        "next": { "targetStepId": "judge" }
+      },
+      {
+        "id": "judge",
+        "name": "判定",
+        "kind": "decision",
+        "roleSlotIds": ["judge"],
+        "prompt": {
+          "variants": [
+            {
+              "when": "always",
+              "template": "目标：\n{{goal}}\n\n当前产出：\n{{ history[currentRound].nodes[\"produce\"].output }}\n\n第一条非空行只能是完成或不完成。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "产出满足目标。"
+        },
+        "parser": "binary-complete",
+        "routes": {
+          "whenTrue": { "targetStepId": "end" },
+          "whenFalse": {
+            "targetStepId": "produce",
+            "maxTraversals": 2,
+            "onExhaustedStepId": "human"
+          },
+          "whenInvalid": { "targetStepId": "human" }
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 0, "onExhausted": "human" }
+      },
+      {
+        "id": "human",
+        "name": "人工处理",
+        "kind": "human",
+        "routes": [
+          {
+            "id": "continue",
+            "label": "再走一轮",
+            "targetStepId": "produce",
+            "requiresText": true,
+            "requiresConfirmation": true
+          },
+          {
+            "id": "end",
+            "label": "结束",
+            "targetStepId": "end",
+            "requiresText": false,
+            "requiresConfirmation": true
+          }
+        ]
+      },
+      {
+        "id": "end",
+        "name": "完成",
+        "kind": "end",
+        "outcome": "succeeded"
+      }
+    ]
+  }
+}

@@ -28,6 +28,7 @@ import {
   upsertWorkflowAssignment
 } from './workflow-run-assignment-store'
 import { assertWorkflowRunConfigurable } from './workflow-run-configuration-guard'
+import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
 import { createWorkflowRunRerun } from './workflow-run-rerun'
 import { switchWorkflowRunTemplate } from './workflow-run-template-switch'
 
@@ -54,6 +55,12 @@ export class WorkflowRunStore {
       })
       if (template.archivedAt) {
         throw new WorkflowError('workflow_archived', 'Archived templates cannot create runs.')
+      }
+      if (isWorkflowDefinitionV2(template.definition)) {
+        throw new WorkflowError(
+          'workflow_m3_scope_unsupported',
+          'V2 free-form templates are viewable but the V2 run executor is not enabled for this create path yet.'
+        )
       }
       const id = `workflow_run_${randomBytes(9).toString('hex')}`
       this.db

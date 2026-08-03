@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { FolderCog, Save, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
-  WorkflowDefinitionV1,
   WorkflowTemplateRecord,
-  WorkflowTemplateScope
+  WorkflowTemplateScope,
+  WorkflowTemplateSnapshot
 } from '../../../../shared/workflow-definition-types'
 import { parseWorkflowDefinitionV1 } from '../../../../shared/workflow-definition-schema'
+import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
+import { isWorkflowV2FeatureEnabled } from '../../../../shared/workflow-feature-gates'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import { useAppStore } from '@/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +29,10 @@ import {
   updateWorkflowTemplate
 } from './workflow-runtime-client'
 import { setWorkflowSelectedTemplate } from './workflow-renderer-state'
-import { createBlankWorkflowDefinition } from './workflow-template-draft'
+import {
+  createBlankWorkflowDefinition,
+  isBlankWorkflowCreationEnabled
+} from './workflow-template-draft'
 import { WorkflowTemplateManager } from './WorkflowTemplateManager'
 import { WorkflowTemplateVisualEditor } from './WorkflowTemplateVisualEditor'
 
@@ -36,7 +42,7 @@ type EditorDraft = {
   expectedVersion: number | null
   name: string
   scope: Exclude<WorkflowTemplateScope, 'built-in'>
-  definition: WorkflowDefinitionV1
+  definition: WorkflowTemplateSnapshot
 }
 
 export function WorkflowTemplateWorkspace({
@@ -55,6 +61,11 @@ export function WorkflowTemplateWorkspace({
   const [draft, setDraft] = useState<EditorDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
+  const workflowV2Enabled = useAppStore((state) =>
+    isWorkflowV2FeatureEnabled(
+      state.settings as { 'workflows.v2.enabled'?: boolean } | null | undefined
+    )
+  )
 
   useEffect(() => {
     if (selected) {
@@ -63,6 +74,15 @@ export function WorkflowTemplateWorkspace({
   }, [selected])
 
   const startNew = (): void => {
+    if (!isBlankWorkflowCreationEnabled({ 'workflows.v2.enabled': workflowV2Enabled })) {
+      toast.info(
+        translate(
+          'workflows.templates.blankRequiresV2',
+          'Blank workflows require the V2 feature gate. Clone a runnable built-in template instead.'
+        )
+      )
+      return
+    }
     setWorkflowSelectedTemplate(null)
     setDraft({
       kind: 'new',
@@ -70,7 +90,7 @@ export function WorkflowTemplateWorkspace({
       expectedVersion: null,
       name: translate('workflows.templates.untitled', 'Untitled workflow'),
       scope: projectIdentity ? 'project' : 'personal',
-      definition: createBlankWorkflowDefinition()
+      definition: createBlankWorkflowDefinition({ 'workflows.v2.enabled': true })
     })
   }
 
@@ -84,7 +104,11 @@ export function WorkflowTemplateWorkspace({
       return
     }
     try {
-      parseWorkflowDefinitionV1(draft.definition)
+      if (draft.definition.schemaVersion === 2) {
+        parseWorkflowDefinitionV2(draft.definition)
+      } else {
+        parseWorkflowDefinitionV1(draft.definition)
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -266,12 +290,26 @@ export function WorkflowTemplateWorkspace({
               </div>
             ) : null}
             <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">
-              <WorkflowTemplateVisualEditor
-                key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}`}
-                definition={draft.definition}
-                readOnly={selected?.scope === 'built-in'}
-                onChange={(definition) => setDraft({ ...draft, definition })}
-              />
+              {draft.definition.schemaVersion === 2 ? (
+                <div className="scrollbar-sleek h-full overflow-auto p-4">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {translate(
+                      'workflows.templates.v2ReadonlyGraph',
+                      'V2 free-form graph (schemaVersion 2). Visual editing ships with the V2 canvas; definition JSON is shown below.'
+                    )}
+                  </p>
+                  <pre className="rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                    {JSON.stringify(draft.definition, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <WorkflowTemplateVisualEditor
+                  key={`${draft.kind}:${draft.templateId ?? 'new'}:${draft.expectedVersion ?? 0}`}
+                  definition={draft.definition}
+                  readOnly={selected?.scope === 'built-in'}
+                  onChange={(definition) => setDraft({ ...draft, definition })}
+                />
+              )}
             </div>
           </>
         ) : (

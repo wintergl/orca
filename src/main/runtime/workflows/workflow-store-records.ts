@@ -1,6 +1,6 @@
 import { parseWorkflowDefinitionV1 } from '../../../shared/workflow-definition-schema'
+import { parseWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
 import type {
-  WorkflowDefinitionV1,
   WorkflowArtifactRevision,
   WorkflowStepRunRecord,
   WorkflowRunRecord,
@@ -8,6 +8,7 @@ import type {
   WorkflowResolutionContext,
   WorkflowTemplateRecord,
   WorkflowTemplateScope,
+  WorkflowTemplateSnapshot,
   WorkflowWorkspaceRef
 } from '../../../shared/workflow-definition-types'
 import {
@@ -78,8 +79,15 @@ export type WorkflowAssignmentRow = {
   runtime_agent: string | null
 }
 
-export function parseStoredWorkflowDefinition(value: unknown): WorkflowDefinitionV1 {
+export function parseStoredWorkflowDefinition(value: unknown): WorkflowTemplateSnapshot {
   try {
+    if (
+      value &&
+      typeof value === 'object' &&
+      (value as { schemaVersion?: unknown }).schemaVersion === 2
+    ) {
+      return parseWorkflowDefinitionV2(value)
+    }
     return parseWorkflowDefinitionV1(value)
   } catch (error) {
     throw new WorkflowError('workflow_definition_invalid', 'Workflow definition is invalid.', error)
@@ -115,7 +123,9 @@ export function toWorkflowRunRecord(
     templateId: row.template_id,
     templateVersion: row.template_version,
     templateName: row.template_name,
-    templateSnapshot: parseStoredWorkflowDefinition(JSON.parse(row.template_snapshot_json)),
+    templateSnapshot: parseStoredWorkflowDefinition(
+      JSON.parse(row.template_snapshot_json)
+    ) as WorkflowRunRecord['templateSnapshot'],
     ownerIdentity: row.owner_identity,
     projectIdentity: row.project_identity,
     workspace: { kind: row.workspace_kind, id: row.workspace_id },
