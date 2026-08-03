@@ -11,6 +11,10 @@ import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { workflowRecordId } from './workflow-runtime-records'
 import { WorkflowStepControl } from './workflow-step-control'
 import { applyHumanReviewDecision } from './workflow-transition-engine'
+import {
+  tryResolveWorkflowV2HumanOffer,
+  validateWorkflowV2OfferInput
+} from './workflow-run-control-v2-resolve'
 
 export class WorkflowRunControl {
   private readonly steps: WorkflowStepControl
@@ -129,7 +133,16 @@ export class WorkflowRunControl {
         throw conflict('Resolution Offer is stale, expired, or does not belong to this state.')
       }
       this.validateOfferInput(offer, params)
-      if (offer.action === 'approve' || offer.action === 'revise') {
+      if (
+        tryResolveWorkflowV2HumanOffer({
+          store: this.store,
+          run,
+          offer,
+          reason: params.reason
+        })
+      ) {
+        // V2 human route handled.
+      } else if (offer.action === 'approve' || offer.action === 'revise') {
         applyHumanReviewDecision(this.store, run, offer.action, mutation.callerIdentity, {
           instructions: params.reason,
           reviewRoundBudget: params.reviewRoundBudget
@@ -210,6 +223,9 @@ export class WorkflowRunControl {
     }
     if (offer.requiresConfirmation && !params.confirmation) {
       throw new WorkflowError('workflow_action_forbidden', 'This action requires confirmation.')
+    }
+    if (validateWorkflowV2OfferInput(offer, params)) {
+      return
     }
     if (
       offer.action === 'revise' &&

@@ -102,18 +102,28 @@ function parkWaitingHuman(
   run: WorkflowRunRecord,
   stepId: string
 ): WorkflowV2AdvanceResult {
+  const context = {
+    originDecisionStepId: '',
+    originDecisionNodeId: stepId,
+    reviewNodeId: stepId,
+    artifactRevisionId: '',
+    approveTransitionId: 'v2-human',
+    reviseTransitionId: 'v2-human'
+  }
   store.db
     .prepare(
       `UPDATE workflow_runs
        SET status = 'waiting-human', waiting_reason = 'decision-invalid',
-           current_node_id = ?, version = version + 1, updated_at = datetime('now')
+           current_node_id = ?, resolution_context_json = ?,
+           version = version + 1, updated_at = datetime('now')
        WHERE id = ?`
     )
-    .run(stepId, run.id)
+    .run(stepId, JSON.stringify(context), run.id)
   store.insertEvent(run.id, 'review-waiting', null, {
     schemaVersion: 2,
     stepId,
-    waitingReason: 'decision-invalid'
+    waitingReason: 'decision-invalid',
+    resolutionContext: context
   })
   return { nextSteps: [], terminal: false, waitingHuman: true }
 }

@@ -5,6 +5,8 @@ import type {
   WorkflowRunRecord,
   WorkflowWaitingReason
 } from '../../../shared/workflow-definition-types'
+import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-access'
+import { buildWorkflowV2ResolutionOffers } from './workflow-resolution-offers-v2'
 
 const OFFER_TTL_MS = 24 * 60 * 60 * 1_000
 
@@ -43,6 +45,10 @@ const ACTIONS_BY_REASON: Record<WorkflowWaitingReason, WorkflowResolutionAction[
 }
 
 export function buildWorkflowResolutionOffers(run: WorkflowRunRecord): WorkflowResolutionOffer[] {
+  const v2Offers = buildWorkflowV2ResolutionOffers(run)
+  if (v2Offers) {
+    return v2Offers
+  }
   const reason = run.waitingReason
   const context = run.resolutionContext
   if (!reason || !context || !['waiting-human', 'review-limit-reached'].includes(run.status)) {
@@ -93,6 +99,9 @@ function configuredActions(
   run: WorkflowRunRecord,
   reason: WorkflowWaitingReason
 ): WorkflowResolutionAction[] {
+  if (isWorkflowRunSnapshotV2(run.templateSnapshot)) {
+    return ACTIONS_BY_REASON[reason]
+  }
   const requestHuman = run.templateSnapshot.transitions.find(
     (transition) =>
       transition.from === run.resolutionContext?.originDecisionNodeId &&

@@ -12,10 +12,7 @@ import type {
   WorkflowResolutionContext,
   WorkflowReviewAggregate
 } from './workflow-review-types'
-import type {
-  WorkflowRunPolicyOverridesV1,
-  WorkflowRunPromptOverrides
-} from './workflow-run-lineage'
+import type { WorkflowRunPolicyOverrides, WorkflowRunPromptOverrides } from './workflow-run-lineage'
 
 export type WorkflowRunStatus =
   | 'draft'
@@ -163,7 +160,7 @@ export type WorkflowRunRecord = {
   lineageCycleBase: number
   rerunReason: string | null
   noAdditionalRequirements: boolean
-  policyOverrides: WorkflowRunPolicyOverridesV1 | null
+  policyOverrides: WorkflowRunPolicyOverrides | null
   promptOverrides: WorkflowRunPromptOverrides | null
   failureCode: string | null
   failureMessage: string | null

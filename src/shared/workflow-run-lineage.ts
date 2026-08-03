@@ -26,7 +26,7 @@ export type WorkflowRunLineageFields = {
   lineageCycleBase: number
   rerunReason: string | null
   noAdditionalRequirements: boolean
-  policyOverrides: WorkflowRunPolicyOverridesV1 | null
+  policyOverrides: WorkflowRunPolicyOverrides | null
   promptOverrides: WorkflowRunPromptOverrides | null
 }
 
@@ -54,27 +54,38 @@ export function assertRerunRequirements(params: {
   }
 }
 
-export function parseWorkflowRunPolicyOverrides(
-  value: unknown
-): WorkflowRunPolicyOverridesV1 | null {
+export function parseWorkflowRunPolicyOverrides(value: unknown): WorkflowRunPolicyOverrides | null {
   if (!value || typeof value !== 'object') {
     return null
   }
   const record = value as Record<string, unknown>
-  if (record.policyVersion !== 'v1-review-rounds') {
-    return null
-  }
-  const map = record.maxReviewRoundsByNodeId
-  if (!map || typeof map !== 'object') {
-    return null
-  }
-  const maxReviewRoundsByNodeId: Record<string, number> = {}
-  for (const [nodeId, raw] of Object.entries(map as Record<string, unknown>)) {
-    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 20) {
-      maxReviewRoundsByNodeId[nodeId] = raw
+  if (record.policyVersion === 'v1-review-rounds') {
+    const map = record.maxReviewRoundsByNodeId
+    if (!map || typeof map !== 'object') {
+      return null
     }
+    const maxReviewRoundsByNodeId: Record<string, number> = {}
+    for (const [nodeId, raw] of Object.entries(map as Record<string, unknown>)) {
+      if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 20) {
+        maxReviewRoundsByNodeId[nodeId] = raw
+      }
+    }
+    return { policyVersion: 'v1-review-rounds', maxReviewRoundsByNodeId }
   }
-  return { policyVersion: 'v1-review-rounds', maxReviewRoundsByNodeId }
+  if (record.policyVersion === 'v2-route-traversals') {
+    const map = record.maxTraversalsByRouteId
+    if (!map || typeof map !== 'object') {
+      return null
+    }
+    const maxTraversalsByRouteId: Record<string, number> = {}
+    for (const [routeId, raw] of Object.entries(map as Record<string, unknown>)) {
+      if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 50) {
+        maxTraversalsByRouteId[routeId] = raw
+      }
+    }
+    return { policyVersion: 'v2-route-traversals', maxTraversalsByRouteId }
+  }
+  return null
 }
 
 export function parseWorkflowRunPromptOverrides(value: unknown): WorkflowRunPromptOverrides | null {

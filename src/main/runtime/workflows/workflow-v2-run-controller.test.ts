@@ -8,8 +8,7 @@ import type { WorkflowAgentAssignment } from '../../../shared/workflow-definitio
 import { listWorkflowV2History } from './workflow-v2-history-store'
 import {
   completeWorkflowV2AgentStep,
-  completeWorkflowV2DecisionStep,
-  resolveWorkflowV2HumanAction
+  completeWorkflowV2DecisionStep
 } from './workflow-v2-run-controller'
 import { WorkflowStore } from './workflow-store'
 
@@ -201,7 +200,7 @@ describe('Workflow V2 run controller', () => {
     expect(history[3]?.decision).toBe(true)
   })
 
-  it('chains multi-agent steps and resolves human accept', () => {
+  it('chains multi-agent steps and resolves human accept via offers', () => {
     const store = createStore()
     const template = BUILTIN_WORKFLOW_V2_TEMPLATES[2]!
     const runId = readyV2Run(store, template.id, [
@@ -240,14 +239,19 @@ describe('Workflow V2 run controller', () => {
     run = store.showRun(runId, 'user-a')
     expect(run.status).toBe('waiting-human')
     expect(run.currentNodeId).toBe('human')
-    resolveWorkflowV2HumanAction({
-      store: surface(store),
-      db: store.persistenceDb,
-      run,
-      stepId: 'human',
-      routeId: 'accept'
+    expect(run.resolutionContext).toMatchObject({ reviewNodeId: 'human' })
+    const accept = run.resolutionOffers.find(
+      (offer) => offer.resolutionTransitionId === 'v2-human:accept'
+    )
+    expect(accept).toMatchObject({
+      action: 'approve',
+      requiresReason: false,
+      requiresConfirmation: true
     })
-    run = store.showRun(runId, 'user-a')
+    run = store.resolveRun(
+      { runId, offerId: accept!.id, confirmation: true },
+      mutation('human-accept')
+    )
     expect(run.status).toBe('completed')
     const history = listWorkflowV2History(store.persistenceDb, runId)
     expect(history.map((entry) => [entry.stepId, entry.stepKind])).toEqual([

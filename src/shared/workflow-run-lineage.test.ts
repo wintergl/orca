@@ -32,6 +32,15 @@ describe('workflow run lineage helpers', () => {
       maxReviewRoundsByNodeId: { 'spec-review': 4 }
     })
     expect(
+      parseWorkflowRunPolicyOverrides({
+        policyVersion: 'v2-route-traversals',
+        maxTraversalsByRouteId: { 'decision:judge:false': 3, bad: -1 }
+      })
+    ).toEqual({
+      policyVersion: 'v2-route-traversals',
+      maxTraversalsByRouteId: { 'decision:judge:false': 3 }
+    })
+    expect(
       parseWorkflowRunPromptOverrides({
         'spec-produce': { firstVisit: 'first', repeatVisit: 'again' },
         skip: null
