@@ -23,7 +23,8 @@ export function buildWorkflowV2PreflightChecks(
     unavailableAgentReasons?: Record<string, WorkflowAgentUnavailableReason>
   }
 ): WorkflowPreflightCheck[] {
-  const snapshot = run.templateSnapshot
+  // Runtime may store V2 JSON while WorkflowRunRecord still types snapshot as V1.
+  const snapshot: unknown = run.templateSnapshot
   const definition = isWorkflowDefinitionV2(snapshot) ? snapshot : null
   const assignmentCount = new Map<string, number>()
   for (const assignment of run.assignments) {

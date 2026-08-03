@@ -103,6 +103,31 @@ export function listWorkflowV2History(
   }))
 }
 
+/** Merge ancestor V2 histories for child-run prompt lineage. */
+export function listWorkflowV2HistoryWithLineage(
+  db: Database.Database,
+  run: { id: string; parentRunId?: string | null; rootRunId?: string | null }
+): WorkflowHistoryEntryV2[] {
+  const chain: string[] = []
+  let cursor: string | null = run.id
+  const seen = new Set<string>()
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor)
+    chain.unshift(cursor)
+    const row = db.prepare(`SELECT parent_run_id FROM workflow_runs WHERE id = ?`).get(cursor) as
+      | { parent_run_id: string | null }
+      | undefined
+    cursor = row?.parent_run_id ?? null
+  }
+  const merged: WorkflowHistoryEntryV2[] = []
+  for (const runId of chain) {
+    merged.push(...listWorkflowV2History(db, runId))
+  }
+  return merged.toSorted((left, right) =>
+    left.cycle === right.cycle ? left.sequence - right.sequence : left.cycle - right.cycle
+  )
+}
+
 export function getWorkflowV2RouteTraversalCounts(
   db: Database.Database,
   runId: string

@@ -16,7 +16,7 @@ import { renderWorkflowV2StepPrompt } from './workflow-v2-prompt'
 import {
   appendWorkflowV2History,
   getWorkflowV2RouteTraversalCounts,
-  listWorkflowV2History,
+  listWorkflowV2HistoryWithLineage,
   setWorkflowV2RouteTraversalCounts
 } from './workflow-v2-history-store'
 import { WorkflowError } from './workflow-error'
@@ -26,6 +26,12 @@ import {
   insertWorkflowV2Steps,
   type WorkflowV2AdvanceResult
 } from './workflow-v2-advance'
+import {
+  collectAgentOutputs,
+  composeParallelFinalText,
+  visitAssignmentsComplete,
+  visitSiblingSteps
+} from './workflow-v2-fan-in'
 
 /** Narrow surface shared by WorkflowRuntimeStore and WorkflowStore for V2 graph writes. */
 export type WorkflowV2RuntimeSurface = Pick<
@@ -33,15 +39,18 @@ export type WorkflowV2RuntimeSurface = Pick<
   'db' | 'finishEngineStep' | 'insertEvent' | 'getStep' | 'insertStep'
 >
 
+/** Visits are local cycles/rounds that reached success, not individual assignment steps. */
 function visitCount(run: WorkflowRunRecord, stepId: string): number {
-  return (
-    run.steps.filter((step) => step.nodeId === stepId && step.status === 'succeeded').length + 1
+  const rounds = new Set(
+    run.steps
+      .filter((step) => step.nodeId === stepId && step.status === 'succeeded')
+      .map((step) => step.round)
   )
+  return Math.max(1, rounds.size)
 }
 
-function cycleForRun(run: WorkflowRunRecord): number {
-  const local = Math.max(1, ...run.steps.map((step) => step.round), 1)
-  return (run.lineageCycleBase ?? 0) + local
+function lineageCycle(run: WorkflowRunRecord, localRound: number): number {
+  return (run.lineageCycleBase ?? 0) + localRound
 }
 
 function v2PolicyOverrides(run: WorkflowRunRecord): WorkflowRunPolicyOverridesV2 | null {
@@ -102,34 +111,36 @@ export function completeWorkflowV2AgentStep(params: {
   if (stepDef?.kind !== 'agent') {
     throw new WorkflowError('workflow_transition_invalid', 'Step is not a V2 agent step.')
   }
-  sealStep(params.store, params.step, params.finalText, 'agent')
+  if (!sealStep(params.store, params.step, params.finalText, 'agent')) {
+    return idleAdvanceResult()
+  }
+  const siblings = visitSiblingSteps(params.store, params.run, params.step)
+  if (!visitAssignmentsComplete(params.run, params.step, siblings)) {
+    return idleAdvanceResult()
+  }
+  const agentOutputs = collectAgentOutputs(siblings)
+  const finalText = composeParallelFinalText(agentOutputs)
   appendWorkflowV2History(params.db, params.run.id, {
     stepId: params.step.nodeId,
     stepName: params.step.nodeName,
     stepKind: 'agent',
     visit: visitCount(params.run, params.step.nodeId),
-    cycle: params.step.round,
+    cycle: lineageCycle(params.run, params.step.round),
     attempt: params.step.attempt,
     promptText: params.step.prompt || null,
-    finalText: params.finalText,
-    agentOutputs: params.step.assignment
-      ? [
-          {
-            slotId: params.step.assignment.slotId,
-            agentIdentity: params.step.assignment.agentLifecycleId,
-            finalText: params.finalText
-          }
-        ]
-      : [],
+    finalText,
+    agentOutputs,
     decision: null
   })
-  return applyWorkflowV2Advance(
-    params.store,
-    params.run,
+  const counts = getWorkflowV2RouteTraversalCounts(params.db, params.run.id)
+  const advance = resolveWorkflowV2AgentNext(
     definition,
-    resolveWorkflowV2AgentNext(definition, params.step.nodeId),
-    params.step.round
+    params.step.nodeId,
+    counts,
+    v2PolicyOverrides(params.run)
   )
+  claimRouteTraversal(params.db, params.run.id, advance.kind === 'goto' ? advance.routeId : null)
+  return applyWorkflowV2Advance(params.store, params.run, definition, advance, params.step.round)
 }
 
 export function completeWorkflowV2DecisionStep(params: {
@@ -143,7 +154,9 @@ export function completeWorkflowV2DecisionStep(params: {
     params.run.templateSnapshot as never,
     'V2 decision'
   )
-  sealStep(params.store, params.step, params.finalText, 'decision')
+  if (!sealStep(params.store, params.step, params.finalText, 'decision')) {
+    return idleAdvanceResult()
+  }
   const counts = getWorkflowV2RouteTraversalCounts(params.db, params.run.id)
   const advance = resolveWorkflowV2Decision(
     definition,
@@ -163,17 +176,14 @@ export function completeWorkflowV2DecisionStep(params: {
     stepName: params.step.nodeName,
     stepKind: 'decision',
     visit: visitCount(params.run, params.step.nodeId),
-    cycle: params.step.round,
+    cycle: lineageCycle(params.run, params.step.round),
     attempt: params.step.attempt,
     promptText: params.step.prompt || null,
     finalText: params.finalText,
     agentOutputs: [],
     decision
   })
-  if (advance.kind === 'goto' && advance.routeId?.endsWith(':false')) {
-    counts[advance.routeId] = (counts[advance.routeId] ?? 0) + 1
-    setWorkflowV2RouteTraversalCounts(params.db, params.run.id, counts)
-  }
+  claimRouteTraversal(params.db, params.run.id, advance.kind === 'goto' ? advance.routeId : null)
   return applyWorkflowV2Advance(params.store, params.run, definition, advance, params.step.round)
 }
 
@@ -186,24 +196,33 @@ export function resolveWorkflowV2HumanAction(params: {
   humanText?: string
 }): WorkflowV2AdvanceResult {
   const definition = requireWorkflowDefinitionV2(params.run.templateSnapshot as never, 'V2 human')
+  const counts = getWorkflowV2RouteTraversalCounts(params.db, params.run.id)
+  const advance = resolveWorkflowV2Human(
+    definition,
+    params.stepId,
+    params.routeId,
+    counts,
+    v2PolicyOverrides(params.run)
+  )
   appendWorkflowV2History(params.db, params.run.id, {
     stepId: params.stepId,
     stepName: workflowV2StepById(definition, params.stepId)?.name ?? params.stepId,
     stepKind: 'human',
     visit: visitCount(params.run, params.stepId),
-    cycle: cycleForRun(params.run),
+    cycle: lineageCycle(params.run, Math.max(1, ...params.run.steps.map((s) => s.round), 1)),
     attempt: 1,
     promptText: null,
     finalText: params.humanText?.trim() || params.routeId,
     agentOutputs: [],
     decision: null
   })
+  claimRouteTraversal(params.db, params.run.id, advance.kind === 'goto' ? advance.routeId : null)
   return applyWorkflowV2Advance(
     params.store,
     params.run,
     definition,
-    resolveWorkflowV2Human(definition, params.stepId, params.routeId),
-    cycleForRun(params.run)
+    advance,
+    Math.max(1, ...params.run.steps.map((step) => step.round), 1)
   )
 }
 
@@ -219,24 +238,53 @@ export function buildWorkflowV2StepPrompt(
     goal: run.objective,
     workflowName: `${run.templateName} v${run.templateVersion}`,
     visit: visitCount(run, step.nodeId),
-    cycle: step.round,
-    history: listWorkflowV2History(db, run.id)
+    cycle: lineageCycle(run, step.round),
+    history: listWorkflowV2HistoryWithLineage(db, run)
   })
 }
 
+/** Returns true when this call newly sealed the step. */
 function sealStep(
   store: WorkflowV2RuntimeSurface,
   step: WorkflowStepRunRecord,
   finalText: string,
   kind: 'agent' | 'decision'
-): void {
-  if (store.getStep(step.id)?.status === 'succeeded') {
-    return
+): boolean {
+  const result = store.db
+    .prepare(
+      `UPDATE workflow_step_runs
+       SET status = 'succeeded', conclusion_markdown = ?, result_envelope_json = ?,
+           delivery_state = CASE WHEN delivery_state = 'prepared' THEN 'delivered'
+             ELSE delivery_state END,
+           started_at = COALESCE(started_at, datetime('now')),
+           completed_at = datetime('now'), updated_at = datetime('now')
+       WHERE id = ? AND status NOT IN ('succeeded', 'failed', 'cancelled')`
+    )
+    .run(finalText, JSON.stringify({ finalText }), step.id)
+  if (result.changes !== 1) {
+    return false
   }
-  store.finishEngineStep(step.id, { finalText }, finalText)
   store.insertEvent(step.runId, 'step-completed', step.id, {
     nodeId: step.nodeId,
     schemaVersion: 2,
     kind
   })
+  return true
+}
+
+function claimRouteTraversal(
+  db: Database.Database,
+  runId: string,
+  routeId: string | null | undefined
+): void {
+  if (!routeId) {
+    return
+  }
+  const counts = getWorkflowV2RouteTraversalCounts(db, runId)
+  counts[routeId] = (counts[routeId] ?? 0) + 1
+  setWorkflowV2RouteTraversalCounts(db, runId, counts)
+}
+
+function idleAdvanceResult(): WorkflowV2AdvanceResult {
+  return { nextSteps: [], terminal: false, waitingHuman: false }
 }

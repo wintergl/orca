@@ -12,6 +12,7 @@ import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
 import { workflowRecordId } from './workflow-runtime-records'
 import type { WorkflowStore } from './workflow-store'
+import { tryConsumeV2RetryOutbox } from './workflow-completion-retry-outbox-v2'
 
 /** Hosts that expose a Workflow DB without a private `db` field clash. */
 export type WorkflowMutationHost = {
@@ -70,6 +71,10 @@ export function consumeWorkflowRetryOutboxInTransaction(
        WHERE receipt_id = ? AND retry_outbox_state = 'pending'`
     ).run(record.receiptId)
     return null
+  }
+  const v2Retry = tryConsumeV2RetryOutbox(store, db, run, failed, record.receiptId)
+  if (v2Retry !== undefined) {
+    return v2Retry
   }
   const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === failed.nodeId)
   if (!node || (node.type !== 'decide' && node.type !== 'review')) {

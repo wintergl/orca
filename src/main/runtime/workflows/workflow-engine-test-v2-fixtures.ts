@@ -28,7 +28,7 @@ export function readyV2Run(
       { runId: created.id, nodeId, slotId, assignment: next },
       mutation(`assign-${lifecycle}`)
     )
-    claimWorkflowAgentLifecycle(runtime, { ...next, nodeId, slotId }, handle)
+    claimWorkflowAgentLifecycle(runtime, next, handle)
   }
   store.updateRunObjective(
     { runId: created.id, objective: 'Run the free-form V2 workflow end to end.' },

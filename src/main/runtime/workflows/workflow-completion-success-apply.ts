@@ -18,6 +18,7 @@ import { terminalizeWorkflowStepOwnership } from './workflow-completion-retry-ou
 import { WorkflowError } from './workflow-error'
 import type { WorkflowStore } from './workflow-store'
 import type { WorkflowWorkspaceBaseline } from './workflow-workspace-snapshot'
+import { applyV2ProduceSuccessInTransaction, isWorkflowV2Run } from './workflow-v2-completion'
 
 /** Freeze after receipt ownership; idempotent via (run, step, digest). */
 export async function ensureProduceArtifact(
@@ -28,6 +29,10 @@ export async function ensureProduceArtifact(
 ): Promise<WorkflowCompletionReconciliationRecord> {
   const payload = record.successPayload
   if (!payload || payload.nodeType !== 'produce') {
+    return record
+  }
+  // V2 free-form outputs do not freeze V1 artifact revisions.
+  if (isWorkflowV2Run(run)) {
     return record
   }
   if (payload.artifactRevisionId) {
@@ -188,6 +193,17 @@ function applyProduceInTransaction(
   payload: WorkflowSuccessPayload,
   advance: boolean
 ): string | null {
+  if (isWorkflowV2Run(run)) {
+    if (!advance) {
+      return null
+    }
+    return applyV2ProduceSuccessInTransaction(
+      store,
+      run,
+      step,
+      payload.conclusionMarkdown || extractEnvelopeFinalText(payload.value)
+    )
+  }
   if (!payload.artifactRevisionId) {
     throw new WorkflowError(
       'workflow_completion_incomplete',
@@ -215,6 +231,18 @@ function applyProduceInTransaction(
     advance
   })
   return advance ? (reviewSteps[0]?.nodeId ?? run.currentNodeId) : null
+}
+
+function extractEnvelopeFinalText(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'finalConclusionMarkdown' in value &&
+    typeof (value as { finalConclusionMarkdown?: unknown }).finalConclusionMarkdown === 'string'
+  ) {
+    return (value as { finalConclusionMarkdown: string }).finalConclusionMarkdown
+  }
+  return ''
 }
 
 function applyReviewInTransaction(

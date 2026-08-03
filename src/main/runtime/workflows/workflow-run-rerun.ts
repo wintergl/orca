@@ -52,7 +52,13 @@ export function createWorkflowRunRerun(
     }
     const policyOverrides = parseWorkflowRunPolicyOverrides(params.policyOverrides)
     const promptOverrides = parseWorkflowRunPromptOverrides(params.promptOverrides)
-    const lineageCycleBase = Math.max(0, ...parent.steps.map((step) => step.round), 0)
+    // Why: runs.show() omits steps; read persisted max round for lineage cycle base.
+    const parentMaxRound = db
+      .prepare(
+        `SELECT COALESCE(MAX(round), 0) AS max_round FROM workflow_step_runs WHERE run_id = ?`
+      )
+      .get(parent.id) as { max_round: number }
+    const lineageCycleBase = Math.max(0, parent.lineageCycleBase, parentMaxRound.max_round)
     const id = `workflow_run_${randomBytes(9).toString('hex')}`
     const objective = params.objective?.trim() || parent.objective
     const rootRunId = parent.rootRunId || parent.id

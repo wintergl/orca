@@ -23,16 +23,26 @@ export function applyWorkflowV2Advance(
   round: number
 ): WorkflowV2AdvanceResult {
   if (advance.kind === 'end') {
+    const status =
+      advance.outcome === 'succeeded'
+        ? 'completed'
+        : advance.outcome === 'cancelled'
+          ? 'cancelled'
+          : 'failed'
     store.db
       .prepare(
         `UPDATE workflow_runs
          SET status = ?, current_node_id = NULL, completed_at = datetime('now'),
              version = version + 1, updated_at = datetime('now') WHERE id = ?`
       )
-      .run(advance.outcome === 'succeeded' ? 'completed' : 'failed', run.id)
+      .run(status, run.id)
     store.insertEvent(
       run.id,
-      advance.outcome === 'succeeded' ? 'run-completed' : 'run-failed',
+      status === 'completed'
+        ? 'run-completed'
+        : status === 'cancelled'
+          ? 'run-cancelled'
+          : 'run-failed',
       null,
       { schemaVersion: 2, outcome: advance.outcome }
     )
@@ -57,8 +67,9 @@ export function applyWorkflowV2Advance(
   if (target?.kind === 'human') {
     return parkWaitingHuman(store, run, target.id)
   }
+  // Same business cycle for forward edges; increment only on explicit return routes.
   const nextRound =
-    advance.routeId?.includes(':false') || advance.routeId?.includes('human:') ? round + 1 : round
+    advance.routeId?.includes(':false') || advance.routeId?.startsWith('human:') ? round + 1 : round
   const nextSteps = insertWorkflowV2Steps(store, run, definition, advance.stepId, nextRound)
   store.db
     .prepare(

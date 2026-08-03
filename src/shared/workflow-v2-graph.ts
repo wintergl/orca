@@ -23,13 +23,21 @@ export function workflowV2StepById(
 
 export function resolveWorkflowV2AgentNext(
   definition: WorkflowDefinitionV2,
-  stepId: string
+  stepId: string,
+  usedTraversalsByRouteId: Record<string, number> = {},
+  policyOverrides?: WorkflowRunPolicyOverridesV2 | null
 ): WorkflowV2GraphAdvance {
   const step = workflowV2StepById(definition, stepId)
   if (step?.kind !== 'agent') {
     throw new Error(`Step ${stepId} is not an agent step.`)
   }
-  return resolveRoute(definition, step.next, `agent:${stepId}:next`, null, null)
+  return resolveRoute(
+    definition,
+    step.next,
+    `agent:${stepId}:next`,
+    usedTraversalsByRouteId,
+    policyOverrides
+  )
 }
 
 export function resolveWorkflowV2Decision(
@@ -63,7 +71,9 @@ export function resolveWorkflowV2Decision(
 export function resolveWorkflowV2Human(
   definition: WorkflowDefinitionV2,
   stepId: string,
-  routeId: string
+  routeId: string,
+  usedTraversalsByRouteId: Record<string, number> = {},
+  policyOverrides?: WorkflowRunPolicyOverridesV2 | null
 ): WorkflowV2GraphAdvance {
   const step = workflowV2StepById(definition, stepId)
   if (step?.kind !== 'human') {
@@ -75,10 +85,10 @@ export function resolveWorkflowV2Human(
   }
   return resolveRoute(
     definition,
-    { targetStepId: route.targetStepId },
+    { targetStepId: route.targetStepId, maxTraversals: undefined },
     `human:${stepId}:${routeId}`,
-    null,
-    null
+    usedTraversalsByRouteId,
+    policyOverrides
   )
 }
 
