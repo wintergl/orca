@@ -12,7 +12,7 @@ import { WorkflowError } from './workflow-error'
 import { insertWorkflowV2Steps } from './workflow-v2-advance'
 import type { WorkflowV2RuntimeSurface } from './workflow-v2-run-controller'
 
-type WorkflowV2FailureHost = {
+export type WorkflowV2FailureHost = {
   db: Database.Database
   getStep(stepRunId: string): WorkflowStepRunRecord | null
   insertEvent: WorkflowV2RuntimeSurface['insertEvent']
@@ -102,19 +102,7 @@ export function applyWorkflowV2StepFailure(
     return insertV2RetryStep(store, params.run, current)
   }
   if (policy?.onExhausted === 'human') {
-    store.db
-      .prepare(
-        `UPDATE workflow_runs
-         SET status = 'waiting-human', waiting_reason = 'completion-incomplete',
-             current_node_id = ?, version = version + 1, updated_at = datetime('now')
-         WHERE id = ?`
-      )
-      .run(current.nodeId, params.run.id)
-    store.insertEvent(params.run.id, 'review-waiting', current.id, {
-      schemaVersion: 2,
-      waitingReason: 'completion-incomplete',
-      stepId: current.nodeId
-    })
+    parkV2RecoveryWaitingHuman(store, params.run, current)
     return null
   }
   store.db
@@ -133,12 +121,43 @@ export function applyWorkflowV2StepFailure(
   return null
 }
 
-export function insertV2RetryStep(
+export function parkV2RecoveryWaitingHuman(
   store: WorkflowV2FailureHost,
   run: WorkflowRunRecord,
   failed: WorkflowStepRunRecord
+): void {
+  const context = {
+    originDecisionStepId: failed.id,
+    originDecisionNodeId: failed.nodeId,
+    reviewNodeId: failed.nodeId,
+    artifactRevisionId: '',
+    approveTransitionId: 'v2-recovery',
+    reviseTransitionId: 'v2-recovery'
+  }
+  store.db
+    .prepare(
+      `UPDATE workflow_runs
+       SET status = 'waiting-human', waiting_reason = 'completion-incomplete',
+           current_node_id = ?, resolution_context_json = ?,
+           version = version + 1, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(failed.nodeId, JSON.stringify(context), run.id)
+  store.insertEvent(run.id, 'review-waiting', failed.id, {
+    schemaVersion: 2,
+    waitingReason: 'completion-incomplete',
+    stepId: failed.nodeId,
+    resolutionContext: context
+  })
+}
+
+export function insertV2RetryStep(
+  store: WorkflowV2FailureHost,
+  run: WorkflowRunRecord,
+  failed: WorkflowStepRunRecord,
+  assignment: WorkflowStepRunRecord['assignment'] = failed.assignment
 ): WorkflowStepRunRecord {
-  if (!failed.assignment) {
+  if (!assignment) {
     throw new WorkflowError('workflow_context_mismatch', 'V2 retry requires an assignment.')
   }
   const definition = requireWorkflowDefinitionV2(run.templateSnapshot as never, 'V2 retry insert')
@@ -153,29 +172,48 @@ export function insertV2RetryStep(
     getStep: (id) => store.getStep(id) ?? null,
     insertStep: store.insertStep
   }
-  // Temporarily mask other assignments so only the failed agent is re-queued.
   const maskedRun: WorkflowRunRecord = {
     ...run,
-    assignments: run.assignments.filter(
-      (assignment) =>
-        assignment.nodeId === failed.nodeId &&
-        assignment.slotId === failed.assignment!.slotId &&
-        assignment.agentLifecycleId === failed.assignment!.agentLifecycleId
-    )
+    assignments: [
+      {
+        nodeId: failed.nodeId,
+        slotId: assignment.slotId,
+        worktreeId: assignment.worktreeId,
+        executionHostId: assignment.executionHostId,
+        paneKey: assignment.paneKey,
+        agentLifecycleId: assignment.agentLifecycleId,
+        providerSessionId: assignment.providerSessionId,
+        runtimeAgent: assignment.runtimeAgent
+      }
+    ]
   }
-  const created = insertWorkflowV2Steps(surface, maskedRun, definition, failed.nodeId, failed.round)
+  const nextAttempt = failed.attempt + 1
+  const created = insertWorkflowV2Steps(
+    surface,
+    maskedRun,
+    definition,
+    failed.nodeId,
+    failed.round,
+    nextAttempt
+  )
   const match = created[0]
   if (!match) {
     throw new WorkflowError('workflow_context_mismatch', 'V2 retry step was not created.')
   }
-  store.db
-    .prepare(`UPDATE workflow_step_runs SET attempt = ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(failed.attempt + 1, match.id)
   store.insertEvent(run.id, 'step-retried', match.id, {
     retryOfStepRunId: failed.id,
-    attempt: failed.attempt + 1,
+    attempt: nextAttempt,
     schemaVersion: 2
   })
+  store.db
+    .prepare(
+      `UPDATE workflow_runs
+       SET status = 'running', current_node_id = ?, waiting_reason = NULL,
+           resolution_context_json = NULL, failure_code = NULL, failure_message = NULL,
+           recovery = NULL, completed_at = NULL, version = version + 1,
+           updated_at = datetime('now') WHERE id = ?`
+    )
+    .run(failed.nodeId, run.id)
   const refreshed = store.getStep(match.id)
   if (!refreshed) {
     throw new WorkflowError('workflow_not_found', 'V2 retry step disappeared after insert.')

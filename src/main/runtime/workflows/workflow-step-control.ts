@@ -3,9 +3,11 @@ import type {
   WorkflowRunRecord,
   WorkflowStepRunRecord
 } from '../../../shared/workflow-definition-types'
+import { isWorkflowRunSnapshotV2 } from '../../../shared/workflow-definition-access'
 import { retryWorkflowStepWithDuplicateRiskInTransaction } from './workflow-completion-retry-outbox'
 import { WorkflowError } from './workflow-error'
 import type { WorkflowRuntimePersistence } from './workflow-runtime-persistence'
+import { insertV2RetryStep } from './workflow-v2-retry'
 
 export class WorkflowStepControl {
   constructor(private readonly store: WorkflowRuntimePersistence) {}
@@ -84,6 +86,23 @@ export class WorkflowStepControl {
     step: WorkflowStepRunRecord,
     assignment: WorkflowAgentAssignment | null
   ): WorkflowStepRunRecord {
+    if (isWorkflowRunSnapshotV2(run.templateSnapshot)) {
+      if (!assignment) {
+        throw new WorkflowError('workflow_context_mismatch', 'V2 retry requires an assignment.')
+      }
+      return insertV2RetryStep(
+        {
+          db: this.store.db,
+          getStep: (id) => this.store.getStep(id) ?? null,
+          insertEvent: this.store.insertEvent.bind(this.store),
+          insertStep: this.store.insertStep.bind(this.store),
+          finishEngineStep: this.store.finishEngineStep.bind(this.store)
+        },
+        run,
+        step,
+        assignment
+      )
+    }
     const node = run.templateSnapshot.nodes.find((candidate) => candidate.id === step.nodeId)
     if (!node) {
       throw new WorkflowError('workflow_transition_invalid', 'Retry node is unavailable.')

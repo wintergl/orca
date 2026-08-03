@@ -59,8 +59,8 @@ export function resolveWorkflowV2Decision(
       definition,
       step.routes.whenInvalid,
       `decision:${stepId}:invalid`,
-      null,
-      null
+      usedTraversalsByRouteId,
+      policyOverrides
     )
   }
   const route = decision ? step.routes.whenTrue : step.routes.whenFalse

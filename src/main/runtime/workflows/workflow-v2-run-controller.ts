@@ -39,14 +39,23 @@ export type WorkflowV2RuntimeSurface = Pick<
   'db' | 'finishEngineStep' | 'insertEvent' | 'getStep' | 'insertStep'
 >
 
-/** Visits are local cycles/rounds that reached success, not individual assignment steps. */
-function visitCount(run: WorkflowRunRecord, stepId: string): number {
+/**
+ * Current visit for prompt selection / history: prior successful visits + 1.
+ * Prefer lineage history (includes ancestors) so child Runs get repeat-visit correctly.
+ */
+function visitCount(run: WorkflowRunRecord, stepId: string, db?: Database.Database): number {
+  if (db) {
+    const priorVisits = listWorkflowV2HistoryWithLineage(db, run).filter(
+      (entry) => entry.stepId === stepId
+    ).length
+    return priorVisits + 1
+  }
   const rounds = new Set(
     run.steps
       .filter((step) => step.nodeId === stepId && step.status === 'succeeded')
       .map((step) => step.round)
   )
-  return Math.max(1, rounds.size)
+  return rounds.size + 1
 }
 
 function lineageCycle(run: WorkflowRunRecord, localRound: number): number {
@@ -124,7 +133,7 @@ export function completeWorkflowV2AgentStep(params: {
     stepId: params.step.nodeId,
     stepName: params.step.nodeName,
     stepKind: 'agent',
-    visit: visitCount(params.run, params.step.nodeId),
+    visit: visitCount(params.run, params.step.nodeId, params.db),
     cycle: lineageCycle(params.run, params.step.round),
     attempt: params.step.attempt,
     promptText: params.step.prompt || null,
@@ -175,7 +184,7 @@ export function completeWorkflowV2DecisionStep(params: {
     stepId: params.step.nodeId,
     stepName: params.step.nodeName,
     stepKind: 'decision',
-    visit: visitCount(params.run, params.step.nodeId),
+    visit: visitCount(params.run, params.step.nodeId, params.db),
     cycle: lineageCycle(params.run, params.step.round),
     attempt: params.step.attempt,
     promptText: params.step.prompt || null,
@@ -208,7 +217,7 @@ export function resolveWorkflowV2HumanAction(params: {
     stepId: params.stepId,
     stepName: workflowV2StepById(definition, params.stepId)?.name ?? params.stepId,
     stepKind: 'human',
-    visit: visitCount(params.run, params.stepId),
+    visit: visitCount(params.run, params.stepId, params.db),
     cycle: lineageCycle(params.run, Math.max(1, ...params.run.steps.map((s) => s.round), 1)),
     attempt: 1,
     promptText: null,
@@ -237,7 +246,7 @@ export function buildWorkflowV2StepPrompt(
     stepId: step.nodeId,
     goal: run.objective,
     workflowName: `${run.templateName} v${run.templateVersion}`,
-    visit: visitCount(run, step.nodeId),
+    visit: visitCount(run, step.nodeId, db),
     cycle: lineageCycle(run, step.round),
     history: listWorkflowV2HistoryWithLineage(db, run)
   })

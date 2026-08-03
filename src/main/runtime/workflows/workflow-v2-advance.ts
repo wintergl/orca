@@ -86,7 +86,8 @@ export function insertWorkflowV2Steps(
   run: WorkflowRunRecord,
   definition: WorkflowDefinitionV2,
   stepId: string,
-  round: number
+  round: number,
+  attempt = 1
 ): WorkflowStepRunRecord[] {
   const step = workflowV2StepById(definition, stepId)
   if (!step) {
@@ -104,7 +105,7 @@ export function insertWorkflowV2Steps(
   }
   const node = syntheticV1Node(step)
   return assignments.map((assignment) =>
-    store.insertStep(run.id, node, assignment, null, 'queued', round, 1)
+    store.insertStep(run.id, node, assignment, null, 'queued', round, attempt)
   )
 }
 
