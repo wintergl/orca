@@ -3,8 +3,7 @@ import { Clipboard, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
   WorkflowEventRecord,
-  WorkflowRunRecord,
-  WorkflowStepRunRecord
+  WorkflowRunRecord
 } from '../../../../shared/workflow-definition-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +15,7 @@ import { setWorkflowSelectedStep } from './workflow-renderer-state'
 import { WorkflowReviewAggregatePanel } from './WorkflowReviewAggregatePanel'
 import { WorkflowResolutionPanel } from './WorkflowResolutionPanel'
 import { WorkflowRunRerunButton } from './WorkflowRunRerunButton'
+import { WorkflowRunPromptHistory } from './WorkflowRunPromptHistory'
 import {
   WorkflowRunConfigurationSnapshot,
   WorkflowRunV2HistoryPanel
@@ -194,6 +194,7 @@ export function WorkflowRunDetail({
           <WorkflowRunConfigurationSnapshot run={run} />
           <WorkflowRunV1BudgetSnapshot run={run} />
           <WorkflowRunV2BudgetSnapshot run={run} />
+          <WorkflowRunPromptHistory run={run} selectedStepRunId={selectedStep?.id ?? null} />
           {run.failureMessage ? (
             <section className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
               <h3 className="text-sm font-medium text-destructive">{run.failureMessage}</h3>
@@ -216,14 +217,6 @@ export function WorkflowRunDetail({
           {selectedStep ? (
             <>
               <StepIdentity step={selectedStep} />
-              <ContentPanel
-                title={`${translate('workflows.run.prompt', 'Actual prompt')} · ${promptSourceLabel(
-                  run,
-                  selectedStep
-                )}`}
-                content={selectedStep.prompt}
-                empty={translate('workflows.run.promptPending', 'Prompt has not been delivered.')}
-              />
               <ContentPanel
                 title={translate('workflows.run.conclusion', 'Complete conclusion')}
                 content={selectedStep.conclusionMarkdown}
@@ -257,15 +250,6 @@ async function copyDiagnosticSummary(
 ): Promise<void> {
   await navigator.clipboard.writeText(buildWorkflowDiagnosticSummary(run, events))
   toast.success(translate('workflows.run.diagnosticsCopied', 'Diagnostic summary copied'))
-}
-
-function promptSourceLabel(run: WorkflowRunRecord, step: WorkflowStepRunRecord): string {
-  const override = run.promptOverrides?.[step.nodeId]
-  const repeated = run.lineageCycleBase + step.round > 1
-  if (repeated ? override?.repeatVisit : override?.firstVisit) {
-    return translate('workflows.run.promptSourceOverride', 'Run override')
-  }
-  return translate('workflows.run.promptSourceTemplate', 'Template snapshot')
 }
 
 function formatTimestamp(value: string): string {

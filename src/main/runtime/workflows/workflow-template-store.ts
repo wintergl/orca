@@ -9,12 +9,20 @@ import { stampWorkflowDecisionProtocolVersionV1 } from '../../../shared/workflow
 import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
+import {
+  assertWorkflowTemplateArchivable,
+  assertWorkflowTemplateEditable
+} from './workflow-template-access-policy'
 import { assertWorkflowTemplateBoundaries } from './workflow-template-boundary-validation'
 import {
   parseStoredWorkflowDefinition,
   toWorkflowTemplateRecord,
   type WorkflowTemplateRow
 } from './workflow-store-records'
+
+const ACTIVE_RUN_COUNT_SQL = `(SELECT COUNT(*) FROM workflow_runs r
+  WHERE r.template_id = t.id
+    AND r.status IN ('running', 'paused', 'waiting-human', 'review-limit-reached'))`
 
 export class WorkflowTemplateStore {
   constructor(private readonly db: Database.Database) {}
@@ -27,7 +35,7 @@ export class WorkflowTemplateStore {
     const archivedClause = params.includeArchived ? '' : 'AND t.archived_at IS NULL'
     const rows = this.db
       .prepare(
-        `SELECT t.*, v.definition_json
+        `SELECT t.*, v.definition_json, ${ACTIVE_RUN_COUNT_SQL} AS active_run_count
          FROM workflow_templates t
          JOIN workflow_template_versions v
            ON v.template_id = t.id AND v.version = t.current_version
@@ -115,7 +123,8 @@ export class WorkflowTemplateStore {
     assertWorkflowTemplateBoundaries(definition)
     return runWorkflowMutation(this.db, mutation, () => {
       const row = this.getRow(params.templateId)
-      this.assertMutable(row, mutation.callerIdentity, params.projectIdentity)
+      this.assertVisible(row, mutation.callerIdentity, params.projectIdentity)
+      assertWorkflowTemplateEditable(row)
       if (row.current_version !== params.expectedVersion) {
         throw new WorkflowError(
           'workflow_version_conflict',
@@ -178,7 +187,8 @@ export class WorkflowTemplateStore {
   ): WorkflowTemplateRecord {
     return runWorkflowMutation(this.db, mutation, () => {
       const row = this.getRow(params.templateId)
-      this.assertMutable(row, mutation.callerIdentity, params.projectIdentity)
+      this.assertVisible(row, mutation.callerIdentity, params.projectIdentity)
+      assertWorkflowTemplateArchivable(row)
       this.db
         .prepare(
           `UPDATE workflow_templates
@@ -197,7 +207,7 @@ export class WorkflowTemplateStore {
   private getRow(templateId: string): WorkflowTemplateRow {
     const row = this.db
       .prepare(
-        `SELECT t.*, v.definition_json
+        `SELECT t.*, v.definition_json, ${ACTIVE_RUN_COUNT_SQL} AS active_run_count
          FROM workflow_templates t
          JOIN workflow_template_versions v
            ON v.template_id = t.id AND v.version = t.current_version
@@ -228,23 +238,6 @@ export class WorkflowTemplateStore {
       return
     }
     throw new WorkflowError('workflow_forbidden', 'Workflow template is outside this scope.')
-  }
-
-  private assertMutable(
-    row: WorkflowTemplateRow,
-    callerIdentity: string,
-    projectIdentity?: string
-  ): void {
-    this.assertVisible(row, callerIdentity, projectIdentity)
-    if (row.scope === 'built-in') {
-      throw new WorkflowError(
-        'workflow_forbidden',
-        'Built-in templates must be cloned before editing.'
-      )
-    }
-    if (row.archived_at) {
-      throw new WorkflowError('workflow_archived', 'Archived templates are read-only.')
-    }
   }
 
   private assertProjectScope(scope: WorkflowTemplateScope, projectIdentity?: string): void {

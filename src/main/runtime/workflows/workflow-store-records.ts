@@ -26,6 +26,7 @@ export type WorkflowTemplateRow = {
   archived_at: string | null
   archived_by: string | null
   current_version: number
+  active_run_count: number
   definition_json: string
   created_at: string
   updated_at: string
@@ -104,6 +105,7 @@ export function toWorkflowTemplateRecord(row: WorkflowTemplateRow): WorkflowTemp
     archivedAt: exposeTimestamp(row.archived_at),
     archivedBy: row.archived_by,
     currentVersion: row.current_version,
+    activeRunCount: row.active_run_count,
     definition: parseStoredWorkflowDefinition(JSON.parse(row.definition_json)),
     createdAt: exposeTimestamp(row.created_at)!,
     updatedAt: exposeTimestamp(row.updated_at)!

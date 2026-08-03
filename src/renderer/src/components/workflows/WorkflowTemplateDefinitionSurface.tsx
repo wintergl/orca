@@ -15,15 +15,19 @@ export function WorkflowTemplateDefinitionSurface({
   draft,
   readOnly,
   workflowV2Blocked,
+  activeRunCount,
   enablingWorkflowV2,
   onEnableWorkflowV2,
+  onOpenHistory,
   onChange
 }: {
   draft: WorkflowTemplateEditorDraft | null
   readOnly: boolean
   workflowV2Blocked: boolean
+  activeRunCount: number
   enablingWorkflowV2: boolean
   onEnableWorkflowV2: () => void
+  onOpenHistory: () => void
   onChange: (definition: WorkflowTemplateSnapshot) => void
 }): React.JSX.Element {
   if (!draft) {
@@ -60,12 +64,21 @@ export function WorkflowTemplateDefinitionSurface({
           </Button>
         </div>
       ) : null}
-      {readOnly ? (
-        <div className="shrink-0 border-b border-border bg-muted/25 px-4 py-2 text-xs text-muted-foreground">
-          {translate(
-            'workflows.templates.builtinReadOnly',
-            'This template is read-only under the current workflow schema policy.'
-          )}
+      {activeRunCount > 0 ? (
+        <div
+          role="status"
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/25 px-4 py-2"
+        >
+          <p className="text-xs text-muted-foreground">
+            {translate(
+              'workflows.templates.activeRunLock',
+              'Editing is locked while {{value0}} run(s) are active. Actual delivered prompts remain available in Run history.',
+              { value0: activeRunCount }
+            )}
+          </p>
+          <Button size="xs" variant="outline" onClick={onOpenHistory}>
+            {translate('workflows.templates.openPromptHistory', 'Open prompt history')}
+          </Button>
         </div>
       ) : null}
       <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden">

@@ -143,6 +143,82 @@ describe('WorkflowStore templates', () => {
     expect(snapshot.nodes[0]!.name).not.toBe('Updated authoring')
   })
 
+  it('edits built-ins directly when idle and locks templates with active runs', () => {
+    const { store } = createStore()
+    const original = store.showTemplate({
+      templateId: 'builtin.spec-review.v1',
+      callerIdentity: 'user-a'
+    })
+    const changed = structuredClone(original.definition)
+    if (changed.schemaVersion !== 1) {
+      throw new Error('expected V1 built-in template in this test')
+    }
+    changed.nodes[0]!.name = 'Directly edited authoring'
+    const edited = store.updateTemplate(
+      {
+        templateId: original.id,
+        expectedVersion: original.currentVersion,
+        name: original.name,
+        definition: changed
+      },
+      mutation('user-a', 'edit-builtin', 'workflow.templateUpdate', { templateId: original.id })
+    )
+    expect(edited).toMatchObject({
+      id: original.id,
+      currentVersion: original.currentVersion + 1,
+      activeRunCount: 0
+    })
+
+    const run = store.createRun(
+      {
+        templateId: edited.id,
+        projectIdentity: 'project-a',
+        workspace: { kind: 'folder-workspace', id: 'folder-a' },
+        executionHostId: 'local'
+      },
+      mutation('user-a', 'active-run', 'workflow.runCreate', { templateId: edited.id })
+    )
+    store.persistenceDb
+      .prepare("UPDATE workflow_runs SET status = 'running' WHERE id = ?")
+      .run(run.id)
+    expect(
+      store.showTemplate({ templateId: edited.id, callerIdentity: 'user-a' }).activeRunCount
+    ).toBe(1)
+    expect(() =>
+      store.updateTemplate(
+        {
+          templateId: edited.id,
+          expectedVersion: edited.currentVersion,
+          name: edited.name,
+          definition: edited.definition
+        },
+        mutation('user-a', 'edit-active', 'workflow.templateUpdate', { templateId: edited.id })
+      )
+    ).toThrow('cannot be changed while one or more runs are active')
+
+    store.persistenceDb
+      .prepare(
+        "UPDATE workflow_runs SET status = 'completed', completed_at = datetime('now') WHERE id = ?"
+      )
+      .run(run.id)
+    expect(
+      store.showTemplate({ templateId: edited.id, callerIdentity: 'user-a' }).activeRunCount
+    ).toBe(0)
+    expect(
+      store.updateTemplate(
+        {
+          templateId: edited.id,
+          expectedVersion: edited.currentVersion,
+          name: edited.name,
+          definition: edited.definition
+        },
+        mutation('user-a', 'edit-completed', 'workflow.templateUpdate', {
+          templateId: edited.id
+        })
+      ).currentVersion
+    ).toBe(edited.currentVersion + 1)
+  })
+
   it('archives custom templates without hiding history and replays mutations idempotently', () => {
     const { store } = createStore()
     const input = {

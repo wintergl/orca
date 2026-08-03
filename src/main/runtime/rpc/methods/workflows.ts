@@ -87,7 +87,7 @@ export const WORKFLOW_METHODS = [
     name: 'workflow.templateCreate',
     params: templateCreateParams,
     handler: (params, context) => {
-      assertWorkflowV2RpcGate(context, params.definition, 'template-mutation')
+      assertWorkflowV2RpcGate(context, params.definition)
       return context.runtime
         .getWorkflowStore()
         .createTemplate(params, mutation(context, params, 'workflow.templateCreate'))
@@ -97,7 +97,7 @@ export const WORKFLOW_METHODS = [
     name: 'workflow.templateUpdate',
     params: templateUpdateParams,
     handler: (params, context) => {
-      assertWorkflowV2RpcGate(context, params.definition, 'template-mutation')
+      assertWorkflowV2RpcGate(context, params.definition)
       return context.runtime
         .getWorkflowStore()
         .updateTemplate(params, mutation(context, params, 'workflow.templateUpdate'))
@@ -113,7 +113,7 @@ export const WORKFLOW_METHODS = [
         callerIdentity: callerIdentity(context),
         projectIdentity: params.sourceProjectIdentity
       })
-      assertWorkflowV2RpcGate(context, source.definition, 'template-mutation')
+      assertWorkflowV2RpcGate(context, source.definition)
       return store.cloneTemplate(params, mutation(context, params, 'workflow.templateClone'))
     }
   }),

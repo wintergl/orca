@@ -98,7 +98,7 @@ describe('workflow template RPC', () => {
     ).rejects.toMatchObject({ code: 'workflow_definition_invalid' })
   })
 
-  it('clones built-ins before editing and archives without physical deletion', async () => {
+  it('clones templates and archives custom copies without physical deletion', async () => {
     const clone = (await call('workflow.templateClone', {
       requestId: 'clone',
       sourceTemplateId: 'builtin.spec-review.v1',
@@ -126,7 +126,7 @@ describe('workflow template RPC', () => {
     })
   })
 
-  it('gates V2 execution and makes V1 template mutations read-only after enablement', async () => {
+  it('gates V2 execution while keeping V1 template mutations available', async () => {
     await expect(
       call('workflow.runCreate', {
         requestId: 'v2-disabled',
@@ -148,12 +148,25 @@ describe('workflow template RPC', () => {
     ).rejects.toMatchObject({ code: 'workflow_definition_invalid' })
     await expect(
       call('workflow.templateClone', {
-        requestId: 'v1-read-only',
+        requestId: 'v1-copy-enabled',
         sourceTemplateId: 'builtin.spec-review.v1',
         name: 'V1 copy',
         scope: 'personal'
       })
-    ).rejects.toMatchObject({ code: 'workflow_action_forbidden' })
+    ).resolves.toMatchObject({ name: 'V1 copy' })
+    const v1Builtin = store.showTemplate({
+      templateId: 'builtin.spec-review.v1',
+      callerIdentity: 'user-a'
+    })
+    await expect(
+      call('workflow.templateUpdate', {
+        requestId: 'v1-edit-enabled',
+        templateId: v1Builtin.id,
+        expectedVersion: v1Builtin.currentVersion,
+        name: v1Builtin.name,
+        definition: v1Builtin.definition
+      })
+    ).resolves.toMatchObject({ currentVersion: v1Builtin.currentVersion + 1 })
     for (const templateId of [
       'builtin.v2.single-agent-end',
       'builtin.v2.agent-decision-loop',

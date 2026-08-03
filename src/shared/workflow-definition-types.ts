@@ -227,6 +227,7 @@ export type WorkflowTemplateRecord = {
   archivedAt: string | null
   archivedBy: string | null
   currentVersion: number
+  activeRunCount: number
   definition: WorkflowTemplateSnapshot
   createdAt: string
   updatedAt: string

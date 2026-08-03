@@ -14,12 +14,24 @@ export function seedBuiltinWorkflowTemplates(db: Database.Database): void {
       db.prepare(
         `INSERT OR IGNORE INTO workflow_template_versions (
            template_id, version, definition_json, created_by
-         ) VALUES (?, ?, ?, 'orca')`
-      ).run(fixture.id, fixture.version, JSON.stringify(fixture.definition))
+         ) SELECT ?, ?, ?, 'orca'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM workflow_templates template
+           JOIN workflow_template_versions current
+             ON current.template_id = template.id AND current.version = template.current_version
+           WHERE template.id = ? AND current.created_by <> 'orca'
+         )`
+      ).run(fixture.id, fixture.version, JSON.stringify(fixture.definition), fixture.id)
       db.prepare(
         `UPDATE workflow_templates
          SET name = ?, current_version = ?, updated_at = datetime('now')
-         WHERE id = ? AND scope = 'built-in' AND current_version < ?`
+         WHERE id = ? AND scope = 'built-in' AND current_version < ?
+           AND EXISTS (
+             SELECT 1 FROM workflow_template_versions current
+             WHERE current.template_id = workflow_templates.id
+               AND current.version = workflow_templates.current_version
+               AND current.created_by = 'orca'
+           )`
       ).run(fixture.name, fixture.version, fixture.id, fixture.version)
     }
     db.exec('COMMIT')

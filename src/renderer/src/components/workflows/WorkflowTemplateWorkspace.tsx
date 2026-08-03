@@ -63,13 +63,12 @@ export function WorkflowTemplateWorkspace({
   const [draft, setDraft] = useState<EditorDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
-  const draftReadOnly =
-    selected?.scope === 'built-in' ||
-    Boolean(
-      (workflowV2Enabled === true && draft?.definition.schemaVersion === 1) ||
-      (workflowV2Enabled === false && draft?.definition.schemaVersion === 2)
-    )
   const workflowV2Blocked = workflowV2Enabled === false && draft?.definition.schemaVersion === 2
+  const activeRunCount =
+    draft?.kind === 'existing'
+      ? (templates.find((template) => template.id === draft.templateId)?.activeRunCount ?? 0)
+      : 0
+  const draftReadOnly = workflowV2Blocked || activeRunCount > 0
 
   useEffect(() => {
     if (selected) {
@@ -166,15 +165,6 @@ export function WorkflowTemplateWorkspace({
   }
 
   const copyTemplate = async (template: WorkflowTemplateRecord): Promise<void> => {
-    if (workflowV2Enabled && template.definition.schemaVersion === 1) {
-      toast.info(
-        translate(
-          'workflows.templates.v1ReadOnlyAfterV2',
-          'V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.'
-        )
-      )
-      return
-    }
     try {
       const copied = await cloneWorkflowTemplate(target, {
         sourceTemplateId: template.id,
@@ -318,12 +308,6 @@ export function WorkflowTemplateWorkspace({
               {translate('workflows.templates.validate', 'Validate')}
             </span>
           </Button>
-          {selected?.scope === 'built-in' &&
-          !(workflowV2Enabled && selected.definition.schemaVersion === 1) ? (
-            <Button size="sm" onClick={() => void copyTemplate(selected)}>
-              {translate('workflows.templates.copyToEdit', 'Copy to edit')}
-            </Button>
-          ) : null}
           {draft && !draftReadOnly ? (
             <Button size="sm" disabled={saving} onClick={() => void save()}>
               <Save />
@@ -338,8 +322,10 @@ export function WorkflowTemplateWorkspace({
         draft={draft}
         readOnly={draftReadOnly}
         workflowV2Blocked={workflowV2Blocked}
+        activeRunCount={activeRunCount}
         enablingWorkflowV2={enablingWorkflowV2}
         onEnableWorkflowV2={onEnableWorkflowV2}
+        onOpenHistory={onOpenHistory}
         onChange={(definition) => draft && setDraft({ ...draft, definition })}
       />
       <WorkflowTemplateManager

@@ -23,6 +23,7 @@ describe('WorkflowRunDetail', () => {
     )
 
     expect(screen.getByText('Implement the requested change.')).toBeTruthy()
+    expect(screen.getByText('Prompt history')).toBeTruthy()
     expect(screen.getByText('Changed the implementation and tests pass.')).toBeTruthy()
     expect(screen.getByText('task-produce')).toBeTruthy()
     expect(screen.getByText('dispatch-produce')).toBeTruthy()
