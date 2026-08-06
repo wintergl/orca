@@ -296,6 +296,7 @@ function RoleAndExecution({
         label={translate('workflows.visual.role', 'Role')}
         value={step.roleSlotIds[0] ?? ''}
         options={definition.roleSlots.map((slot) => slot.id)}
+        optionLabels={Object.fromEntries(definition.roleSlots.map((slot) => [slot.id, slot.label]))}
         disabled={readOnly}
         onChange={(role) =>
           update((current) =>

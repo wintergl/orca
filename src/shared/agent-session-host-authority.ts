@@ -128,6 +128,7 @@ export type RuntimeCreateAgentSessionRequest = {
   agent: TuiAgent
   agentCommand?: string
   permissionMode?: Exclude<AgentPermissionMode, 'mixed'>
+  title?: string
   prompt?: string
   promptDelivery?: AgentPromptDelivery
   /** Explicit client override. Omission keeps launch defaults host-owned. */

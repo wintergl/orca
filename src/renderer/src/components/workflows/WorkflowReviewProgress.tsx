@@ -5,6 +5,7 @@ import type {
 } from '../../../../shared/workflow-definition-types'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { workflowStepStatusLabel } from './workflow-runtime-state-labels'
 
 export function WorkflowReviewProgress({
   run,
@@ -73,7 +74,9 @@ export function WorkflowReviewProgress({
             <span className="truncate">
               {step.assignment?.runtimeAgent ?? step.assignment?.agentLifecycleId ?? step.id}
             </span>
-            <span className="ml-auto shrink-0 text-muted-foreground">{step.status}</span>
+            <span className="ml-auto shrink-0 text-muted-foreground">
+              {workflowStepStatusLabel(step.status)}
+            </span>
           </Button>
         ))}
       </div>

@@ -5263,7 +5263,11 @@
           "agentEnabled": "Agent enabled.",
           "agentDisabled": "Agent disabled.",
           "availabilitySaveFailed": "Could not save Agent availability.",
-          "createAgent": "Create Agent"
+          "createAgent": "Crear agente",
+          "customProfile": "Personalizado",
+          "customProfiles": "personalizados",
+          "duplicateCustomAgentName": "Ya existe un agente con este nombre.",
+          "customAgentCommandRequired": "Introduce un comando de inicio para el agente personalizado."
         },
         "AppIconSelector": {
           "d5a112dc9b": "Icono siguiente",
@@ -9784,10 +9788,10 @@
         },
         "AgentCreationDialog": {
           "launchFailed": "Could not build the Agent launch command.",
-          "created": "{{value0}} was created in a new tab.",
+          "created": "{{value0}} se guardó y está listo para iniciarse.",
           "createFailed": "Could not create the Agent.",
           "title": "Create a new Agent",
-          "description": "Start an Agent in the active workspace. Its catalog name becomes the tab name.",
+          "description": "Elige un agente base y asígnale un nombre y un comando de inicio específicos del proveedor.",
           "noWorkspace": "Open a workspace before creating an Agent."
         }
       },
@@ -14382,7 +14386,9 @@
       "pause": "Could not pause Workflow",
       "resume": "Could not resume Workflow",
       "cancel": "Could not cancel Workflow",
-      "switchTemplate": "Could not change the Workflow template"
+      "switchTemplate": "Could not change the Workflow template",
+      "deleteTemplate": "Could not delete workflow",
+      "resetDefaults": "Could not reset default workflows"
     },
     "agentPicker": {
       "title": "Assign an idle Agent",
@@ -14397,18 +14403,21 @@
       "newAgent": "Crear agente nuevo",
       "back": "Volver a los agentes inactivos",
       "createTitle": "Crear un agente nuevo",
-      "createDescription": "El agente se inicia en este espacio de borrador y se asigna cuando queda inactivo.",
+      "createDescription": "Elige un agente base y asigna a este borrador un nombre y un comando de inicio específicos del proveedor.",
       "agentTitle": "Título del agente",
-      "agentType": "Agente",
+      "agentType": "Agente base",
       "command": "Comando de inicio",
-      "commandHint": "Déjalo vacío para usar el comando configurado en este host de ejecución.",
+      "commandHint": "Déjalo vacío para usar el comando del agente base configurado en este host de ejecución.",
+      "commandRequiredHint": "Introduce el comando exacto que debe ejecutar este agente personalizado.",
       "yolo": "Permisos YOLO",
       "yoloHint": "Omite las confirmaciones de permisos compatibles solo para esta sesión.",
       "noCreatableAgents": "No hay agentes instalados y habilitados en este host de ejecución.",
       "creating": "Creando…",
       "create": "Crear agente",
       "detectingAgents": "Detectando agentes instalados…",
-      "nameFollowsCatalog": "The Agent and its new tab use this name. Renaming the tab also updates Workflow."
+      "nameFollowsCatalog": "El agente base controla los hooks, la gestión de sesiones y la entrega de instrucciones.",
+      "agentName": "Nombre del agente",
+      "agentNameHint": "Usa un nombre y un comando de inicio personalizados para alias de proveedor como cc, codexdb o codexdba."
     },
     "run": {
       "snapshot": "Template v{{value0}} snapshot · {{value1}} · {{value2}}",
@@ -14469,7 +14478,8 @@
       "promptSourceHistory": "Recorded history",
       "promptHistory": "Prompt history",
       "promptHistoryHint": "Actual prompts delivered by this Run snapshot, including inherited lineage history.",
-      "promptHistoryEntry": "{{step}} · lineage cycle {{cycle}} · attempt {{attempt}} · {{source}}"
+      "promptHistoryEntry": "{{step}} · lineage cycle {{cycle}} · attempt {{attempt}} · {{source}}",
+      "remoteArtifactReference": "Artifact remains on its execution host and is not opened as a local path."
     },
     "templates": {
       "untitled": "Untitled workflow",
@@ -14511,14 +14521,24 @@
       "activeRunLock": "Editing is locked while {{value0}} run(s) are active. Actual delivered prompts remain available in Run history.",
       "openPromptHistory": "Open prompt history",
       "v1Group": "V1 · Stable workflows",
-      "v2Group": "V2 · Free-form workflows"
+      "v2Group": "V2 · Free-form workflows",
+      "resetDefaults": "Reset defaults",
+      "delete": "Delete",
+      "configurations": "Workflow configurations",
+      "deleteTitle": "Delete workflow?",
+      "deleteDescription": "This removes the workflow from the configuration list. Default workflows can be restored with Reset defaults.",
+      "deleted": "Workflow deleted",
+      "resetDefaultsTitle": "Reset default workflows?",
+      "resetDefaultsDescription": "Restores the two default V2 workflows and replaces any edits made to them.",
+      "defaultsRestored": "Default workflows restored"
     },
     "scope": {
       "personal": "Personal",
       "currentProject": "Current project",
       "all": "All",
       "builtin": "Built-in",
-      "project": "Project"
+      "project": "Project",
+      "default": "Default"
     },
     "page": {
       "title": "Workflows",
@@ -14818,7 +14838,10 @@
       "humanEnd": "End",
       "decisionStep": "Decision step",
       "actionExtendRouteBudget": "Extend route budget",
-      "routeNumber": "Route {{count}}"
+      "routeNumber": "Route {{count}}",
+      "moveStepEarlier": "Move {{value0}} earlier",
+      "moveStepLater": "Move {{value0}} later",
+      "removeNamedStep": "Remove {{value0}}"
     },
     "status": {
       "draft": "Configuring",
@@ -14960,6 +14983,73 @@
       "disabledDescription": "This V2 template is view-only until Workflow V2 is enabled on this runtime host.",
       "enabling": "Enabling…",
       "enable": "Enable Workflow V2"
+    },
+    "runtime": {
+      "templateVersion": "Version {{version}}",
+      "engine": "Engine",
+      "pending": "Pending",
+      "none": "None",
+      "localHost": "Local host"
+    },
+    "event": {
+      "runCreated": "Run created",
+      "runConfigurationUpdated": "Run configuration updated",
+      "templateApplied": "Template applied",
+      "agentAssigned": "Agent assigned",
+      "runStarted": "Run started",
+      "promptDeliveryStarted": "Prompt delivery started",
+      "promptDelivered": "Prompt delivered",
+      "stepWorking": "Step working",
+      "stepCompleted": "Step completed",
+      "runCompleted": "Run completed",
+      "runFailed": "Run failed",
+      "completionIncomplete": "Completion incomplete",
+      "artifactDrifted": "Artifact changed",
+      "reviewFanOut": "Review tasks dispatched",
+      "reviewCollected": "Review collected",
+      "reviewAggregateCreated": "Review aggregate created",
+      "reviewWaiting": "Review waiting",
+      "reviewerFailed": "Reviewer failed",
+      "reviewerTimedOut": "Reviewer timed out",
+      "decisionMade": "Decision made",
+      "revisionRequested": "Revision requested",
+      "humanAction": "Human action",
+      "routeBudgetExtended": "Route budget extended",
+      "agentReassigned": "Agent reassigned",
+      "stepRetried": "Step retried",
+      "runPaused": "Run paused",
+      "runResumed": "Run resumed",
+      "runCancelled": "Run cancelled",
+      "runRecoveryStarted": "Run recovery started",
+      "runRecovered": "Run recovered",
+      "recoveryWaiting": "Recovery waiting",
+      "reviewLimitReached": "Review limit reached",
+      "lateCompletionIgnored": "Late completion ignored"
+    },
+    "stepStatus": {
+      "queued": "Queued",
+      "waitingAgent": "Waiting for Agent",
+      "delivering": "Delivering",
+      "running": "Running",
+      "completionIncomplete": "Completion incomplete",
+      "succeeded": "Succeeded",
+      "timedOut": "Timed out",
+      "cancelled": "Cancelled",
+      "failed": "Failed"
+    },
+    "workspaceKind": {
+      "gitWorktree": "Git worktree",
+      "folderWorkspace": "Folder workspace"
+    },
+    "artifactState": {
+      "frozen": "Frozen",
+      "drifted": "Changed",
+      "unavailable": "Unavailable"
+    },
+    "messageSource": {
+      "reportPath": "Report file",
+      "agentFinalMessage": "Agent final message",
+      "transcript": "Transcript"
     }
   },
   "common": {

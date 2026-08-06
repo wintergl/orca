@@ -217,6 +217,7 @@ import {
   SOURCE_CONTROL_TEXT_ACTION_IDS
 } from '../shared/source-control-ai-actions'
 import { normalizeDisabledTuiAgents } from '../shared/tui-agent-selection'
+import { normalizeCustomAgentProfiles } from '../shared/custom-agent-profiles'
 import {
   DEFAULT_TUI_AGENT_ARGS,
   DEFAULT_TUI_AGENT_ENV,
@@ -3187,6 +3188,7 @@ export class Store {
               parsed.settings?.terminalShortcutPolicy
             ),
             disabledTuiAgents: migratedDisabledTuiAgents,
+            customAgentProfiles: normalizeCustomAgentProfiles(parsed.settings?.customAgentProfiles),
             ...migratedAgentYoloDefaults,
             claudeAgentTeamsDefaultDisabledMigrated: true,
             openInApplications: normalizeOpenInApplications(parsed.settings?.openInApplications, {
@@ -5340,6 +5342,11 @@ export class Store {
     }
     if ('disabledTuiAgents' in updates) {
       sanitizedUpdates.disabledTuiAgents = normalizeDisabledTuiAgents(updates.disabledTuiAgents)
+    }
+    if ('customAgentProfiles' in updates) {
+      sanitizedUpdates.customAgentProfiles = normalizeCustomAgentProfiles(
+        updates.customAgentProfiles
+      )
     }
     if ('agentDefaultArgs' in updates) {
       sanitizedUpdates.agentDefaultArgs = normalizeTuiAgentArgsRecord(updates.agentDefaultArgs)

@@ -1,0 +1,158 @@
+{
+  "id": "builtin.v2.code-review",
+  "name": "代码编写 + 评审",
+  "scope": "built-in",
+  "version": 1,
+  "definition": {
+    "schemaVersion": 2,
+    "decisionProtocolVersion": "v2-binary-zh",
+    "entryStepId": "code-produce",
+    "roleSlots": [
+      {
+        "id": "code-author",
+        "label": "代码编写智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "code-reviewers",
+        "label": "代码评审智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 8,
+        "execution": "parallel",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "code-decider",
+        "label": "代码判定智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      }
+    ],
+    "steps": [
+      {
+        "id": "code-produce",
+        "name": "代码编写",
+        "kind": "agent",
+        "roleSlotIds": ["code-author"],
+        "execution": "single",
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n请依据目标和其中的 SPEC、约束或验收标准完成代码编写，并执行必要验证。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n上一轮代码结果：\n{{ history[-1].nodes[\"code-produce\"].output }}\n\n上一轮评审意见：\n{{ history[-1].nodes[\"code-review\"].output }}\n\n上一轮判定：\n{{ history[-1].nodes[\"code-decide\"].output }}\n\n请逐项处理评审意见，修订代码并重新验证。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "代码满足工作目标和验收标准，变更范围受控，并完成与风险相称的验证。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" },
+        "next": { "targetStepId": "code-review" }
+      },
+      {
+        "id": "code-review",
+        "name": "代码评审",
+        "kind": "agent",
+        "roleSlotIds": ["code-reviewers"],
+        "execution": "parallel",
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n待评审代码结果：\n{{ history[currentRound].nodes[\"code-produce\"].output }}\n\n请检查正确性、回归风险、边界条件、测试证据和可维护性，明确阻塞项与修改建议。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮修订后的代码结果：\n{{ history[currentRound].nodes[\"code-produce\"].output }}\n\n上一轮评审：\n{{ history[-1].nodes[\"code-review\"].output }}\n\n请核对上一轮问题是否关闭，并重新给出完整评审结论。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "评审覆盖实现正确性、回归风险和验证证据，并给出可执行的通过或修改依据。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" },
+        "next": { "targetStepId": "code-decide" }
+      },
+      {
+        "id": "code-decide",
+        "name": "代码判定",
+        "kind": "decision",
+        "roleSlotIds": ["code-decider"],
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮代码结果：\n{{ history[currentRound].nodes[\"code-produce\"].output }}\n\n本轮评审汇总：\n{{ history[currentRound].nodes[\"code-review\"].output }}\n\n请判断代码是否满足完成条件，并说明依据。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮修订后的代码结果：\n{{ history[currentRound].nodes[\"code-produce\"].output }}\n\n本轮评审汇总：\n{{ history[currentRound].nodes[\"code-review\"].output }}\n\n请判断上一轮问题是否已经关闭，并说明依据。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "代码满足目标、验证充分且评审无阻塞项时判定完成，否则判定不完成。"
+        },
+        "parser": "binary-complete",
+        "routes": {
+          "whenTrue": { "targetStepId": "complete" },
+          "whenFalse": {
+            "targetStepId": "code-produce",
+            "maxTraversals": 2,
+            "onExhaustedStepId": "code-human"
+          },
+          "whenInvalid": { "targetStepId": "code-human" }
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" }
+      },
+      {
+        "id": "code-human",
+        "name": "代码人工处理",
+        "kind": "human",
+        "routes": [
+          {
+            "id": "approve",
+            "label": "人工通过",
+            "targetStepId": "complete",
+            "requiresText": false,
+            "requiresConfirmation": true
+          },
+          {
+            "id": "revise",
+            "label": "填写要求并退回修改",
+            "targetStepId": "code-produce",
+            "requiresText": true,
+            "requiresConfirmation": true,
+            "maxTraversals": 3,
+            "onExhaustedStepId": "cancelled"
+          },
+          {
+            "id": "end",
+            "label": "结束流程",
+            "targetStepId": "cancelled",
+            "requiresText": false,
+            "requiresConfirmation": true
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "name": "完成",
+        "kind": "end",
+        "outcome": "succeeded"
+      },
+      {
+        "id": "cancelled",
+        "name": "已结束",
+        "kind": "end",
+        "outcome": "cancelled"
+      }
+    ]
+  }
+}

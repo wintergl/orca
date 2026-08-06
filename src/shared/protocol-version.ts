@@ -74,6 +74,9 @@ export const AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY =
 // clients use the exact legacy command path unless the execution host advertises this contract.
 export const AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY =
   'agent-session.launch-overrides.v1' as const
+// Why: launch-overrides.v1 hosts use strict schemas without title; advertise separately before clients send it.
+export const AGENT_SESSION_CUSTOM_TITLE_RUNTIME_CAPABILITY =
+  'agent-session.custom-title.v1' as const
 export const AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY =
   'agent-session.omp-resume-path.v1' as const
 // Why: older runtimes strip mutation owner fields, so clients must fence writes before RPC.
@@ -108,6 +111,7 @@ export const RUNTIME_CAPABILITIES = [
   REMOTE_SERVER_UPDATE_CAPABILITY,
   AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY,
   AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CUSTOM_TITLE_RUNTIME_CAPABILITY,
   AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY,
   FILE_MUTATION_OWNERSHIP_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY

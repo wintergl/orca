@@ -29,10 +29,10 @@ import {
   templateCloneParams,
   templateCreateParams,
   templateListParams,
+  templateResetDefaultsParams,
   templateShowParams,
   templateUpdateParams
 } from './workflow-rpc-schemas'
-import { assertWorkflowV2RpcGate } from './workflow-v2-rpc-gate'
 
 function callerIdentity(context: RpcContext): string {
   return context.authenticatedCallerFingerprint ?? 'desktop-ipc'
@@ -71,7 +71,8 @@ export const WORKFLOW_METHODS = [
     handler: (params, context) =>
       context.runtime.getWorkflowStore().listTemplates({
         callerIdentity: callerIdentity(context),
-        ...params
+        ...params,
+        schemaVersion: 2
       })
   }),
   defineMethod({
@@ -86,36 +87,26 @@ export const WORKFLOW_METHODS = [
   defineMethod({
     name: 'workflow.templateCreate',
     params: templateCreateParams,
-    handler: (params, context) => {
-      assertWorkflowV2RpcGate(context, params.definition)
-      return context.runtime
+    handler: (params, context) =>
+      context.runtime
         .getWorkflowStore()
         .createTemplate(params, mutation(context, params, 'workflow.templateCreate'))
-    }
   }),
   defineMethod({
     name: 'workflow.templateUpdate',
     params: templateUpdateParams,
-    handler: (params, context) => {
-      assertWorkflowV2RpcGate(context, params.definition)
-      return context.runtime
+    handler: (params, context) =>
+      context.runtime
         .getWorkflowStore()
         .updateTemplate(params, mutation(context, params, 'workflow.templateUpdate'))
-    }
   }),
   defineMethod({
     name: 'workflow.templateClone',
     params: templateCloneParams,
-    handler: (params, context) => {
-      const store = context.runtime.getWorkflowStore()
-      const source = store.showTemplate({
-        templateId: params.sourceTemplateId,
-        callerIdentity: callerIdentity(context),
-        projectIdentity: params.sourceProjectIdentity
-      })
-      assertWorkflowV2RpcGate(context, source.definition)
-      return store.cloneTemplate(params, mutation(context, params, 'workflow.templateClone'))
-    }
+    handler: (params, context) =>
+      context.runtime
+        .getWorkflowStore()
+        .cloneTemplate(params, mutation(context, params, 'workflow.templateClone'))
   }),
   defineMethod({
     name: 'workflow.templateArchive',
@@ -126,28 +117,30 @@ export const WORKFLOW_METHODS = [
         .archiveTemplate(params, mutation(context, params, 'workflow.templateArchive'))
   }),
   defineMethod({
+    name: 'workflow.templateResetDefaults',
+    params: templateResetDefaultsParams,
+    handler: (params, context) =>
+      context.runtime
+        .getWorkflowStore()
+        .resetDefaultWorkflowConfigurations(
+          mutation(context, params, 'workflow.templateResetDefaults')
+        )
+  }),
+  defineMethod({
     name: 'workflow.runCreate',
     params: runCreateParams,
-    handler: (params, context) => {
-      const store = context.runtime.getWorkflowStore()
-      const template = store.showTemplate({
-        templateId: params.templateId,
-        callerIdentity: callerIdentity(context),
-        projectIdentity: params.projectIdentity
-      })
-      assertWorkflowV2RpcGate(context, template.definition)
-      return store.createRun(params, mutation(context, params, 'workflow.runCreate'))
-    }
+    handler: (params, context) =>
+      context.runtime
+        .getWorkflowStore()
+        .createRun(params, mutation(context, params, 'workflow.runCreate'))
   }),
   defineMethod({
     name: 'workflow.runCreateRerun',
     params: runCreateRerunParams,
-    handler: (params, context) => {
-      const store = context.runtime.getWorkflowStore()
-      const parent = store.showRun(params.parentRunId, callerIdentity(context))
-      assertWorkflowV2RpcGate(context, parent.templateSnapshot)
-      return store.createRunRerun(params, mutation(context, params, 'workflow.runCreateRerun'))
-    }
+    handler: (params, context) =>
+      context.runtime
+        .getWorkflowStore()
+        .createRunRerun(params, mutation(context, params, 'workflow.runCreateRerun'))
   }),
   defineMethod({
     name: 'workflow.runAssign',
@@ -191,7 +184,9 @@ export const WORKFLOW_METHODS = [
     name: 'workflow.runList',
     params: runListParams,
     handler: (params, context) =>
-      context.runtime.getWorkflowStore().listRuns(params, callerIdentity(context))
+      context.runtime
+        .getWorkflowStore()
+        .listRuns(params, callerIdentity(context), { schemaVersion: 2 })
   }),
   defineMethod({
     name: 'workflow.runShow',
@@ -270,17 +265,14 @@ export const WORKFLOW_METHODS = [
   defineMethod({
     name: 'workflow.runStart',
     params: runStartParams,
-    handler: async (params, context) => {
-      const run = context.runtime.getWorkflowStore().showRun(params.runId, callerIdentity(context))
-      assertWorkflowV2RpcGate(context, run.templateSnapshot)
-      return context.runtime
+    handler: async (params, context) =>
+      context.runtime
         .getWorkflowEngine()
         .start(
           params.runId,
           callerIdentity(context),
           mutation(context, params, 'workflow.runStart')
         )
-    }
   }),
   defineMethod({
     name: 'workflow.runEvents',

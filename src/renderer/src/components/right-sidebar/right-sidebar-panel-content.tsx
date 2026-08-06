@@ -1,5 +1,8 @@
 import { Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
+import { useAppStore } from '@/store'
+import { translate } from '@/i18n/i18n'
 import type { ActiveRightSidebarTab } from '@/store/slices/editor'
 import { isPluginPanelTabKey } from '../../../../shared/plugins/plugin-manifest'
 
@@ -21,6 +24,23 @@ export function RightSidebarPanelContent({
   effectiveTab,
   rightSidebarOpen
 }: RightSidebarPanelContentProps): React.JSX.Element {
+  const workspaceSessionUiReady = useAppStore((s) => s.workspaceSessionUiReady)
+
+  if (!workspaceSessionUiReady) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4">
+        <div
+          role="status"
+          data-workspace-session-restore-status
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Loader2 aria-hidden className="size-3.5 animate-spin" />
+          <span>{translate('auto.components.QuickOpen.722a21e1a8', 'Loading files...')}</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Suspense fallback={null}>

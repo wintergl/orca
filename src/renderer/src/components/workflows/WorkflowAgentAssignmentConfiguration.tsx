@@ -35,6 +35,7 @@ import {
 } from './WorkflowAgentAssignmentRows'
 import { WorkflowAgentPickerDialog } from './WorkflowAgentPickerDialog'
 import type { WorkflowNewAgentRequest } from './WorkflowNewAgentForm'
+import { getLaunchableCustomAgentProfiles } from '../../../../shared/custom-agent-profiles'
 
 type SlotTarget = WorkflowAssignmentTarget | null
 type PendingCreatedAgent = { target: WorkflowAssignmentTarget; paneKey: string }
@@ -78,7 +79,7 @@ export function WorkflowAgentAssignmentConfiguration({
   const creatableAgents = useMemo(() => {
     const detected = new Set(detectedIds ?? [])
     const disabled = normalizeDisabledTuiAgents(settings?.disabledTuiAgents)
-    return getAgentCatalog()
+    const builtInAgents = getAgentCatalog()
       .filter((agent) => detected.has(agent.id) && isTuiAgentEnabled(agent.id, disabled))
       .map((agent) => {
         const agentArgs = resolveTuiAgentLaunchArgs(agent.id, settings?.agentDefaultArgs)
@@ -92,6 +93,19 @@ export function WorkflowAgentAssignmentConfiguration({
             resolveTuiAgentPermissionMode({ agent: agent.id, agentArgs, agentEnv }) !== 'manual'
         }
       })
+    const customAgents = getLaunchableCustomAgentProfiles(
+      settings?.customAgentProfiles,
+      disabled
+    ).map((profile) => ({
+      selectionId: `custom:${profile.id}`,
+      id: profile.baseAgent,
+      label: profile.name,
+      commandHint: profile.command,
+      defaultCommand: profile.command,
+      supportsYolo: supportsTuiAgentPermissionMode(profile.baseAgent),
+      defaultYolo: profile.permissionMode === 'yolo'
+    }))
+    return [...builtInAgents, ...customAgents]
   }, [detectedIds, settings])
 
   const assign = useCallback(

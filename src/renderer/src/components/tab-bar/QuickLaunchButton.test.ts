@@ -14,7 +14,16 @@ const {
   storeState: {
     settings: {
       defaultTuiAgent: 'codex' as 'claude' | 'codex' | 'gemini' | 'blank' | null,
-      disabledTuiAgents: [] as string[]
+      disabledTuiAgents: [] as string[],
+      agentCmdOverrides: {},
+      customAgentProfiles: [] as {
+        id: string
+        name: string
+        baseAgent: 'codex'
+        command: string
+        permissionMode: 'yolo' | 'manual'
+        enabled: boolean
+      }[]
     },
     worktreesByRepo: {} as Record<string, unknown[]>,
     repos: [] as unknown[],
@@ -121,6 +130,8 @@ beforeEach(() => {
   openSettingsTargetMock.mockReset()
   storeState.settings.defaultTuiAgent = 'codex'
   storeState.settings.disabledTuiAgents = []
+  storeState.settings.agentCmdOverrides = {}
+  storeState.settings.customAgentProfiles = []
   storeState.worktreesByRepo = {}
   storeState.repos = []
   storeState.openSettingsPage = openSettingsPageMock
@@ -145,6 +156,23 @@ describe('QuickLaunchAgentMenuItems', () => {
     const html = renderAgentMenuItems()
 
     expect(html).not.toContain('data-dropdown-shortcut="true"')
+  })
+
+  it('renders saved custom Agent profiles in the launch list', () => {
+    storeState.settings.customAgentProfiles = [
+      {
+        id: 'profile-1',
+        name: 'Codex DBA',
+        baseAgent: 'codex',
+        command: 'codex --profile dba',
+        permissionMode: 'yolo',
+        enabled: true
+      }
+    ]
+
+    const html = renderAgentMenuItems()
+
+    expect(rowMarkup(html, 'Codex DBA')).toContain('Codex DBA')
   })
 
   it('routes agent detection to the worktree-owning runtime host, not the local client', () => {

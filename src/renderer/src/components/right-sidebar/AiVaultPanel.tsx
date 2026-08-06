@@ -345,8 +345,6 @@ export default function AiVaultPanel(): React.JSX.Element {
           scope,
           sessions
         }}
-        getOriginalPaneTarget={getOriginalPaneTarget}
-        onOpenOriginalPane={jumpToOriginalPane}
       />
       <AiVaultSessionVirtualList
         groups={groups}

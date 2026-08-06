@@ -13,7 +13,7 @@ import {
   Terminal
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { GlobalSettings, TuiAgent } from '../../../../shared/types'
+import type { CustomAgentProfile, GlobalSettings, TuiAgent } from '../../../../shared/types'
 import { getAgentCatalog, AgentIcon } from '@/lib/agent-catalog'
 import { useDetectedAgents, type AgentDetectionTarget } from '@/hooks/useDetectedAgents'
 import { useAppStore } from '@/store'
@@ -61,6 +61,11 @@ import { translate } from '@/i18n/i18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { parseAgentDefaultEnvDraft, stringifyAgentDefaultEnvDraft } from './agent-default-env-draft'
 import { AgentCreationDialog } from './AgentCreationDialog'
+import {
+  isCustomAgentProfileNameAvailable,
+  normalizeCustomAgentProfiles
+} from '../../../../shared/custom-agent-profiles'
+import type { AgentSessionCreationRequest } from '../agents/AgentSessionCreationForm'
 
 export { getAgentsPaneSearchEntries } from './agents-search'
 
@@ -691,6 +696,54 @@ function DefaultAgentPill({ active, onClick, children }: DefaultAgentPillProps):
   )
 }
 
+function CustomAgentProfileRow({
+  profile,
+  onSetEnabled
+}: {
+  profile: CustomAgentProfile
+  onSetEnabled: (enabled: boolean) => void
+}): React.JSX.Element {
+  return (
+    <div className="py-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/50 bg-background/50">
+          <AgentIcon agent={profile.baseAgent} size={16} />
+        </div>
+        <div className="min-w-0 flex-1 sm:min-w-[12rem]">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium leading-none">{profile.name}</span>
+            <SettingsBadge tone="muted">
+              {translate('auto.components.settings.AgentsPane.customProfile', 'Custom')}
+            </SettingsBadge>
+            {!profile.enabled ? (
+              <SettingsBadge tone="muted">
+                {translate('auto.components.settings.AgentsPane.8dc0192e48', 'Disabled')}
+              </SettingsBadge>
+            ) : null}
+          </div>
+          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+            {profile.command}
+          </div>
+        </div>
+        <div className="ml-auto shrink-0">
+          <AgentAvailabilityControl
+            label={profile.name}
+            isEnabled={profile.enabled}
+            onSetEnabled={onSetEnabled}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function createCustomAgentProfileId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `custom-agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  )
+}
+
 export function AgentsPane({
   settings,
   updateSettings,
@@ -749,6 +802,7 @@ export function AgentsPane({
     agentDefaultEnv
   })
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
+  const customAgentProfiles = normalizeCustomAgentProfiles(settings.customAgentProfiles)
 
   const setDefault = (id: TuiAgent | 'blank' | null): void => {
     updateSettings({ defaultTuiAgent: id })
@@ -823,6 +877,53 @@ export function AgentsPane({
         agentDefaultEnv
       })
     )
+  }
+
+  const saveCustomAgentProfile = async (request: AgentSessionCreationRequest): Promise<void> => {
+    const latestProfiles = normalizeCustomAgentProfiles(
+      useAppStore.getState().settings?.customAgentProfiles ?? customAgentProfiles
+    )
+    if (!isCustomAgentProfileNameAvailable(latestProfiles, request.title)) {
+      throw new Error(
+        translate(
+          'auto.components.settings.AgentsPane.duplicateCustomAgentName',
+          'An Agent with this name already exists.'
+        )
+      )
+    }
+    const command = request.agentCommand?.trim()
+    if (!command) {
+      throw new Error(
+        translate(
+          'auto.components.settings.AgentsPane.customAgentCommandRequired',
+          'Enter a launch command for the custom Agent.'
+        )
+      )
+    }
+    await updateSettings({
+      customAgentProfiles: [
+        ...latestProfiles,
+        {
+          id: createCustomAgentProfileId(),
+          name: request.title,
+          baseAgent: request.agent,
+          command,
+          permissionMode: request.permissionMode ?? 'manual',
+          enabled: true
+        }
+      ]
+    })
+  }
+
+  const setCustomAgentProfileEnabled = (profileId: string, enabled: boolean): void => {
+    const latestProfiles = normalizeCustomAgentProfiles(
+      useAppStore.getState().settings?.customAgentProfiles ?? customAgentProfiles
+    )
+    void updateSettings({
+      customAgentProfiles: latestProfiles.map((profile) =>
+        profile.id === profileId ? { ...profile, enabled } : profile
+      )
+    })
   }
 
   // Why: null means detection is in flight, not "all agents are installed".
@@ -924,7 +1025,7 @@ export function AgentsPane({
 
       <AgentPermissionsSetting mode={agentPermissionMode} onChange={saveAgentPermissionMode} />
 
-      {detectedAgents.length > 0 && (
+      {detectedAgents.length > 0 || customAgentProfiles.length > 0 ? (
         <section className="space-y-3">
           <SettingsSubsectionHeader
             title={
@@ -934,6 +1035,12 @@ export function AgentsPane({
                   {detectedAgents.length}{' '}
                   {translate('auto.components.settings.AgentsPane.ed3e110e61', 'detected')}
                 </SettingsBadge>
+                {customAgentProfiles.length > 0 ? (
+                  <SettingsBadge tone="muted">
+                    {customAgentProfiles.length}{' '}
+                    {translate('auto.components.settings.AgentsPane.customProfiles', 'custom')}
+                  </SettingsBadge>
+                ) : null}
                 {activeServerName ? (
                   <SettingsBadge tone="muted">
                     {translate('auto.components.settings.AgentsPane.03e1a5081a', 'on {{value0}}', {
@@ -1013,15 +1120,23 @@ export function AgentsPane({
                 }
               />
             ))}
+            {customAgentProfiles.map((profile) => (
+              <CustomAgentProfileRow
+                key={profile.id}
+                profile={profile}
+                onSetEnabled={(enabled) => setCustomAgentProfileEnabled(profile.id, enabled)}
+              />
+            ))}
           </div>
         </section>
-      )}
+      ) : null}
 
       <AgentCreationDialog
         open={agentCreationOpen}
         agents={creatableAgents}
         detecting={detectedIds === null}
         onOpenChange={setAgentCreationOpen}
+        onCreateProfile={saveCustomAgentProfile}
       />
 
       {undetectedAgents.length > 0 && (

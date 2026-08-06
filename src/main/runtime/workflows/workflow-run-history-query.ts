@@ -17,10 +17,14 @@ import { workflowV2RouteCatalog } from '../../../shared/workflow-v2-route-catalo
 export function listWorkflowRunHistory(
   db: Database.Database,
   filter: WorkflowRunHistoryFilter,
-  callerIdentity: string
+  callerIdentity: string,
+  options?: { schemaVersion?: 2 }
 ): WorkflowRunSummary[] {
   const clauses = ['owner_identity = ?']
   const values: Database.BindValue[] = [callerIdentity]
+  if (options?.schemaVersion === 2) {
+    clauses.push("json_extract(template_snapshot_json, '$.schemaVersion') = 2")
+  }
   if (filter.projectIdentity) {
     clauses.push('project_identity = ?')
     values.push(filter.projectIdentity)

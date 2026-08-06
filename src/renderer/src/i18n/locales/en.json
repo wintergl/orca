@@ -5286,7 +5286,11 @@
           "agentEnabled": "Agent enabled.",
           "agentDisabled": "Agent disabled.",
           "availabilitySaveFailed": "Could not save Agent availability.",
-          "createAgent": "Create Agent"
+          "createAgent": "Create Agent",
+          "customProfile": "Custom",
+          "customProfiles": "custom",
+          "duplicateCustomAgentName": "An Agent with this name already exists.",
+          "customAgentCommandRequired": "Enter a launch command for the custom Agent."
         },
         "AppIconSelector": {
           "d5a112dc9b": "Next icon",
@@ -9807,10 +9811,10 @@
         },
         "AgentCreationDialog": {
           "launchFailed": "Could not build the Agent launch command.",
-          "created": "{{value0}} was created in a new tab.",
+          "created": "{{value0}} was saved and is ready to launch.",
           "createFailed": "Could not create the Agent.",
           "title": "Create a new Agent",
-          "description": "Start an Agent in the active workspace. Its catalog name becomes the tab name.",
+          "description": "Choose a base Agent, then give it a provider-specific name and launch command.",
           "noWorkspace": "Open a workspace before creating an Agent."
         }
       },
@@ -14382,7 +14386,9 @@
       "pause": "Could not pause Workflow",
       "resume": "Could not resume Workflow",
       "cancel": "Could not cancel Workflow",
-      "switchTemplate": "Could not change the Workflow template"
+      "switchTemplate": "Could not change the Workflow template",
+      "deleteTemplate": "Could not delete workflow",
+      "resetDefaults": "Could not reset default workflows"
     },
     "agentPicker": {
       "title": "Assign an idle Agent",
@@ -14397,18 +14403,21 @@
       "newAgent": "Create new Agent",
       "back": "Back to idle Agents",
       "createTitle": "Create a new Agent",
-      "createDescription": "The Agent starts in this Draft workspace and is assigned when it becomes idle.",
+      "createDescription": "Choose a base Agent, then give this Draft a provider-specific name and launch command.",
       "agentTitle": "Agent title",
-      "agentType": "Agent",
+      "agentType": "Base Agent",
       "command": "Launch command",
-      "commandHint": "Leave blank to use the Agent command configured for this execution host.",
+      "commandHint": "Leave blank to use the base Agent command configured for this execution host.",
+      "commandRequiredHint": "Enter the exact command this custom Agent should run.",
       "yolo": "YOLO permissions",
       "yoloHint": "Skip supported permission prompts for this Agent session only.",
       "noCreatableAgents": "No enabled Agent is installed on this execution host.",
       "creating": "Creating…",
       "create": "Create Agent",
       "detectingAgents": "Detecting installed Agents…",
-      "nameFollowsCatalog": "The Agent and its new tab use this name. Renaming the tab also updates Workflow."
+      "nameFollowsCatalog": "The base Agent controls hooks, session handling, and prompt delivery.",
+      "agentName": "Agent name",
+      "agentNameHint": "Use a custom name and launch command for provider aliases such as cc, codexdb, or codexdba."
     },
     "run": {
       "snapshot": "Template v{{value0}} snapshot · {{value1}} · {{value2}}",
@@ -14469,7 +14478,8 @@
       "reviewBudgetAudit": "template {{template}} · override {{override}} · extension +{{extension}} · used {{used}} / {{effective}}",
       "routeBudgets": "Route traversal budgets",
       "routeBudgetAudit": "template {{template}} · override {{override}} · extension +{{extension}} · used {{used}} / {{effective}}",
-      "historyEntryMeta": "{{step}} · lineage cycle {{cycle}} · visit {{visit}} · attempt {{attempt}}"
+      "historyEntryMeta": "{{step}} · lineage cycle {{cycle}} · visit {{visit}} · attempt {{attempt}}",
+      "remoteArtifactReference": "Artifact remains on its execution host and is not opened as a local path."
     },
     "templates": {
       "untitled": "Untitled workflow",
@@ -14511,14 +14521,24 @@
       "v1ReadOnlyAfterV2": "V1 templates remain runnable and visible, but cannot be cloned or edited after V2 is enabled.",
       "valid": "Workflow definition is valid",
       "v1Group": "V1 · Stable workflows",
-      "v2Group": "V2 · Free-form workflows"
+      "v2Group": "V2 · Free-form workflows",
+      "resetDefaults": "Reset defaults",
+      "delete": "Delete",
+      "configurations": "Workflow configurations",
+      "deleteTitle": "Delete workflow?",
+      "deleteDescription": "This removes the workflow from the configuration list. Default workflows can be restored with Reset defaults.",
+      "deleted": "Workflow deleted",
+      "resetDefaultsTitle": "Reset default workflows?",
+      "resetDefaultsDescription": "Restores the two default V2 workflows and replaces any edits made to them.",
+      "defaultsRestored": "Default workflows restored"
     },
     "scope": {
       "personal": "Personal",
       "currentProject": "Current project",
       "all": "All",
       "builtin": "Built-in",
-      "project": "Project"
+      "project": "Project",
+      "default": "Default"
     },
     "page": {
       "title": "Workflows",
@@ -14818,7 +14838,10 @@
       "humanEnd": "End",
       "decisionStep": "Decision step",
       "actionExtendRouteBudget": "Extend route budget",
-      "routeNumber": "Route {{count}}"
+      "routeNumber": "Route {{count}}",
+      "moveStepEarlier": "Move {{value0}} earlier",
+      "moveStepLater": "Move {{value0}} later",
+      "removeNamedStep": "Remove {{value0}}"
     },
     "status": {
       "draft": "Configuring",
@@ -14960,6 +14983,73 @@
       "disabledDescription": "This V2 template is view-only until Workflow V2 is enabled on this runtime host.",
       "enabling": "Enabling…",
       "enable": "Enable Workflow V2"
+    },
+    "runtime": {
+      "templateVersion": "Version {{version}}",
+      "engine": "Engine",
+      "pending": "Pending",
+      "none": "None",
+      "localHost": "Local host"
+    },
+    "event": {
+      "runCreated": "Run created",
+      "runConfigurationUpdated": "Run configuration updated",
+      "templateApplied": "Template applied",
+      "agentAssigned": "Agent assigned",
+      "runStarted": "Run started",
+      "promptDeliveryStarted": "Prompt delivery started",
+      "promptDelivered": "Prompt delivered",
+      "stepWorking": "Step working",
+      "stepCompleted": "Step completed",
+      "runCompleted": "Run completed",
+      "runFailed": "Run failed",
+      "completionIncomplete": "Completion incomplete",
+      "artifactDrifted": "Artifact changed",
+      "reviewFanOut": "Review tasks dispatched",
+      "reviewCollected": "Review collected",
+      "reviewAggregateCreated": "Review aggregate created",
+      "reviewWaiting": "Review waiting",
+      "reviewerFailed": "Reviewer failed",
+      "reviewerTimedOut": "Reviewer timed out",
+      "decisionMade": "Decision made",
+      "revisionRequested": "Revision requested",
+      "humanAction": "Human action",
+      "routeBudgetExtended": "Route budget extended",
+      "agentReassigned": "Agent reassigned",
+      "stepRetried": "Step retried",
+      "runPaused": "Run paused",
+      "runResumed": "Run resumed",
+      "runCancelled": "Run cancelled",
+      "runRecoveryStarted": "Run recovery started",
+      "runRecovered": "Run recovered",
+      "recoveryWaiting": "Recovery waiting",
+      "reviewLimitReached": "Review limit reached",
+      "lateCompletionIgnored": "Late completion ignored"
+    },
+    "stepStatus": {
+      "queued": "Queued",
+      "waitingAgent": "Waiting for Agent",
+      "delivering": "Delivering",
+      "running": "Running",
+      "completionIncomplete": "Completion incomplete",
+      "succeeded": "Succeeded",
+      "timedOut": "Timed out",
+      "cancelled": "Cancelled",
+      "failed": "Failed"
+    },
+    "workspaceKind": {
+      "gitWorktree": "Git worktree",
+      "folderWorkspace": "Folder workspace"
+    },
+    "artifactState": {
+      "frozen": "Frozen",
+      "drifted": "Changed",
+      "unavailable": "Unavailable"
+    },
+    "messageSource": {
+      "reportPath": "Report file",
+      "agentFinalMessage": "Agent final message",
+      "transcript": "Transcript"
     }
   },
   "common": {

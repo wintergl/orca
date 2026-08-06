@@ -5,6 +5,7 @@ import type {
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
+import { workflowRunStatusLabel } from './workflow-runtime-state-labels'
 
 export function WorkflowRunHistoryList({
   runs,
@@ -81,7 +82,7 @@ export function WorkflowRunHistoryList({
                     ) : null}
                   </span>
                   <Badge variant="outline" className="shrink-0 text-[10px]">
-                    {run.status}
+                    {workflowRunStatusLabel(run.status)}
                   </Badge>
                 </span>
                 <span className="mt-1 block text-[10px] text-muted-foreground">

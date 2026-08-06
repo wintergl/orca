@@ -74,12 +74,14 @@ export function SelectField({
   label,
   value,
   options,
+  optionLabels,
   disabled,
   onChange
 }: {
   label: string
   value: string
   options: string[]
+  optionLabels?: Readonly<Record<string, string>>
   disabled: boolean
   onChange: (value: string) => void
 }): React.JSX.Element {
@@ -93,7 +95,7 @@ export function SelectField({
         <SelectContent>
           {options.map((option) => (
             <SelectItem key={option} value={option}>
-              {option}
+              {optionLabels?.[option] ?? option}
             </SelectItem>
           ))}
         </SelectContent>

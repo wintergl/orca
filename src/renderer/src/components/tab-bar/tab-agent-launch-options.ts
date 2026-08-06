@@ -1,11 +1,14 @@
 import { getAgentCatalog } from '@/lib/agent-catalog'
 import { normalizeMatchQuery, tokenizeMatchValue } from './query-token-match'
-import type { TuiAgent } from '../../../../shared/types'
+import type { CustomAgentProfile, TuiAgent } from '../../../../shared/types'
 
 export type TabAgentLaunchOption = {
+  id: string
   agent: TuiAgent
   aliases: readonly string[]
   label: string
+  agentCommand?: string
+  permissionMode?: 'yolo' | 'manual'
 }
 
 function normalizeAgentAlias(value: string): string {
@@ -35,9 +38,10 @@ export function orderTabLaunchAgents(
 
 export function buildTabAgentLaunchOptions(
   agents: readonly TuiAgent[],
-  commandOverrides: Partial<Record<TuiAgent, string>> = {}
+  commandOverrides: Partial<Record<TuiAgent, string>> = {},
+  customProfiles: readonly CustomAgentProfile[] = []
 ): TabAgentLaunchOption[] {
-  return agents.map((agent) => {
+  const builtInOptions = agents.map((agent) => {
     const entry = getCatalogEntry(agent)
     const label = entry?.label ?? agent
     const aliases = new Set<string>([
@@ -55,8 +59,27 @@ export function buildTabAgentLaunchOptions(
       aliases.add(normalizeAgentAlias(commandOverride))
       aliases.add(compactAgentAlias(commandOverride))
     }
-    return { agent, aliases: [...aliases], label }
+    return { id: agent, agent, aliases: [...aliases], label }
   })
+  const customOptions = customProfiles.map((profile) => {
+    const aliases = new Set<string>([
+      normalizeAgentAlias(profile.name),
+      compactAgentAlias(profile.name),
+      normalizeAgentAlias(profile.command),
+      compactAgentAlias(profile.command),
+      normalizeAgentAlias(profile.baseAgent),
+      compactAgentAlias(profile.baseAgent)
+    ])
+    return {
+      id: `custom:${profile.id}`,
+      agent: profile.baseAgent,
+      aliases: [...aliases],
+      label: profile.name,
+      agentCommand: profile.command,
+      permissionMode: profile.permissionMode
+    }
+  })
+  return [...builtInOptions, ...customOptions]
 }
 
 // Scores how well a query matches an agent. Exact alias equality is the

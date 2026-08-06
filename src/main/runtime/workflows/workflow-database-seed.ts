@@ -1,6 +1,7 @@
 import type Database from '../../sqlite/sync-database'
 import { BUILTIN_WORKFLOW_TEMPLATES } from '../../../shared/workflow-fixtures'
 import { BUILTIN_WORKFLOW_V2_TEMPLATES } from '../../../shared/workflow-v2-fixtures'
+import { archiveRetiredWorkflowV2Configurations } from './workflow-retired-default-configurations'
 
 export function seedBuiltinWorkflowTemplates(db: Database.Database): void {
   db.exec('BEGIN IMMEDIATE')
@@ -34,6 +35,7 @@ export function seedBuiltinWorkflowTemplates(db: Database.Database): void {
            )`
       ).run(fixture.name, fixture.version, fixture.id, fixture.version)
     }
+    archiveRetiredWorkflowV2Configurations(db)
     db.exec('COMMIT')
   } catch (error) {
     db.exec('ROLLBACK')

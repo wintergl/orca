@@ -79,14 +79,6 @@ describe('Workflow Agent drag payload', () => {
     expect(
       toWorkflowAssignableAgent({
         ...idleItem(),
-        kind: 'completed',
-        state: 'done',
-        completedAt: 2
-      })
-    ).toBeNull()
-    expect(
-      toWorkflowAssignableAgent({
-        ...idleItem(),
         kind: 'working',
         state: 'working'
       })

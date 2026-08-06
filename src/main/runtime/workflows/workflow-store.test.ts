@@ -57,11 +57,11 @@ describe('WorkflowStore templates', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600)
   })
 
-  it('seeds the three validated built-ins and enforces project identity scope', () => {
+  it('seeds three legacy and two V2 built-ins and enforces project identity scope', () => {
     const { store } = createStore()
     expect(
       store.listTemplates({ callerIdentity: 'user-a', projectIdentity: 'project-a' })
-    ).toHaveLength(6)
+    ).toHaveLength(5)
     const projectTemplate = store.createTemplate(
       {
         name: 'Project flow',

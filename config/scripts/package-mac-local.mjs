@@ -34,6 +34,14 @@ export function isBuildFresh(cache, key, fingerprint, requiredOutputs, root) {
   )
 }
 
+export function findMacAppBundleProcessIds(appPath, processList) {
+  const contentsPrefix = `${path.resolve(appPath)}${path.sep}Contents${path.sep}`
+  return processList.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/)
+    return match?.[2].includes(contentsPrefix) ? [Number(match[1])] : []
+  })
+}
+
 function hashPath(hash, root, absolutePath) {
   const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
   if (!existsSync(absolutePath)) {
@@ -176,6 +184,16 @@ function main() {
   }
   const appOutputDir = path.join(repoRoot, 'dist', arch === 'arm64' ? 'mac-arm64' : 'mac')
   const appPath = path.join(appOutputDir, 'Orca Dev.app')
+  // Why: deleting a live bundle strands lazy chunks that the renderer has not loaded yet.
+  const runningAppPids = findMacAppBundleProcessIds(
+    appPath,
+    execFileSync('/bin/ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+  )
+  if (runningAppPids.length > 0) {
+    throw new Error(
+      `Quit ${path.relative(repoRoot, appPath)} before packaging (running PIDs: ${runningAppPids.join(', ')}).`
+    )
+  }
   // Why: failed signing can leave a partial app directory that electron-builder cannot replace.
   rmSync(appOutputDir, { recursive: true, force: true })
   console.log(`[package:mac] packaging ${arch} app`)

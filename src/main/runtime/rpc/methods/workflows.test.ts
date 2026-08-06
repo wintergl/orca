@@ -83,11 +83,16 @@ afterEach(() => {
 })
 
 describe('workflow template RPC', () => {
-  it('lists built-ins and returns a distinct invalid-definition error', async () => {
+  it('lists only V2 configurations and returns a distinct invalid-definition error', async () => {
     const listed = (await call('workflow.templateList', {
       projectIdentity: 'project-a'
     })) as unknown[]
-    expect(listed).toHaveLength(6)
+    expect(listed).toHaveLength(2)
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ definition: expect.objectContaining({ schemaVersion: 2 }) })
+      ])
+    )
     await expect(
       call('workflow.templateCreate', {
         requestId: 'bad-definition',
@@ -126,16 +131,32 @@ describe('workflow template RPC', () => {
     })
   })
 
-  it('gates V2 execution while keeping V1 template mutations available', async () => {
+  it('deletes and restores a default V2 configuration through RPC', async () => {
+    const templateId = 'builtin.v2.spec-review'
+    await expect(
+      call('workflow.templateArchive', {
+        requestId: 'delete-default',
+        templateId
+      })
+    ).resolves.toMatchObject({ id: templateId, archivedAt: expect.any(String) })
+
+    const hidden = (await call('workflow.templateList', {})) as { id: string }[]
+    expect(hidden.map((template) => template.id)).not.toContain(templateId)
+    await expect(
+      call('workflow.templateResetDefaults', { requestId: 'reset-defaults' })
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: templateId })]))
+  })
+
+  it('keeps V2 execution enabled while legacy V1 RPC mutations remain compatible', async () => {
     await expect(
       call('workflow.runCreate', {
-        requestId: 'v2-disabled',
-        templateId: 'builtin.v2.single-agent-end',
+        requestId: 'v2-always-enabled',
+        templateId: 'builtin.v2.spec-review',
         projectIdentity: 'project-a',
         workspace: { kind: 'folder-workspace', id: 'worktree-a' },
         executionHostId: 'local'
       })
-    ).rejects.toMatchObject({ code: 'workflow_action_forbidden' })
+    ).resolves.toMatchObject({ templateId: 'builtin.v2.spec-review' })
 
     runtime.getClientSettings.mockReturnValue({ 'workflows.v2.enabled': true })
     await expect(
@@ -167,11 +188,7 @@ describe('workflow template RPC', () => {
         definition: v1Builtin.definition
       })
     ).resolves.toMatchObject({ currentVersion: v1Builtin.currentVersion + 1 })
-    for (const templateId of [
-      'builtin.v2.single-agent-end',
-      'builtin.v2.agent-decision-loop',
-      'builtin.v2.multi-agent-human'
-    ]) {
+    for (const templateId of ['builtin.v2.spec-review', 'builtin.v2.code-review']) {
       await expect(
         call('workflow.runCreate', {
           requestId: `v2-enabled-${templateId}`,
@@ -185,14 +202,14 @@ describe('workflow template RPC', () => {
 
     const unbounded = structuredClone(
       store.showTemplate({
-        templateId: 'builtin.v2.agent-decision-loop',
+        templateId: 'builtin.v2.code-review',
         callerIdentity: 'user-a'
       }).definition
     )
     if (unbounded.schemaVersion !== 2) {
       throw new Error('expected V2 fixture')
     }
-    const judge = unbounded.steps.find((step) => step.id === 'judge')
+    const judge = unbounded.steps.find((step) => step.id === 'code-decide')
     if (judge?.kind !== 'decision') {
       throw new Error('expected decision step')
     }

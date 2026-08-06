@@ -127,8 +127,12 @@ export class WorkflowRunStore {
     return toWorkflowRunRecord(row, assignments)
   }
 
-  list(filter: WorkflowRunHistoryFilter, callerIdentity: string): WorkflowRunSummary[] {
-    return listWorkflowRunHistory(this.db, filter, callerIdentity)
+  list(
+    filter: WorkflowRunHistoryFilter,
+    callerIdentity: string,
+    options?: { schemaVersion?: 2 }
+  ): WorkflowRunSummary[] {
+    return listWorkflowRunHistory(this.db, filter, callerIdentity, options)
   }
 
   updateConfiguration(

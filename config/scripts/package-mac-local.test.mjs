@@ -2,7 +2,11 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { fingerprintInputs, isBuildFresh } from './package-mac-local.mjs'
+import {
+  findMacAppBundleProcessIds,
+  fingerprintInputs,
+  isBuildFresh
+} from './package-mac-local.mjs'
 
 const roots = []
 
@@ -35,6 +39,29 @@ describe('package-mac-local cache', () => {
     expect(isBuildFresh({ desktop: 'hash' }, 'desktop', 'hash', ['out/missing.js'], root)).toBe(
       false
     )
+  })
+})
+
+describe('package-mac-local running bundle guard', () => {
+  it('finds processes executing from the bundle being replaced', () => {
+    const appPath = path.join(path.sep, 'tmp', 'orca', 'dist', 'mac-arm64', 'Orca Dev.app')
+    const mainExecutable = path.join(appPath, 'Contents', 'MacOS', 'Orca Dev')
+    const helperExecutable = path.join(
+      appPath,
+      'Contents',
+      'Frameworks',
+      'Orca Dev Helper.app',
+      'Contents',
+      'MacOS',
+      'Orca Dev Helper'
+    )
+
+    expect(
+      findMacAppBundleProcessIds(
+        appPath,
+        ` 101 ${mainExecutable}\n102 ${helperExecutable} --type=renderer\n103 node package-mac-local.mjs\n`
+      )
+    ).toEqual([101, 102])
   })
 })
 

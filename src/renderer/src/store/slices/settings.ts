@@ -15,6 +15,7 @@ import { normalizeTaskProviderSettings } from '../../../../shared/task-providers
 import { normalizeOpenInApplications } from '../../../../shared/open-in-applications'
 import { createSettingsSearchState, type SettingsSearchState } from './settings-search-state'
 import { normalizeDisabledTuiAgents } from '../../../../shared/tui-agent-selection'
+import { normalizeCustomAgentProfiles } from '../../../../shared/custom-agent-profiles'
 import {
   normalizeTuiAgentArgsRecord,
   normalizeTuiAgentEnvRecord
@@ -88,6 +89,9 @@ function normalizeSettingsUpdates(
   }
   if ('disabledTuiAgents' in updates) {
     sanitizedUpdates.disabledTuiAgents = normalizeDisabledTuiAgents(updates.disabledTuiAgents)
+  }
+  if ('customAgentProfiles' in updates) {
+    sanitizedUpdates.customAgentProfiles = normalizeCustomAgentProfiles(updates.customAgentProfiles)
   }
   if ('agentDefaultArgs' in updates) {
     sanitizedUpdates.agentDefaultArgs = normalizeTuiAgentArgsRecord(updates.agentDefaultArgs)

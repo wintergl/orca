@@ -7,53 +7,57 @@ import {
 } from './workflow-v2-graph'
 
 describe('workflow v2 graph', () => {
-  const single = BUILTIN_WORKFLOW_V2_TEMPLATES[0]!.definition
-  const loop = BUILTIN_WORKFLOW_V2_TEMPLATES[1]!.definition
-  const multi = BUILTIN_WORKFLOW_V2_TEMPLATES[2]!.definition
+  const spec = BUILTIN_WORKFLOW_V2_TEMPLATES[0]!.definition
+  const code = BUILTIN_WORKFLOW_V2_TEMPLATES[1]!.definition
 
-  it('runs single agent → end', () => {
-    expect(resolveWorkflowV2AgentNext(single, 'produce')).toEqual({
-      kind: 'end',
-      outcome: 'succeeded'
+  it('chains writing and review before decision', () => {
+    expect(resolveWorkflowV2AgentNext(spec, 'spec-produce')).toEqual({
+      kind: 'goto',
+      stepId: 'spec-review',
+      routeId: 'agent:spec-produce:next'
+    })
+    expect(resolveWorkflowV2AgentNext(spec, 'spec-review')).toEqual({
+      kind: 'goto',
+      stepId: 'spec-decide',
+      routeId: 'agent:spec-review:next'
     })
   })
 
   it('loops decision false until traversal budget exhausts to human', () => {
-    expect(resolveWorkflowV2Decision(loop, 'judge', '完成\nok', {})).toEqual({
+    expect(resolveWorkflowV2Decision(code, 'code-decide', '完成\nok', {})).toEqual({
       kind: 'end',
       outcome: 'succeeded'
     })
     expect(
-      resolveWorkflowV2Decision(loop, 'judge', '不完成\nagain', {
-        'decision:judge:false': 0
+      resolveWorkflowV2Decision(code, 'code-decide', '不完成\nagain', {
+        'decision:code-decide:false': 0
       })
-    ).toEqual({ kind: 'goto', stepId: 'produce', routeId: 'decision:judge:false' })
+    ).toEqual({
+      kind: 'goto',
+      stepId: 'code-produce',
+      routeId: 'decision:code-decide:false'
+    })
     expect(
-      resolveWorkflowV2Decision(loop, 'judge', '不完成\nagain', {
-        'decision:judge:false': 2
+      resolveWorkflowV2Decision(code, 'code-decide', '不完成\nagain', {
+        'decision:code-decide:false': 2
       })
     ).toEqual({
       kind: 'wait-human',
-      stepId: 'human',
-      exhaustedRouteId: 'decision:judge:false',
-      exhaustedTargetStepId: 'produce'
+      stepId: 'code-human',
+      exhaustedRouteId: 'decision:code-decide:false',
+      exhaustedTargetStepId: 'code-produce'
     })
   })
 
   it('routes invalid binary decisions to human', () => {
-    expect(resolveWorkflowV2Decision(loop, 'judge', 'approve\nnope', {})).toEqual({
+    expect(resolveWorkflowV2Decision(spec, 'spec-decide', 'approve\nnope', {})).toEqual({
       kind: 'wait-human',
-      stepId: 'human'
+      stepId: 'spec-human'
     })
   })
 
-  it('supports multi-agent chain and human accept', () => {
-    expect(resolveWorkflowV2AgentNext(multi, 'research')).toEqual({
-      kind: 'goto',
-      stepId: 'write',
-      routeId: 'agent:research:next'
-    })
-    expect(resolveWorkflowV2Human(multi, 'human', 'accept')).toEqual({
+  it('supports human approval', () => {
+    expect(resolveWorkflowV2Human(spec, 'spec-human', 'approve')).toEqual({
       kind: 'end',
       outcome: 'succeeded'
     })

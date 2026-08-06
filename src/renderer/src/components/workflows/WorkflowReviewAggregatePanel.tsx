@@ -7,6 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { setWorkflowSelectedStep } from './workflow-renderer-state'
+import {
+  workflowReviewOutcomeLabel,
+  workflowRunStatusLabel,
+  workflowWaitingReasonLabel
+} from './workflow-runtime-state-labels'
 
 export function WorkflowReviewAggregatePanel({
   aggregate,
@@ -23,7 +28,7 @@ export function WorkflowReviewAggregatePanel({
           {translate('workflows.run.reviewAggregate', 'Review Aggregate')}
         </h3>
         <Badge variant="outline" className="ml-auto">
-          {aggregate.outcome}
+          {workflowReviewOutcomeLabel(aggregate.outcome)}
         </Badge>
       </div>
       <div className="space-y-3 p-4">
@@ -34,7 +39,9 @@ export function WorkflowReviewAggregatePanel({
             {
               round: aggregate.round,
               count: aggregate.reviewerStepRunIds.length,
-              waitingReason: aggregate.waitingReason ?? 'complete'
+              waitingReason: aggregate.waitingReason
+                ? workflowWaitingReasonLabel(aggregate.waitingReason)
+                : workflowRunStatusLabel('completed')
             }
           )}
         </p>

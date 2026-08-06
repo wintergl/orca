@@ -120,21 +120,20 @@ describe('ExperimentalPane', () => {
     expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Agent sleep')
   })
 
-  it('renders and can disable the default-on Workflow V2 runtime-host gate', async () => {
+  it('does not expose a V1 fallback toggle now that workflows are V2-only', async () => {
     const settings = getDefaultSettings('/tmp')
     const updateSettings = vi.fn()
     const { root, container } = await renderExperimentalPane({ settings, updateSettings })
     const switchButton = container.querySelector<HTMLButtonElement>(
       '#experimental-workflow-v2 button[role="switch"]'
     )
-    if (!switchButton) {
-      throw new Error('Workflow V2 switch was not rendered')
-    }
 
     expect(settings['workflows.v2.enabled']).toBe(true)
-    expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain('Workflow V2')
-    await act(async () => switchButton.click())
-    expect(updateSettings).toHaveBeenCalledWith({ 'workflows.v2.enabled': false })
+    expect(switchButton).toBeNull()
+    expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).not.toContain(
+      'Workflow V2'
+    )
+    expect(updateSettings).not.toHaveBeenCalled()
     root.unmount()
   })
 

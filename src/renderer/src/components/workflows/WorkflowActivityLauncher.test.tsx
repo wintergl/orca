@@ -35,8 +35,8 @@ describe('WorkflowActivityLauncher', () => {
 
 function v2Template(): WorkflowTemplateRecord {
   return {
-    id: 'builtin.v2.single-agent-end',
-    name: 'V2 single Agent',
+    id: 'builtin.v2.spec-review',
+    name: 'SPEC 编写 + 评审',
     scope: 'built-in',
     currentVersion: 1,
     definition: { schemaVersion: 2 }

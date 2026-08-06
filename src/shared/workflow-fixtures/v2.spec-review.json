@@ -1,0 +1,158 @@
+{
+  "id": "builtin.v2.spec-review",
+  "name": "SPEC 编写 + 评审",
+  "scope": "built-in",
+  "version": 1,
+  "definition": {
+    "schemaVersion": 2,
+    "decisionProtocolVersion": "v2-binary-zh",
+    "entryStepId": "spec-produce",
+    "roleSlots": [
+      {
+        "id": "spec-author",
+        "label": "SPEC 编写智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "spec-reviewers",
+        "label": "SPEC 评审智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 8,
+        "execution": "parallel",
+        "allowedAgentStates": ["idle"]
+      },
+      {
+        "id": "spec-decider",
+        "label": "SPEC 判定智能体",
+        "required": true,
+        "minAgents": 1,
+        "maxAgents": 1,
+        "execution": "single",
+        "allowedAgentStates": ["idle"]
+      }
+    ],
+    "steps": [
+      {
+        "id": "spec-produce",
+        "name": "SPEC 编写",
+        "kind": "agent",
+        "roleSlotIds": ["spec-author"],
+        "execution": "single",
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n请编写第一版 SPEC，明确范围、约束、方案、验收标准和未决事项。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n上一轮 SPEC：\n{{ history[-1].nodes[\"spec-produce\"].output }}\n\n上一轮评审意见：\n{{ history[-1].nodes[\"spec-review\"].output }}\n\n上一轮判定：\n{{ history[-1].nodes[\"spec-decide\"].output }}\n\n请逐项处理评审意见并修订 SPEC。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "SPEC 内容完整、可执行、可评审，并包含明确的验收标准。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" },
+        "next": { "targetStepId": "spec-review" }
+      },
+      {
+        "id": "spec-review",
+        "name": "SPEC 评审",
+        "kind": "agent",
+        "roleSlotIds": ["spec-reviewers"],
+        "execution": "parallel",
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n待评审 SPEC：\n{{ history[currentRound].nodes[\"spec-produce\"].output }}\n\n请从完整性、正确性、可实现性、风险和验收标准五个方面评审，明确阻塞项和修改建议。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮修订后的 SPEC：\n{{ history[currentRound].nodes[\"spec-produce\"].output }}\n\n上一轮评审：\n{{ history[-1].nodes[\"spec-review\"].output }}\n\n请核对上一轮问题是否关闭，并重新给出完整评审结论。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "评审覆盖关键风险和验收标准，并给出可执行的通过或修改依据。"
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" },
+        "next": { "targetStepId": "spec-decide" }
+      },
+      {
+        "id": "spec-decide",
+        "name": "SPEC 判定",
+        "kind": "decision",
+        "roleSlotIds": ["spec-decider"],
+        "prompt": {
+          "variants": [
+            {
+              "when": "first-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮 SPEC：\n{{ history[currentRound].nodes[\"spec-produce\"].output }}\n\n本轮评审汇总：\n{{ history[currentRound].nodes[\"spec-review\"].output }}\n\n请判断 SPEC 是否满足完成条件，并说明依据。\n\n完成条件：\n{{criteria}}"
+            },
+            {
+              "when": "repeat-visit",
+              "template": "工作目标：\n{{goal}}\n\n本轮修订后的 SPEC：\n{{ history[currentRound].nodes[\"spec-produce\"].output }}\n\n本轮评审汇总：\n{{ history[currentRound].nodes[\"spec-review\"].output }}\n\n请判断上一轮问题是否已经关闭，并说明依据。\n\n完成条件：\n{{criteria}}"
+            }
+          ],
+          "completionCriteria": "SPEC 满足目标且评审无阻塞项时判定完成，否则判定不完成。"
+        },
+        "parser": "binary-complete",
+        "routes": {
+          "whenTrue": { "targetStepId": "complete" },
+          "whenFalse": {
+            "targetStepId": "spec-produce",
+            "maxTraversals": 2,
+            "onExhaustedStepId": "spec-human"
+          },
+          "whenInvalid": { "targetStepId": "spec-human" }
+        },
+        "retryPolicy": { "maxAttempts": 2, "backoffMs": 1000, "onExhausted": "human" }
+      },
+      {
+        "id": "spec-human",
+        "name": "SPEC 人工处理",
+        "kind": "human",
+        "routes": [
+          {
+            "id": "approve",
+            "label": "人工通过",
+            "targetStepId": "complete",
+            "requiresText": false,
+            "requiresConfirmation": true
+          },
+          {
+            "id": "revise",
+            "label": "填写要求并退回修改",
+            "targetStepId": "spec-produce",
+            "requiresText": true,
+            "requiresConfirmation": true,
+            "maxTraversals": 3,
+            "onExhaustedStepId": "cancelled"
+          },
+          {
+            "id": "end",
+            "label": "结束流程",
+            "targetStepId": "cancelled",
+            "requiresText": false,
+            "requiresConfirmation": true
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "name": "完成",
+        "kind": "end",
+        "outcome": "succeeded"
+      },
+      {
+        "id": "cancelled",
+        "name": "已结束",
+        "kind": "end",
+        "outcome": "cancelled"
+      }
+    ]
+  }
+}

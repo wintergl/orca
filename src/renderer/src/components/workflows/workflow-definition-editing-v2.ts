@@ -16,10 +16,29 @@ export function addWorkflowV2Step(
   const preferredRoleId = kind === 'decision' ? 'judge' : 'agent'
   const withRole = ensureRoleSlot(definition, preferredRoleId)
   const step = createStep(stepId, kind, withRole.role.id, endId)
+  const steps = [...withRole.definition.steps]
+  const insertionIndex =
+    kind === 'end' ? steps.length : steps.findIndex((item) => item.kind === 'end')
+  steps.splice(insertionIndex < 0 ? steps.length : insertionIndex, 0, step)
   return {
-    definition: { ...withRole.definition, steps: [...withRole.definition.steps, step] },
+    definition: { ...withRole.definition, steps },
     stepId
   }
+}
+
+export function moveWorkflowV2Step(
+  definition: WorkflowDefinitionV2,
+  stepId: string,
+  offset: -1 | 1
+): WorkflowDefinitionV2 {
+  const index = definition.steps.findIndex((step) => step.id === stepId)
+  const targetIndex = index + offset
+  if (index < 0 || targetIndex < 0 || targetIndex >= definition.steps.length) {
+    return definition
+  }
+  const steps = [...definition.steps]
+  ;[steps[index], steps[targetIndex]] = [steps[targetIndex], steps[index]]
+  return { ...definition, steps }
 }
 
 export function removeWorkflowV2Step(
@@ -39,7 +58,9 @@ export function removeWorkflowV2Step(
   ) {
     throw new Error('Workflow must keep at least one End step.')
   }
-  const fallback = definition.entryStepId
+  const fallback =
+    definition.steps.find((step) => step.id !== stepId && step.kind === 'end')?.id ??
+    definition.entryStepId
   return {
     ...definition,
     steps: definition.steps

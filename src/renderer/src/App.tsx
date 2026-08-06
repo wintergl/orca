@@ -136,6 +136,7 @@ import {
   collectFolderWorkspaceKeysFromSession,
   collectWorktreeHydrationRepoIdsFromSession
 } from './lib/workspace-session-hydration-keys'
+import { hydrateWorkspaceSessionUiState } from './lib/workspace-session-ui-hydration'
 import {
   getStartupErrorFallbackUI,
   hydratePersistedUIAfterStartupRead
@@ -460,6 +461,7 @@ function App(): React.JSX.Element {
       hydrateBrowserSession: s.hydrateBrowserSession,
       fetchBrowserSessionProfiles: s.fetchBrowserSessionProfiles,
       reconnectPersistedTerminals: s.reconnectPersistedTerminals,
+      setWorkspaceSessionUiReady: s.setWorkspaceSessionUiReady,
       setDeferredSshReconnectTargets: s.setDeferredSshReconnectTargets,
       setSshConnectionState: s.setSshConnectionState,
       hydratePersistedUI: s.hydratePersistedUI,
@@ -848,6 +850,7 @@ function App(): React.JSX.Element {
     let cancelled = false
     // Why: declared outside the async block so cleanup can abort it — under StrictMode the first (unmounted) pass would otherwise keep spawning PTYs.
     const abortController = new AbortController()
+    actions.setWorkspaceSessionUiReady(false)
 
     // Why (issue #1158): hydrate persisted UI right after ui.get() succeeds; the UI writer is gated only on persistedUIReady, so later default fallback would serialize defaults to disk.
     let uiHydrated = false
@@ -954,13 +957,12 @@ function App(): React.JSX.Element {
             additionalValidWorkspaceKeys: collectFolderWorkspaceKeysFromSession(sessionRead.session)
           }
           timeRendererStartupSyncStep('hydrate-session-stores', () => {
-            actions.hydrateWorkspaceSession(sessionRead.session, {
-              ...sessionHydrationOptions,
+            hydrateWorkspaceSessionUiState({
+              actions,
+              session: sessionRead.session,
+              options: sessionHydrationOptions,
               runtimeHostIdByWorkspaceSessionKey: sessionRead.runtimeHostIdByWorkspaceSessionKey
             })
-            actions.hydrateTabsSession(sessionRead.session, sessionHydrationOptions)
-            actions.hydrateEditorSession(sessionRead.session, sessionHydrationOptions)
-            actions.hydrateBrowserSession(sessionRead.session, sessionHydrationOptions)
           })
           // Why: prune visit timestamps AFTER hydration (earlier, worktreesByRepo may be empty and prune would drop entries for worktrees about to appear); seed the active worktree if missing.
           // See docs/cmd-j-empty-query-ordering.md.
@@ -1121,6 +1123,8 @@ function App(): React.JSX.Element {
           if (fallbackUI) {
             actions.hydratePersistedUI(fallbackUI, 'startup')
           }
+          // Why: no later session UI hydration will run on this degraded path.
+          actions.setWorkspaceSessionUiReady(true)
           // Why (issue #1158): sticky toast so the user knows they're in degraded "no-save" mode (hydrationSucceeded stays false); "Restart now" calls app.relaunch to recover.
           toast.error(translate('auto.App.12e77cf12b', 'Session restore failed'), {
             description: translate(

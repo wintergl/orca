@@ -39,7 +39,7 @@ describe('Workflow V2 dual-writer reliability', () => {
     store.beginRun({ runId, baseline: {} }, mutation('start'))
     const step = store
       .showRun(runId, 'user-a')
-      .steps.find((candidate) => candidate.nodeId === 'produce')!
+      .steps.find((candidate) => candidate.nodeId === 'spec-produce')!
     store.persistenceDb
       .prepare(
         `UPDATE workflow_step_runs SET status = 'failed', error_code = 'test',
@@ -121,7 +121,7 @@ async function race(payloads: ConcurrencyWorkerData[]): Promise<RaceResult[]> {
 function readyV2Run(store: WorkflowStore): string {
   const run = store.createRun(
     {
-      templateId: 'builtin.v2.single-agent-end',
+      templateId: 'builtin.v2.spec-review',
       projectIdentity: 'project-a',
       workspace: { kind: 'folder-workspace', id: 'folder-a' },
       executionHostId: 'local'
@@ -131,18 +131,50 @@ function readyV2Run(store: WorkflowStore): string {
   store.assignAgent(
     {
       runId: run.id,
-      nodeId: 'produce',
-      slotId: 'worker',
+      nodeId: 'spec-produce',
+      slotId: 'spec-author',
       assignment: {
         worktreeId: 'folder-a',
         executionHostId: 'local',
-        paneKey: 'pane-produce',
-        agentLifecycleId: 'produce',
-        providerSessionId: 'session-produce',
+        paneKey: 'pane-spec-produce',
+        agentLifecycleId: 'spec-produce',
+        providerSessionId: 'session-spec-produce',
         runtimeAgent: 'codex'
       }
     },
-    mutation('assign')
+    mutation('assign-produce')
+  )
+  store.assignAgent(
+    {
+      runId: run.id,
+      nodeId: 'spec-review',
+      slotId: 'spec-reviewers',
+      assignment: {
+        worktreeId: 'folder-a',
+        executionHostId: 'local',
+        paneKey: 'pane-spec-review',
+        agentLifecycleId: 'spec-review',
+        providerSessionId: 'session-spec-review',
+        runtimeAgent: 'codex'
+      }
+    },
+    mutation('assign-review')
+  )
+  store.assignAgent(
+    {
+      runId: run.id,
+      nodeId: 'spec-decide',
+      slotId: 'spec-decider',
+      assignment: {
+        worktreeId: 'folder-a',
+        executionHostId: 'local',
+        paneKey: 'pane-spec-decide',
+        agentLifecycleId: 'spec-decide',
+        providerSessionId: 'session-spec-decide',
+        runtimeAgent: 'codex'
+      }
+    },
+    mutation('assign-decide')
   )
   store.updateRunObjective({ runId: run.id, objective: 'retry' }, mutation('objective'))
   const prepared = store.prepareRun(

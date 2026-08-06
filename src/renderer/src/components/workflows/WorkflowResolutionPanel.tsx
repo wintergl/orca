@@ -15,6 +15,10 @@ import { useWorkflowRendererState, type WorkflowAssignableAgent } from './workfl
 import { WorkflowAgentPickerDialog } from './WorkflowAgentPickerDialog'
 import { WorkflowResolutionDialog } from './WorkflowResolutionDialog'
 import { workflowResolutionOfferLabel } from './workflow-resolution-action-label'
+import {
+  workflowReviewOutcomeLabel,
+  workflowWaitingReasonLabel
+} from './workflow-runtime-state-labels'
 
 const DIRECT_ACTIONS = new Set<WorkflowResolutionOffer['action']>([
   'approve',
@@ -78,6 +82,11 @@ export function WorkflowResolutionPanel({
       agent.executionHostId === run.executionHostId &&
       agent.paneKey !== originStep?.assignment?.paneKey
   )
+  const heading =
+    run.status === 'review-limit-reached'
+      ? translate('workflows.resolution.limit', 'Review limit reached')
+      : translate('workflows.resolution.waiting', 'Waiting for human control')
+  const waitingReason = run.waitingReason ? workflowWaitingReasonLabel(run.waitingReason) : null
 
   const choose = (offer: WorkflowResolutionOffer): void => {
     if (offer.action === 'view-evidence') {
@@ -149,12 +158,10 @@ export function WorkflowResolutionPanel({
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <p className="text-[11px] font-medium text-sidebar-foreground">
-            {run.status === 'review-limit-reached'
-              ? translate('workflows.resolution.limit', 'Review limit reached')
-              : translate('workflows.resolution.waiting', 'Waiting for human control')}
-          </p>
-          <p className="text-[10px] text-muted-foreground">{run.waitingReason}</p>
+          <p className="text-[11px] font-medium text-sidebar-foreground">{heading}</p>
+          {waitingReason && waitingReason !== heading ? (
+            <p className="text-[10px] text-muted-foreground">{waitingReason}</p>
+          ) : null}
         </div>
         {aggregate ? (
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -187,7 +194,7 @@ export function WorkflowResolutionPanel({
           ) : null}
           {aggregate ? (
             <p className="text-muted-foreground">
-              {aggregate.outcome} ·{' '}
+              {workflowReviewOutcomeLabel(aggregate.outcome)} ·{' '}
               {translate('workflows.resolution.unresolved', '{{count}} unresolved conflicts', {
                 count: aggregate.conflicts.length
               })}

@@ -16,50 +16,22 @@ import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
 import { launchAgentInWebHostTab } from '@/lib/launch-agent-web-host-tab'
-import {
-  resolveTuiAgentLaunchArgs,
-  resolveTuiAgentLaunchEnv
-} from '../../../shared/tui-agent-launch-defaults'
 import { resolveLocalWindowsAgentStartupShell } from '../../../shared/windows-terminal-shell'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { repoIsRemote } from '../../../shared/agent-launch-remote'
 import { seedCommandCodeSubmittedPromptStatus } from '@/lib/command-code-prompt-status-seed'
-import type { TuiAgent } from '../../../shared/types'
-import type { LaunchSource } from '../../../shared/telemetry-events'
 import { translate } from '@/i18n/i18n'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import { resolveNativeChatSessionOptionDefaults } from '../../../shared/native-chat-session-option-defaults'
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 import { getAgentLabel } from '@/lib/agent-catalog'
+import { resolveAgentBackgroundLaunchConfiguration } from '@/lib/agent-background-launch-configuration'
+import type {
+  LaunchAgentInNewTabArgs,
+  LaunchAgentInNewTabResult
+} from '@/lib/agent-new-tab-launch-contract'
 
-export type LaunchAgentInNewTabArgs = {
-  agent: TuiAgent
-  worktreeId: string
-  /** Tab group the user launched from; keeps split-group launches in that pane instead of the active group. */
-  groupId?: string
-  /** Optional initial prompt; delivery depends on `promptDelivery` and the agent's prompt mode. */
-  prompt?: string
-  /** Optional CLI arguments appended to the selected agent command. */
-  agentArgs?: string | null
-  initialCwd?: string | null
-  /** How to deliver the prompt: `draft` leaves it editable, `submit-after-ready` sends it once the TUI is ready. */
-  promptDelivery?: 'auto-submit' | 'draft' | 'submit-after-ready'
-  /** Telemetry surface that initiated this launch. Defaults to the tab-bar quick-launch entry point. */
-  launchSource?: LaunchSource
-  /** User-authored Quick Command label for local tabs created from the tab bar. */
-  quickCommandLabel?: string | null
-  /** Shell platform for the startup command; defaults to renderer OS. SSH/WSL worktrees run Linux even from Windows. */
-  launchPlatform?: NodeJS.Platform
-  /** Called after the prompt is actually delivered to the agent input path. */
-  onPromptDelivered?: () => void
-}
-
-export type LaunchAgentInNewTabResult = {
-  tabId: string | null
-  startupPlan: AgentStartupPlan
-  pasteDraftAfterLaunch: boolean
-  promptDeliveryResult?: Promise<{ delivered: boolean; failureNotified: boolean }>
-} | null
+export type { LaunchAgentInNewTabArgs, LaunchAgentInNewTabResult }
 
 /**
  * Create a new terminal tab and queue the agent's launch command, optionally
@@ -78,6 +50,9 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
     groupId,
     prompt,
     agentArgs,
+    agentCommand,
+    permissionMode,
+    title,
     initialCwd,
     promptDelivery = 'auto-submit',
     launchSource,
@@ -103,12 +78,15 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
     isRemote,
     terminalWindowsShell: store.settings?.terminalWindowsShell
   })
-  const cmdOverrides = store.settings?.agentCmdOverrides ?? {}
-  const effectiveAgentArgs =
-    agentArgs !== undefined
-      ? agentArgs
-      : resolveTuiAgentLaunchArgs(agent, store.settings?.agentDefaultArgs)
-  const agentEnv = resolveTuiAgentLaunchEnv(agent, store.settings?.agentDefaultEnv)
+  const launchOverrides = resolveAgentBackgroundLaunchConfiguration({
+    agent,
+    agentCommand,
+    permissionMode,
+    settings: store.settings
+  })
+  const cmdOverrides = launchOverrides.cmdOverrides
+  const effectiveAgentArgs = agentArgs !== undefined ? agentArgs : launchOverrides.agentArgs
+  const agentEnv = launchOverrides.agentEnv
   const startupPlanBase = {
     agent,
     cmdOverrides,
@@ -212,6 +190,9 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
       pastePromptAfterReady: pasteDraftAfterLaunch,
       submitPastedPrompt,
       agentArgs,
+      agentCommand: launchOverrides.agentCommand,
+      permissionMode: launchOverrides.permissionMode,
+      title,
       // Why: omission means terminal locally, but would let a paired host apply
       // its own default; send the client's resolved terminal choice explicitly.
       viewMode: initialViewModeProps.viewMode ?? 'terminal',
@@ -235,7 +216,9 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
     ...initialViewModeProps
   })
   if (!quickCommandLabel?.trim()) {
-    store.setTabCustomTitle(tab.id, getAgentLabel(agent), { recordInteraction: false })
+    store.setTabCustomTitle(tab.id, title?.trim() || getAgentLabel(agent), {
+      recordInteraction: false
+    })
   }
   seedNativeChatAppliedSessionOptions(tab.id, agent, startupPlan.sessionOptions)
   if (initialCwd?.trim()) {

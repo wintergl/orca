@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Archive, Copy, FilePlus2, FolderCog, Search } from 'lucide-react'
+import { Copy, FilePlus2, FolderCog, RotateCcw, Search, Trash2 } from 'lucide-react'
 import type {
   WorkflowTemplateRecord,
   WorkflowTemplateScope
@@ -34,7 +34,8 @@ export function WorkflowTemplateManager({
   onNew,
   onOpen,
   onCopy,
-  onArchive
+  onDelete,
+  onResetDefaults
 }: {
   open: boolean
   templates: readonly WorkflowTemplateRecord[]
@@ -43,7 +44,8 @@ export function WorkflowTemplateManager({
   onNew: () => void
   onOpen: (template: WorkflowTemplateRecord) => void
   onCopy: (template: WorkflowTemplateRecord) => Promise<void>
-  onArchive: (template: WorkflowTemplateRecord) => Promise<void>
+  onDelete: (template: WorkflowTemplateRecord) => Promise<void>
+  onResetDefaults: () => Promise<void>
 }): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<ScopeFilter>('all')
@@ -78,15 +80,21 @@ export function WorkflowTemplateManager({
           <SheetDescription>
             {translate(
               'workflows.templates.manageDescription',
-              'Create, find, open, copy, and archive workflow templates.'
+              'Create, find, open, copy, and delete workflow configurations.'
             )}
           </SheetDescription>
         </SheetHeader>
         <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4">
-          <Button className="w-full" onClick={createNew}>
-            <FilePlus2 />
-            {translate('workflows.templates.newWorkflow', 'New workflow')}
-          </Button>
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={createNew}>
+              <FilePlus2 />
+              {translate('workflows.templates.newWorkflow', 'New workflow')}
+            </Button>
+            <Button variant="outline" onClick={() => void onResetDefaults()}>
+              <RotateCcw />
+              {translate('workflows.templates.resetDefaults', 'Reset defaults')}
+            </Button>
+          </div>
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -108,7 +116,7 @@ export function WorkflowTemplateManager({
               <SelectContent>
                 <SelectItem value="all">{translate('workflows.scope.all', 'All')}</SelectItem>
                 <SelectItem value="built-in">
-                  {translate('workflows.scope.builtin', 'Built-in')}
+                  {translate('workflows.scope.default', 'Default')}
                 </SelectItem>
                 <SelectItem value="personal">
                   {translate('workflows.scope.personal', 'Personal')}
@@ -129,7 +137,7 @@ export function WorkflowTemplateManager({
                 selected={template.id === selectedTemplateId}
                 onOpen={() => openTemplate(template)}
                 onCopy={() => void onCopy(template)}
-                onArchive={() => void onArchive(template)}
+                onDelete={() => void onDelete(template)}
               />
             ))}
             {visibleTemplates.length === 0 ? (
@@ -149,13 +157,13 @@ function TemplateRow({
   selected,
   onOpen,
   onCopy,
-  onArchive
+  onDelete
 }: {
   template: WorkflowTemplateRecord
   selected: boolean
   onOpen: () => void
   onCopy: () => void
-  onArchive: () => void
+  onDelete: () => void
 }): React.JSX.Element {
   return (
     <div
@@ -181,16 +189,15 @@ function TemplateRow({
           >
             <Copy />
           </Button>
-          {template.scope !== 'built-in' ? (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={translate('workflows.templates.archive', 'Archive')}
-              onClick={onArchive}
-            >
-              <Archive />
-            </Button>
-          ) : null}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="text-muted-foreground hover:text-destructive"
+            aria-label={translate('workflows.templates.delete', 'Delete')}
+            onClick={onDelete}
+          >
+            <Trash2 />
+          </Button>
         </div>
       </div>
     </div>
@@ -198,7 +205,9 @@ function TemplateRow({
 }
 
 function scopeLabel(scope: WorkflowTemplateScope): string {
-  return translate(`workflows.scope.${scope === 'built-in' ? 'builtin' : scope}`, scope)
+  return scope === 'built-in'
+    ? translate('workflows.scope.default', 'Default')
+    : translate(`workflows.scope.${scope}`, scope)
 }
 
 function formatUpdatedAt(value: string): string {

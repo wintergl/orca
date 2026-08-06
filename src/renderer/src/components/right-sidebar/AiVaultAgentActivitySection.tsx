@@ -8,7 +8,6 @@ import type { AppState } from '@/store/types'
 import { AgentActivityBox } from './AgentActivityBox'
 import { useAiVaultAgentActivity } from './use-ai-vault-agent-activity'
 import { useAiVaultAgentActivityWorkspaces } from './use-ai-vault-agent-activity-workspaces'
-import type { AiVaultOriginalPaneTarget } from './ai-vault-original-pane'
 import {
   setWorkflowAssignableAgents,
   type WorkflowAgentDisplayContext,
@@ -39,8 +38,6 @@ type AiVaultAgentActivityInputs = {
 
 export function AiVaultAgentActivitySection(args: {
   activity: AiVaultAgentActivityInputs
-  getOriginalPaneTarget: (session: AiVaultSession) => AiVaultOriginalPaneTarget | null
-  onOpenOriginalPane: (session: AiVaultSession) => void
 }): React.JSX.Element | null {
   const { workspaceInfoById, workspaceScopeIds } = useAiVaultAgentActivityWorkspaces(args.activity)
   const filteredSessionIds = useMemo(
@@ -102,12 +99,7 @@ export function AiVaultAgentActivitySection(args: {
   }, [activeRun])
 
   return (
-    <AgentActivityBox
-      model={model}
-      workflowContextByLifecycleId={workflowContextByLifecycleId}
-      getOriginalPaneTarget={args.getOriginalPaneTarget}
-      onOpenOriginalPane={args.onOpenOriginalPane}
-    />
+    <AgentActivityBox model={model} workflowContextByLifecycleId={workflowContextByLifecycleId} />
   )
 }
 

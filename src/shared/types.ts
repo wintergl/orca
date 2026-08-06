@@ -2540,6 +2540,15 @@ export type TuiAgent =
   | 'codexdb' // Codex with doubao-coding profile
   | 'codexdba' // Codex with doubao-agent profile
 
+export type CustomAgentProfile = {
+  id: string
+  name: string
+  baseAgent: TuiAgent
+  command: string
+  permissionMode: 'yolo' | 'manual'
+  enabled: boolean
+}
+
 export type TaskViewPresetId = 'all' | 'issues' | 'review' | 'my-issues' | 'my-prs' | 'prs'
 
 /** Where the repo setup script runs when a worktree is created.
@@ -2918,6 +2927,8 @@ export type GlobalSettings = {
   geminiCliOAuthEnabled: boolean
   /** Per-agent CLI command overrides. A missing key means use the catalog default binary name. */
   agentCmdOverrides: Partial<Record<TuiAgent, string>>
+  /** User-defined launch profiles retain a built-in Agent identity for hooks and session handling. */
+  customAgentProfiles?: CustomAgentProfile[]
   /** Custom CODEX_HOME for Codex session-history discovery (defaults to ~/.codex).
    *  History-only: does not change which account/config/hooks Orca uses. */
   codexSessionSourceHome?: {

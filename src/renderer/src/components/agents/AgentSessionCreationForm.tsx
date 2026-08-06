@@ -15,9 +15,11 @@ import {
 import { translate } from '@/i18n/i18n'
 
 export type AgentSessionCreationOption = {
+  selectionId?: string
   id: TuiAgent
   label: string
   commandHint: string
+  defaultCommand?: string
   supportsYolo: boolean
   defaultYolo: boolean
 }
@@ -32,6 +34,7 @@ export type AgentSessionCreationRequest = {
 export function AgentSessionCreationForm({
   agents,
   creating,
+  commandRequired = false,
   creationDisabled = false,
   detecting = false,
   heading,
@@ -41,6 +44,7 @@ export function AgentSessionCreationForm({
 }: {
   agents: readonly AgentSessionCreationOption[]
   creating: boolean
+  commandRequired?: boolean
   creationDisabled?: boolean
   detecting?: boolean
   heading: string
@@ -48,25 +52,32 @@ export function AgentSessionCreationForm({
   onBack?: () => void
   onCreate: (request: AgentSessionCreationRequest) => void
 }): React.JSX.Element {
-  const [agentId, setAgentId] = useState<TuiAgent | null>(agents[0]?.id ?? null)
-  const [command, setCommand] = useState('')
+  const [selectionId, setSelectionId] = useState<string | null>(
+    agents[0]?.selectionId ?? agents[0]?.id ?? null
+  )
+  const [agentName, setAgentName] = useState(agents[0]?.label ?? '')
+  const [command, setCommand] = useState(agents[0]?.defaultCommand ?? '')
   const selected = useMemo(
-    () => agents.find((agent) => agent.id === agentId) ?? agents[0] ?? null,
-    [agentId, agents]
+    () =>
+      agents.find((agent) => (agent.selectionId ?? agent.id) === selectionId) ?? agents[0] ?? null,
+    [selectionId, agents]
   )
   const [yolo, setYolo] = useState(selected?.defaultYolo ?? false)
 
   useEffect(() => {
-    if (agentId === null && agents[0]) {
-      setAgentId(agents[0].id)
+    if (selectionId === null && agents[0]) {
+      setSelectionId(agents[0].selectionId ?? agents[0].id)
+      setAgentName(agents[0].label)
+      setCommand(agents[0].defaultCommand ?? '')
       setYolo(agents[0].defaultYolo)
     }
-  }, [agentId, agents])
+  }, [selectionId, agents])
 
-  const selectAgent = (nextId: TuiAgent): void => {
-    const next = agents.find((agent) => agent.id === nextId)
-    setAgentId(nextId)
-    setCommand('')
+  const selectAgent = (nextSelectionId: string): void => {
+    const next = agents.find((agent) => (agent.selectionId ?? agent.id) === nextSelectionId)
+    setSelectionId(nextSelectionId)
+    setAgentName(next?.label ?? '')
+    setCommand(next?.defaultCommand ?? '')
     setYolo(next?.defaultYolo ?? false)
   }
 
@@ -94,16 +105,42 @@ export function AgentSessionCreationForm({
       {selected ? (
         <div className="space-y-4 rounded-md border border-border p-3">
           <div className="space-y-2">
-            <Label htmlFor="new-agent-type">
-              {translate('workflows.agentPicker.agentType', 'Agent')}
+            <Label htmlFor="new-agent-name">
+              {translate('workflows.agentPicker.agentName', 'Agent name')}
             </Label>
-            <Select value={selected.id} disabled={creating} onValueChange={selectAgent}>
-              <SelectTrigger id="new-agent-type" className="w-full" autoFocus>
+            <Input
+              id="new-agent-name"
+              value={agentName}
+              disabled={creating}
+              autoFocus
+              onChange={(event) => setAgentName(event.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {translate(
+                'workflows.agentPicker.agentNameHint',
+                'Use a custom name and launch command for provider aliases such as cc, codexdb, or codexdba.'
+              )}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="new-agent-type">
+              {translate('workflows.agentPicker.agentType', 'Base Agent')}
+            </Label>
+            <Select
+              value={selected.selectionId ?? selected.id}
+              disabled={creating}
+              onValueChange={selectAgent}
+            >
+              <SelectTrigger id="new-agent-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
+                  <SelectItem
+                    key={agent.selectionId ?? agent.id}
+                    value={agent.selectionId ?? agent.id}
+                  >
                     {agent.label}
                   </SelectItem>
                 ))}
@@ -112,7 +149,7 @@ export function AgentSessionCreationForm({
             <p className="text-[11px] text-muted-foreground">
               {translate(
                 'workflows.agentPicker.nameFollowsCatalog',
-                'The Agent and its new tab use this name. Renaming the tab also updates Workflow.'
+                'The base Agent controls hooks, session handling, and prompt delivery.'
               )}
             </p>
           </div>
@@ -130,10 +167,15 @@ export function AgentSessionCreationForm({
               onChange={(event) => setCommand(event.target.value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              {translate(
-                'workflows.agentPicker.commandHint',
-                'Leave blank to use the Agent command configured for this execution host.'
-              )}
+              {commandRequired
+                ? translate(
+                    'workflows.agentPicker.commandRequiredHint',
+                    'Enter the exact command this custom Agent should run.'
+                  )
+                : translate(
+                    'workflows.agentPicker.commandHint',
+                    'Leave blank to use the base Agent command configured for this execution host.'
+                  )}
             </p>
           </div>
 
@@ -176,14 +218,21 @@ export function AgentSessionCreationForm({
       <div className="flex justify-end">
         <Button
           type="button"
-          disabled={!selected || creating || creationDisabled}
+          disabled={
+            !selected ||
+            !agentName.trim() ||
+            (commandRequired && !command.trim()) ||
+            creating ||
+            creationDisabled
+          }
           onClick={() => {
-            if (!selected) {
+            const title = agentName.trim()
+            if (!selected || !title) {
               return
             }
             const agentCommand = command.trim()
             onCreate({
-              title: selected.label,
+              title,
               agent: selected.id,
               ...(agentCommand ? { agentCommand } : {}),
               ...(selected.supportsYolo ? { permissionMode: yolo ? 'yolo' : 'manual' } : {})

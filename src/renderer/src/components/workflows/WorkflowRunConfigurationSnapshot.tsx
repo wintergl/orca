@@ -1,5 +1,6 @@
 import type { WorkflowRunRecord } from '../../../../shared/workflow-definition-types'
 import { translate } from '@/i18n/i18n'
+import { workflowRuntimeValueLabel } from './workflow-runtime-state-labels'
 
 export function WorkflowRunConfigurationSnapshot({
   run
@@ -19,7 +20,7 @@ export function WorkflowRunConfigurationSnapshot({
         />
         <SnapshotValue
           label={translate('workflows.run.parentRun', 'Parent Run')}
-          value={run.parentRunId ?? 'none'}
+          value={run.parentRunId ?? workflowRuntimeValueLabel('none')}
         />
         <SnapshotValue
           label={translate('workflows.run.localCycle', 'Local Run cycle')}

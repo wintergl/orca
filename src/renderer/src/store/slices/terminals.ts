@@ -551,6 +551,9 @@ export type TerminalSlice = {
   pendingIssueCommandSplitByTabId: Record<string, { command: string; env?: Record<string, string> }>
   tabBarOrderByWorktree: Record<string, string[]>
   workspaceSessionReady: boolean
+  /** True once persisted workspace UI state can no longer overwrite live interaction. */
+  workspaceSessionUiReady: boolean
+  setWorkspaceSessionUiReady: (value: boolean) => void
   restoredRuntimeHostIdByWorkspaceSessionKey: Record<string, ExecutionHostId>
   defaultTerminalTabsAppliedByWorktreeId: Record<string, true>
   markDefaultTerminalTabsApplied: (worktreeId: string) => void
@@ -775,6 +778,10 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   nativeChatLaunchPromptByTabId: {},
   tabBarOrderByWorktree: {},
   workspaceSessionReady: false,
+  workspaceSessionUiReady: false,
+  setWorkspaceSessionUiReady: (value) => {
+    set({ workspaceSessionUiReady: value })
+  },
   restoredRuntimeHostIdByWorkspaceSessionKey: {},
   defaultTerminalTabsAppliedByWorktreeId: {},
   markDefaultTerminalTabsApplied: (worktreeId) =>

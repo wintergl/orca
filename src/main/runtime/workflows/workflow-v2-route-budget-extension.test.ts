@@ -35,10 +35,10 @@ describe('Workflow V2 route budget extension', () => {
     }
     expect(run).toMatchObject({
       status: 'waiting-human',
-      currentNodeId: 'human',
+      currentNodeId: 'code-human',
       resolutionContext: {
-        v2ExhaustedRouteId: 'decision:judge:false',
-        v2ExhaustedTargetStepId: 'produce'
+        v2ExhaustedRouteId: 'decision:code-decide:false',
+        v2ExhaustedTargetStepId: 'code-produce'
       }
     })
     const extension = run.resolutionOffers.find((offer) => offer.action === 'extend-route-budget')!
@@ -53,11 +53,11 @@ describe('Workflow V2 route budget extension', () => {
       mutation('extend')
     )
     expect(run.status).toBe('running')
-    expect(run.currentNodeId).toBe('produce')
-    expect(run.v2RouteBudgetExtensions).toEqual({ 'decision:judge:false': 1 })
-    expect(run.v2RouteTraversals).toMatchObject({ 'decision:judge:false': 3 })
+    expect(run.currentNodeId).toBe('code-produce')
+    expect(run.v2RouteBudgetExtensions).toEqual({ 'decision:code-decide:false': 1 })
+    expect(run.v2RouteTraversals).toMatchObject({ 'decision:code-decide:false': 3 })
     expect(
-      run.steps.find((step) => step.nodeId === 'produce' && step.status === 'queued')?.round
+      run.steps.find((step) => step.nodeId === 'code-produce' && step.status === 'queued')?.round
     ).toBe(4)
     expect(
       store.runEvents(runId).events.filter((event) => event.type === 'route-budget-extended')
@@ -65,7 +65,7 @@ describe('Workflow V2 route budget extension', () => {
     const summary = store
       .listRuns({ projectIdentity: 'project-a' }, 'user-a')
       .find((candidate) => candidate.id === runId)
-    expect(summary?.businessBudgetSummary).toContain('decision:judge:false: 3/3')
+    expect(summary?.businessBudgetSummary).toContain('decision:code-decide:false: 3/3')
     expect(summary?.businessBudgetSummary).toContain('+1')
     const exported = JSON.parse(store.exportRun(runId, 'json', 'user-a').content) as {
       schema: string
@@ -73,14 +73,19 @@ describe('Workflow V2 route budget extension', () => {
       v2History: { stepId: string }[]
     }
     expect(exported.schema).toBe('workflow.run-export/v2')
-    expect(exported.run.v2RouteBudgetExtensions).toEqual({ 'decision:judge:false': 1 })
+    expect(exported.run.v2RouteBudgetExtensions).toEqual({
+      'decision:code-decide:false': 1
+    })
     expect(exported.v2History.map((entry) => entry.stepId)).toEqual([
-      'produce',
-      'judge',
-      'produce',
-      'judge',
-      'produce',
-      'judge'
+      'code-produce',
+      'code-review',
+      'code-decide',
+      'code-produce',
+      'code-review',
+      'code-decide',
+      'code-produce',
+      'code-review',
+      'code-decide'
     ])
   })
 })
@@ -91,7 +96,7 @@ function completeCurrentCycle(
   cycle: number
 ): WorkflowRunRecord {
   const produce = current.steps.find(
-    (step) => step.nodeId === 'produce' && step.status === 'queued'
+    (step) => step.nodeId === 'code-produce' && step.status === 'queued'
   )!
   completeWorkflowV2AgentStep({
     store: surface(store),
@@ -101,13 +106,24 @@ function completeCurrentCycle(
     finalText: `draft ${cycle}`
   })
   const afterProduce = store.showRun(current.id, 'user-a')
-  const judge = afterProduce.steps.find(
-    (step) => step.nodeId === 'judge' && step.status === 'queued'
+  const review = afterProduce.steps.find(
+    (step) => step.nodeId === 'code-review' && step.status === 'queued'
+  )!
+  completeWorkflowV2AgentStep({
+    store: surface(store),
+    db: store.persistenceDb,
+    run: afterProduce,
+    step: review,
+    finalText: `review ${cycle}`
+  })
+  const afterReview = store.showRun(current.id, 'user-a')
+  const judge = afterReview.steps.find(
+    (step) => step.nodeId === 'code-decide' && step.status === 'queued'
   )!
   completeWorkflowV2DecisionStep({
     store: surface(store),
     db: store.persistenceDb,
-    run: afterProduce,
+    run: afterReview,
     step: judge,
     finalText: '不完成\ncontinue'
   })
@@ -117,15 +133,16 @@ function completeCurrentCycle(
 function readyLoopRun(store: WorkflowStore): string {
   const run = store.createRun(
     {
-      templateId: 'builtin.v2.agent-decision-loop',
+      templateId: 'builtin.v2.code-review',
       projectIdentity: 'project-a',
       workspace: { kind: 'folder-workspace', id: 'folder-a' },
       executionHostId: 'local'
     },
     mutation('create')
   )
-  assign(store, run.id, 'produce', 'producer')
-  assign(store, run.id, 'judge', 'judge')
+  assign(store, run.id, 'code-produce', 'code-author')
+  assign(store, run.id, 'code-review', 'code-reviewers')
+  assign(store, run.id, 'code-decide', 'code-decider')
   store.updateRunObjective({ runId: run.id, objective: 'finish' }, mutation('objective'))
   const prepared = store.prepareRun(
     {

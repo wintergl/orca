@@ -5,6 +5,11 @@ import type {
 } from '../../../../shared/workflow-definition-types'
 import { Badge } from '@/components/ui/badge'
 import { translate } from '@/i18n/i18n'
+import {
+  workflowArtifactStateLabel,
+  workflowMessageSourceLabel,
+  workflowRuntimeValueLabel
+} from './workflow-runtime-state-labels'
 
 export function StepIdentity({ step }: { step: WorkflowStepRunRecord }): React.JSX.Element {
   return (
@@ -12,17 +17,24 @@ export function StepIdentity({ step }: { step: WorkflowStepRunRecord }): React.J
       <Identity label={translate('workflows.run.stepRun', 'Step Run')} value={step.id} />
       <Identity
         label={translate('workflows.run.agent', 'Agent')}
-        value={step.assignment?.agentLifecycleId ?? 'Engine'}
+        value={step.assignment?.agentLifecycleId ?? workflowRuntimeValueLabel('engine')}
       />
-      <Identity label={translate('workflows.run.task', 'Task')} value={step.taskId ?? 'pending'} />
+      <Identity
+        label={translate('workflows.run.task', 'Task')}
+        value={step.taskId ?? workflowRuntimeValueLabel('pending')}
+      />
       <Identity
         label={translate('workflows.run.dispatch', 'Dispatch')}
-        value={step.dispatchId ?? 'pending'}
+        value={step.dispatchId ?? workflowRuntimeValueLabel('pending')}
       />
       <Identity label={translate('workflows.run.delivery', 'Delivery')} value={step.deliveryId} />
       <Identity
         label={translate('workflows.run.source', 'Source')}
-        value={step.messageSource ?? 'pending'}
+        value={
+          step.messageSource
+            ? workflowMessageSourceLabel(step.messageSource)
+            : workflowRuntimeValueLabel('pending')
+        }
       />
     </section>
   )
@@ -80,7 +92,7 @@ export function ArtifactPanel({
           {translate('workflows.run.artifact', 'Artifact Revision')} {artifact.revision}
         </h3>
         <Badge variant="outline" className="ml-auto">
-          {artifact.snapshotState}
+          {workflowArtifactStateLabel(artifact.snapshotState)}
         </Badge>
       </div>
       <pre className="scrollbar-sleek max-h-[24rem] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs">
@@ -95,7 +107,10 @@ export function ArtifactPanel({
             remoteReference:
               artifact.executionHostId === 'local'
                 ? null
-                : 'Artifact remains on its execution host and is not opened as a local path.',
+                : translate(
+                    'workflows.run.remoteArtifactReference',
+                    'Artifact remains on its execution host and is not opened as a local path.'
+                  ),
             manifest: artifact.manifest
           },
           null,

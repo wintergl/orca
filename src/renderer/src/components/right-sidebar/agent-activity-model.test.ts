@@ -91,7 +91,51 @@ describe('buildAgentActivity', () => {
     })
   })
 
-  it('keeps a done hook row current when the foreground process still proves the agent is open', () => {
+  it('treats a completed turn in the current Agent lifecycle as idle', () => {
+    const paneKey = `tab-1:${LEAF_1}`
+    const lifecycle = {
+      id: 'lifecycle-1',
+      startedAt: NOW - 1,
+      paneKey,
+      executionHostId: 'local' as const,
+      connectionId: null,
+      ptyId: 'pty-1',
+      runtimeAgent: 'codex' as const,
+      providerSessionId: null,
+      launchToken: null,
+      phase: 'active' as const,
+      authorityRevision: 1
+    }
+    const model = buildAgentActivity(
+      baseArgs({
+        agentStatusByPaneKey: {
+          [paneKey]: entry(paneKey, {
+            state: 'done',
+            lastAssistantMessage: 'Finished.',
+            agentLifecycleId: lifecycle.id
+          })
+        },
+        paneAgentLifecycleByPaneKey: { [paneKey]: lifecycle },
+        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
+      })
+    )
+    const working = buildAgentActivity(
+      baseArgs({
+        agentStatusByPaneKey: {
+          [paneKey]: entry(paneKey, { agentLifecycleId: lifecycle.id })
+        },
+        paneAgentLifecycleByPaneKey: { [paneKey]: lifecycle },
+        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
+      })
+    )
+
+    expect(model.counts.idle).toBe(1)
+    expect(model.idle[0]?.completionMessage).toBe('Finished.')
+    expect(model.idle[0]?.completedAt).toBe(NOW)
+    expect(model.idle[0]?.id).toBe(working.working[0]?.id)
+  })
+
+  it('uses foreground process evidence as an idle fallback without lifecycle data', () => {
     const paneKey = `tab-1:${LEAF_1}`
     const model = buildAgentActivity(
       baseArgs({
@@ -104,8 +148,6 @@ describe('buildAgentActivity', () => {
       })
     )
 
-    expect(model.counts.idle).toBe(1)
-    expect(model.counts.completed).toBe(0)
     expect(model.idle[0]?.completionMessage).toBe('Finished.')
   })
 
@@ -187,7 +229,7 @@ describe('buildAgentActivity', () => {
     )
 
     expect(model.counts.working).toBe(1)
-    expect(model.counts.completed).toBe(0)
+    expect(model.idle).toHaveLength(0)
   })
 
   it('only creates a navigation target when the workspace tab and leaf still exist', () => {
@@ -219,7 +261,7 @@ describe('buildAgentActivity', () => {
     ).toBeNull()
   })
 
-  it('keeps live completed rows addressable while retained history stays non-navigable', () => {
+  it('keeps retained completion history out of current Agent activity', () => {
     const paneKey = `tab-1:${LEAF_1}`
     const lifecycle = {
       id: 'lifecycle-1',
@@ -239,13 +281,6 @@ describe('buildAgentActivity', () => {
       lastAssistantMessage: 'Finished.',
       agentLifecycleId: lifecycle.id
     })
-    const live = buildAgentActivity(
-      baseArgs({
-        agentStatusByPaneKey: { [paneKey]: done },
-        paneAgentLifecycleByPaneKey: { [paneKey]: lifecycle },
-        terminalLayoutsByTabId: { 'tab-1': layout(LEAF_1) }
-      })
-    )
     const retained = buildAgentActivity(
       baseArgs({
         retainedAgentsByPaneKey: {
@@ -262,8 +297,7 @@ describe('buildAgentActivity', () => {
       })
     )
 
-    expect(live.completed[0]?.navigationTarget).toMatchObject({ ptyId: 'pty-1' })
-    expect(retained.completed[0]?.navigationTarget).toBeNull()
+    expect(retained.counts).toEqual({ attention: 0, working: 0, idle: 0 })
   })
 
   it('sorts waiting attention ahead of blocked attention before timestamp ties', () => {

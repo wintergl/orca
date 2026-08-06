@@ -93,6 +93,15 @@ describe('client UI RPC methods', () => {
       makeRequest('settings.update', {
         defaultTuiAgent: 'codex',
         disabledTuiAgents: ['claude', 'not-real', 'claude'],
+        customAgentProfiles: [
+          {
+            id: 'profile-1',
+            name: ' Codex DBA ',
+            baseAgent: 'codex',
+            command: ' codex --profile dba ',
+            permissionMode: 'yolo'
+          }
+        ],
         defaultTaskSource: 'linear',
         visibleTaskProviders: ['github', 'linear'],
         defaultTaskViewPreset: 'my-prs',
@@ -109,6 +118,16 @@ describe('client UI RPC methods', () => {
     expect(runtime.updateClientSettings).toHaveBeenCalledWith({
       defaultTuiAgent: 'codex',
       disabledTuiAgents: ['claude'],
+      customAgentProfiles: [
+        {
+          id: 'profile-1',
+          name: 'Codex DBA',
+          baseAgent: 'codex',
+          command: 'codex --profile dba',
+          permissionMode: 'yolo',
+          enabled: true
+        }
+      ],
       defaultTaskSource: 'linear',
       visibleTaskProviders: ['github', 'linear'],
       defaultTaskViewPreset: 'my-prs',

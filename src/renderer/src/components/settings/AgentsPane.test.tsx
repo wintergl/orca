@@ -468,6 +468,27 @@ describe('AgentsPane', () => {
     expect(markup).toContain('Create Agent')
   })
 
+  it('renders saved custom Agent profiles below the installed catalog', () => {
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      customAgentProfiles: [
+        {
+          id: 'profile-1',
+          name: 'Codex DBA',
+          baseAgent: 'codex',
+          command: 'codex --profile dba',
+          permissionMode: 'yolo',
+          enabled: true
+        }
+      ]
+    })
+
+    expect(markup).toContain('Codex DBA')
+    expect(markup).toContain('codex --profile dba')
+    expect(markup).toContain('1 custom')
+    expect(markup).toContain('aria-label="Codex DBA availability"')
+  })
+
   it('only toggles agent availability when the segmented value changes', () => {
     const onSetEnabled = vi.fn()
     const control = AgentAvailabilityControl({

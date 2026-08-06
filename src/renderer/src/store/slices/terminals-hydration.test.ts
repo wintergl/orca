@@ -746,3 +746,13 @@ describe('hydrationSucceeded flag (issue #1158)', () => {
     expect(store.getState().hydrationSucceeded).toBe(false)
   })
 })
+
+describe('workspaceSessionUiReady flag', () => {
+  it('stays false until App finishes hydrating every workspace UI store', () => {
+    const store = createTestStore()
+    expect(store.getState().workspaceSessionUiReady).toBe(false)
+
+    store.getState().setWorkspaceSessionUiReady(true)
+    expect(store.getState().workspaceSessionUiReady).toBe(true)
+  })
+})

@@ -1,30 +1,19 @@
 import { useState } from 'react'
 import type React from 'react'
-import { AgentActivityCompletedRow } from './AgentActivityCompletedRow'
 import { AgentActivityCurrentRow } from './AgentActivityCurrentRow'
 import type { AgentActivityModel } from './agent-activity-model'
-import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { translate } from '@/i18n/i18n'
 import type { WorkflowAgentDisplayContext } from '../workflows/workflow-renderer-state'
 
 export function AgentActivityBox({
   model,
-  workflowContextByLifecycleId,
-  getOriginalPaneTarget,
-  onOpenOriginalPane
+  workflowContextByLifecycleId
 }: {
   model: AgentActivityModel
   workflowContextByLifecycleId: ReadonlyMap<string, WorkflowAgentDisplayContext>
-  getOriginalPaneTarget: (session: AiVaultSession) => unknown
-  onOpenOriginalPane: (session: AiVaultSession) => void
 }): React.JSX.Element | null {
   const [idleExpanded, setIdleExpanded] = useState(false)
-  if (
-    model.counts.attention === 0 &&
-    model.counts.working === 0 &&
-    model.counts.idle === 0 &&
-    model.counts.completed === 0
-  ) {
+  if (model.counts.attention === 0 && model.counts.working === 0 && model.counts.idle === 0) {
     return null
   }
   const idle = idleExpanded ? model.idle : model.idle.slice(0, 3)
@@ -47,13 +36,6 @@ export function AgentActivityBox({
       ? translate('auto.components.right.sidebar.AgentActivityBox.idleCount', '{{count}} idle', {
           count: model.counts.idle
         })
-      : null,
-    model.counts.completed
-      ? translate(
-          'auto.components.right.sidebar.AgentActivityBox.completedCount',
-          '{{count}} completed',
-          { count: model.counts.completed }
-        )
       : null
   ]
     .filter(Boolean)
@@ -107,24 +89,6 @@ export function AgentActivityBox({
                   )}
             </button>
           ) : null}
-          {model.counts.completed > 0 ? (
-            <div className="px-2 pt-1.5 text-[10px] font-medium text-muted-foreground">
-              {translate(
-                'auto.components.right.sidebar.AgentActivityBox.recentlyCompleted',
-                'Recently completed'
-              )}
-            </div>
-          ) : null}
-          {model.completed.slice(0, 3).map((item) => (
-            <AgentActivityCompletedRow
-              key={item.id}
-              item={item}
-              canOpenOriginalPane={Boolean(
-                item.matchedSession && getOriginalPaneTarget(item.matchedSession)
-              )}
-              onOpenOriginalPane={onOpenOriginalPane}
-            />
-          ))}
         </div>
       </div>
     </section>

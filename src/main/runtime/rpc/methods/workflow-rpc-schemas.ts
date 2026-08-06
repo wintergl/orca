@@ -51,6 +51,7 @@ export const templateArchiveParams = z
     projectIdentity: projectIdentity.optional()
   })
   .strict()
+export const templateResetDefaultsParams = z.object({ ...mutationBase }).strict()
 export const runCreateParams = z
   .object({
     ...mutationBase,

@@ -7,6 +7,7 @@ import type {
 } from '../../../shared/workflow-definition-types'
 import { stampWorkflowDecisionProtocolVersionV1 } from '../../../shared/workflow-decision-protocol'
 import { isWorkflowDefinitionV2 } from '../../../shared/workflow-definition-v2-schema'
+import { resetDefaultWorkflowConfigurations } from './workflow-default-configurations'
 import { WorkflowError } from './workflow-error'
 import { runWorkflowMutation, type WorkflowMutation } from './workflow-mutation-ledger'
 import {
@@ -31,8 +32,12 @@ export class WorkflowTemplateStore {
     callerIdentity: string
     projectIdentity?: string
     includeArchived?: boolean
+    schemaVersion?: 2
   }): WorkflowTemplateRecord[] {
     const archivedClause = params.includeArchived ? '' : 'AND t.archived_at IS NULL'
+    const schemaClause = params.schemaVersion
+      ? "AND json_extract(v.definition_json, '$.schemaVersion') = 2"
+      : ''
     const rows = this.db
       .prepare(
         `SELECT t.*, v.definition_json, ${ACTIVE_RUN_COUNT_SQL} AS active_run_count
@@ -43,7 +48,7 @@ export class WorkflowTemplateStore {
            t.scope = 'built-in'
            OR (t.scope = 'personal' AND t.owner_identity = ?)
            OR (t.scope = 'project' AND t.project_identity = ?)
-         ) ${archivedClause}
+         ) ${archivedClause} ${schemaClause}
          ORDER BY CASE t.scope WHEN 'built-in' THEN 0 WHEN 'personal' THEN 1 ELSE 2 END,
                   lower(t.name), t.id`
       )
@@ -202,6 +207,10 @@ export class WorkflowTemplateStore {
         projectIdentity: params.projectIdentity
       })
     })
+  }
+
+  resetDefaultConfigurations(mutation: WorkflowMutation): WorkflowTemplateRecord[] {
+    return resetDefaultWorkflowConfigurations(this.db, mutation)
   }
 
   private getRow(templateId: string): WorkflowTemplateRow {

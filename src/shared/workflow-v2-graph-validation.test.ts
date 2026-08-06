@@ -11,7 +11,7 @@ describe('workflow V2 graph validation', () => {
 
   it('rejects an unbounded cycle and accepts a run-level bound with exhausted target', () => {
     const definition = structuredClone(BUILTIN_WORKFLOW_V2_TEMPLATES[1]!.definition)
-    const decision = definition.steps.find((step) => step.id === 'judge')
+    const decision = definition.steps.find((step) => step.id === 'code-decide')
     if (decision?.kind !== 'decision') {
       throw new Error('fixture decision step missing')
     }
@@ -19,7 +19,7 @@ describe('workflow V2 graph validation', () => {
     expect(validateWorkflowV2Graph(definition)).toContain(
       'Reachable route graph contains an unbounded loop'
     )
-    expect(validateWorkflowV2Graph(definition, { 'decision:judge:false': 2 })).not.toContain(
+    expect(validateWorkflowV2Graph(definition, { 'decision:code-decide:false': 2 })).not.toContain(
       'Reachable route graph contains an unbounded loop'
     )
   })

@@ -63,11 +63,19 @@ describe('Workflow V2 success reconciliation recovery', () => {
         run: seeded.store.showRun(seeded.run.id, 'user-a')
       })
 
-      expect(seeded.store.showRun(seeded.run.id, 'user-a').status).toBe('completed')
+      expect(seeded.store.showRun(seeded.run.id, 'user-a')).toMatchObject({
+        status: 'running',
+        currentNodeId: 'spec-review'
+      })
       expect(getWorkflowCompletion(seeded.store.persistenceDb, received.receiptId)?.state).toBe(
         'settled'
       )
       expect(listWorkflowV2History(seeded.store.persistenceDb, seeded.run.id)).toHaveLength(1)
+      expect(
+        seeded.store
+          .showRun(seeded.run.id, 'user-a')
+          .steps.filter((step) => step.nodeId === 'spec-review')
+      ).toHaveLength(1)
     })
   }
 
@@ -106,7 +114,7 @@ function seedV2Attempt() {
   stores.push(store)
   const created = store.createRun(
     {
-      templateId: 'builtin.v2.single-agent-end',
+      templateId: 'builtin.v2.spec-review',
       projectIdentity: 'project-a',
       workspace: { kind: 'folder-workspace', id: 'folder-a' },
       executionHostId: 'local'
@@ -116,11 +124,29 @@ function seedV2Attempt() {
   store.assignAgent(
     {
       runId: created.id,
-      nodeId: 'produce',
-      slotId: 'worker',
-      assignment: assignment()
+      nodeId: 'spec-produce',
+      slotId: 'spec-author',
+      assignment: assignment('worker')
     },
     mutation('assign')
+  )
+  store.assignAgent(
+    {
+      runId: created.id,
+      nodeId: 'spec-review',
+      slotId: 'spec-reviewers',
+      assignment: assignment('reviewer')
+    },
+    mutation('assign-reviewer')
+  )
+  store.assignAgent(
+    {
+      runId: created.id,
+      nodeId: 'spec-decide',
+      slotId: 'spec-decider',
+      assignment: assignment('decider')
+    },
+    mutation('assign-decider')
   )
   store.updateRunObjective(
     { runId: created.id, objective: 'Verify V2 recovery.' },
@@ -137,7 +163,7 @@ function seedV2Attempt() {
   )
   let run = store.beginRun({ runId: created.id, baseline: {} }, mutation('start'))
   store.setOrchestrationRun(run.id, 'orch-run-v2')
-  const initial = run.steps.find((candidate) => candidate.nodeId === 'produce')!
+  const initial = run.steps.find((candidate) => candidate.nodeId === 'spec-produce')!
   store.markStepDelivering({
     runId: run.id,
     stepRunId: initial.id,
@@ -186,13 +212,13 @@ function seedV2Attempt() {
   return { store, run, step, prepared }
 }
 
-function assignment(): Omit<WorkflowAgentAssignment, 'nodeId' | 'slotId'> {
+function assignment(lifecycle: string): Omit<WorkflowAgentAssignment, 'nodeId' | 'slotId'> {
   return {
     worktreeId: 'folder-a',
     executionHostId: 'local',
-    paneKey: 'pane-worker',
-    agentLifecycleId: 'worker',
-    providerSessionId: 'session-worker',
+    paneKey: `pane-${lifecycle}`,
+    agentLifecycleId: lifecycle,
+    providerSessionId: `session-${lifecycle}`,
     runtimeAgent: 'codex'
   }
 }

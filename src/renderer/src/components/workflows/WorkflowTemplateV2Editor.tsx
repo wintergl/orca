@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import type { WorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-types'
 import type { WorkflowStepKindV2 } from '../../../../shared/workflow-definition-v2-types'
 import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
@@ -13,7 +13,11 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
-import { addWorkflowV2Step, removeWorkflowV2Step } from './workflow-definition-editing-v2'
+import {
+  addWorkflowV2Step,
+  moveWorkflowV2Step,
+  removeWorkflowV2Step
+} from './workflow-definition-editing-v2'
 import { WorkflowV2StepInspector } from './WorkflowV2StepInspector'
 import { WorkflowV2RoleSlotFields } from './WorkflowV2RoleSlotFields'
 
@@ -43,6 +47,7 @@ export function WorkflowTemplateV2Editor({
       return error instanceof Error ? error.message : 'Invalid V2 definition'
     }
   }, [definition])
+  const endCount = definition.steps.filter((step) => step.kind === 'end').length
 
   return (
     <section
@@ -88,7 +93,7 @@ export function WorkflowTemplateV2Editor({
           )}
         </div>
         <ul className="scrollbar-sleek min-h-0 flex-1 space-y-1 overflow-auto p-2">
-          {definition.steps.map((step) => (
+          {definition.steps.map((step, index) => (
             <li key={step.id}>
               <div className="flex items-center gap-1">
                 <button
@@ -108,24 +113,57 @@ export function WorkflowTemplateV2Editor({
                     </Badge>
                   ) : null}
                 </button>
-                {!readOnly && step.kind !== 'end' && definition.entryStepId !== step.id ? (
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={translate('workflows.visual.removeStep', 'Remove step')}
-                    onClick={() => {
-                      try {
+                {!readOnly ? (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      disabled={index === 0}
+                      aria-label={translate(
+                        'workflows.visual.moveStepEarlier',
+                        'Move {{value0}} earlier',
+                        { value0: step.name }
+                      )}
+                      onClick={() => onChange(moveWorkflowV2Step(definition, step.id, -1))}
+                    >
+                      <ArrowUp />
+                    </Button>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      disabled={index === definition.steps.length - 1}
+                      aria-label={translate(
+                        'workflows.visual.moveStepLater',
+                        'Move {{value0}} later',
+                        { value0: step.name }
+                      )}
+                      onClick={() => onChange(moveWorkflowV2Step(definition, step.id, 1))}
+                    >
+                      <ArrowDown />
+                    </Button>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive"
+                      disabled={
+                        definition.entryStepId === step.id ||
+                        (step.kind === 'end' && endCount === 1)
+                      }
+                      aria-label={translate(
+                        'workflows.visual.removeNamedStep',
+                        'Remove {{value0}}',
+                        { value0: step.name }
+                      )}
+                      onClick={() => {
                         onChange(removeWorkflowV2Step(definition, step.id))
                         if (selectedStepId === step.id) {
                           setSelectedStepId(definition.entryStepId)
                         }
-                      } catch {
-                        // Keep selection when remove is invalid (entry/last end).
-                      }
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             </li>

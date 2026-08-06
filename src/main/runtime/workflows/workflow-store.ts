@@ -5,7 +5,6 @@ import type {
   WorkflowRunEventsResult,
   WorkflowRunExportFormat,
   WorkflowRunExportResult,
-  WorkflowRunHistoryFilter,
   WorkflowRunRecord,
   WorkflowRunSummary,
   WorkflowReviewAggregate,
@@ -92,6 +91,12 @@ export class WorkflowStore {
     return this.templates.archive(...params)
   }
 
+  resetDefaultWorkflowConfigurations(
+    ...params: Parameters<WorkflowTemplateStore['resetDefaultConfigurations']>
+  ): WorkflowTemplateRecord[] {
+    return this.templates.resetDefaultConfigurations(...params)
+  }
+
   createRun(...params: Parameters<WorkflowRunStore['create']>): WorkflowRunRecord {
     return this.runs.create(...params)
   }
@@ -109,8 +114,8 @@ export class WorkflowStore {
     return this.runtime.getArtifact(artifactId)
   }
 
-  listRuns(filter: WorkflowRunHistoryFilter, callerIdentity: string): WorkflowRunSummary[] {
-    return this.runs.list(filter, callerIdentity)
+  listRuns(...params: Parameters<WorkflowRunStore['list']>): WorkflowRunSummary[] {
+    return this.runs.list(...params)
   }
 
   exportRun(

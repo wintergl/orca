@@ -174,42 +174,18 @@ describe('Workflow V2 run controller', () => {
     expect(store.showRun(runId, 'user-a').status).toBe('completed')
   })
 
-  it('runs single agent → end', () => {
-    const store = createStore()
-    const template = BUILTIN_WORKFLOW_V2_TEMPLATES[0]!
-    const runId = readyV2Run(store, template.id, [['produce', 'worker', 'worker']])
-    const started = store.beginRun({ runId, baseline: { kind: 'test' } }, mutation('start-single'))
-    expect(started.status).toBe('running')
-    expect(started.currentNodeId).toBe('produce')
-    const step = started.steps.find((candidate) => candidate.nodeId === 'produce')!
-    const result = completeWorkflowV2AgentStep({
-      store: surface(store),
-      db: store.persistenceDb,
-      run: started,
-      step,
-      finalText: '任务完成：输出已就绪。'
-    })
-    expect(result.terminal).toBe(true)
-    const finished = store.showRun(runId, 'user-a')
-    expect(finished.status).toBe('completed')
-    const history = listWorkflowV2History(store.persistenceDb, runId)
-    expect(history).toHaveLength(1)
-    expect(history[0]).toMatchObject({
-      stepId: 'produce',
-      stepKind: 'agent',
-      finalText: '任务完成：输出已就绪。'
-    })
-  })
-
-  it('loops agent → decision false then completes on 完成', () => {
+  it('loops code writing and review after a negative decision, then completes', () => {
     const store = createStore()
     const template = BUILTIN_WORKFLOW_V2_TEMPLATES[1]!
     const runId = readyV2Run(store, template.id, [
-      ['produce', 'producer', 'producer'],
-      ['judge', 'judge', 'judge']
+      ['code-produce', 'code-author', 'code-author'],
+      ['code-review', 'code-reviewers', 'code-reviewer'],
+      ['code-decide', 'code-decider', 'code-decider']
     ])
     let run = store.beginRun({ runId, baseline: {} }, mutation('start-loop'))
-    let produce = run.steps.find((step) => step.nodeId === 'produce' && step.status === 'queued')!
+    let produce = run.steps.find(
+      (step) => step.nodeId === 'code-produce' && step.status === 'queued'
+    )!
     completeWorkflowV2AgentStep({
       store: surface(store),
       db: store.persistenceDb,
@@ -218,8 +194,19 @@ describe('Workflow V2 run controller', () => {
       finalText: 'draft v1'
     })
     run = store.showRun(runId, 'user-a')
-    expect(run.currentNodeId).toBe('judge')
-    let judge = run.steps.find((step) => step.nodeId === 'judge' && step.status === 'queued')!
+    expect(run.currentNodeId).toBe('code-review')
+    let review = run.steps.find(
+      (step) => step.nodeId === 'code-review' && step.status === 'queued'
+    )!
+    completeWorkflowV2AgentStep({
+      store: surface(store),
+      db: store.persistenceDb,
+      run,
+      step: review,
+      finalText: '发现阻塞项'
+    })
+    run = store.showRun(runId, 'user-a')
+    let judge = run.steps.find((step) => step.nodeId === 'code-decide' && step.status === 'queued')!
     completeWorkflowV2DecisionStep({
       store: surface(store),
       db: store.persistenceDb,
@@ -229,9 +216,9 @@ describe('Workflow V2 run controller', () => {
     })
     run = store.showRun(runId, 'user-a')
     expect(run.status).toBe('running')
-    expect(run.currentNodeId).toBe('produce')
+    expect(run.currentNodeId).toBe('code-produce')
     produce = run.steps
-      .filter((step) => step.nodeId === 'produce')
+      .filter((step) => step.nodeId === 'code-produce')
       .toSorted((left, right) => right.round - left.round)[0]!
     completeWorkflowV2AgentStep({
       store: surface(store),
@@ -241,8 +228,19 @@ describe('Workflow V2 run controller', () => {
       finalText: 'draft v2'
     })
     run = store.showRun(runId, 'user-a')
+    review = run.steps
+      .filter((step) => step.nodeId === 'code-review')
+      .toSorted((left, right) => right.round - left.round)[0]!
+    completeWorkflowV2AgentStep({
+      store: surface(store),
+      db: store.persistenceDb,
+      run,
+      step: review,
+      finalText: '阻塞项已关闭'
+    })
+    run = store.showRun(runId, 'user-a')
     judge = run.steps
-      .filter((step) => step.nodeId === 'judge')
+      .filter((step) => step.nodeId === 'code-decide')
       .toSorted((left, right) => right.round - left.round)[0]!
     completeWorkflowV2DecisionStep({
       store: surface(store),
@@ -254,64 +252,75 @@ describe('Workflow V2 run controller', () => {
     run = store.showRun(runId, 'user-a')
     expect(run.status).toBe('completed')
     const history = listWorkflowV2History(store.persistenceDb, runId)
-    expect(history.map((entry) => entry.stepId)).toEqual(['produce', 'judge', 'produce', 'judge'])
-    expect(history[1]?.decision).toBe(false)
-    expect(history[3]?.decision).toBe(true)
+    expect(history.map((entry) => entry.stepId)).toEqual([
+      'code-produce',
+      'code-review',
+      'code-decide',
+      'code-produce',
+      'code-review',
+      'code-decide'
+    ])
+    expect(history[2]?.decision).toBe(false)
+    expect(history[5]?.decision).toBe(true)
   })
 
-  it('chains multi-agent steps and resolves human accept via offers', () => {
+  it('fans out SPEC review and resolves an invalid decision by human approval', () => {
     const store = createStore()
-    const template = BUILTIN_WORKFLOW_V2_TEMPLATES[2]!
+    const template = BUILTIN_WORKFLOW_V2_TEMPLATES[0]!
     const runId = readyV2Run(store, template.id, [
-      ['research', 'researcher', 'researcher'],
-      ['write', 'writer', 'writer'],
-      ['write', 'writer', 'writer-b'],
-      ['judge', 'judge', 'judge']
+      ['spec-produce', 'spec-author', 'spec-author'],
+      ['spec-review', 'spec-reviewers', 'spec-reviewer-a'],
+      ['spec-review', 'spec-reviewers', 'spec-reviewer-b'],
+      ['spec-decide', 'spec-decider', 'spec-decider']
     ])
     let run = store.beginRun({ runId, baseline: {} }, mutation('start-multi'))
-    const research = run.steps.find((step) => step.nodeId === 'research')!
+    const research = run.steps.find((step) => step.nodeId === 'spec-produce')!
     completeWorkflowV2AgentStep({
       store: surface(store),
       db: store.persistenceDb,
       run,
       step: research,
-      finalText: 'research notes'
+      finalText: 'SPEC 第一版'
     })
     run = store.showRun(runId, 'user-a')
-    expect(run.currentNodeId).toBe('write')
-    const writers = run.steps.filter((step) => step.nodeId === 'write' && step.status === 'queued')
+    expect(run.currentNodeId).toBe('spec-review')
+    const writers = run.steps.filter(
+      (step) => step.nodeId === 'spec-review' && step.status === 'queued'
+    )
     expect(writers).toHaveLength(2)
     completeWorkflowV2AgentStep({
       store: surface(store),
       db: store.persistenceDb,
       run,
       step: writers[0]!,
-      finalText: 'draft article A'
+      finalText: '评审意见 A'
     })
     run = store.showRun(runId, 'user-a')
-    expect(run.currentNodeId).toBe('write')
+    expect(run.currentNodeId).toBe('spec-review')
     completeWorkflowV2AgentStep({
       store: surface(store),
       db: store.persistenceDb,
       run,
       step: writers[1]!,
-      finalText: 'draft article B'
+      finalText: '评审意见 B'
     })
     run = store.showRun(runId, 'user-a')
-    const judge = run.steps.find((step) => step.nodeId === 'judge' && step.status === 'queued')!
+    const judge = run.steps.find(
+      (step) => step.nodeId === 'spec-decide' && step.status === 'queued'
+    )!
     completeWorkflowV2DecisionStep({
       store: surface(store),
       db: store.persistenceDb,
       run,
       step: judge,
-      finalText: '不完成\n需人工'
+      finalText: '请求人工确认'
     })
     run = store.showRun(runId, 'user-a')
     expect(run.status).toBe('waiting-human')
-    expect(run.currentNodeId).toBe('human')
-    expect(run.resolutionContext).toMatchObject({ reviewNodeId: 'human' })
+    expect(run.currentNodeId).toBe('spec-human')
+    expect(run.resolutionContext).toMatchObject({ reviewNodeId: 'spec-human' })
     const accept = run.resolutionOffers.find(
-      (offer) => offer.resolutionTransitionId === 'v2-human:accept'
+      (offer) => offer.resolutionTransitionId === 'v2-human:approve'
     )
     expect(accept).toMatchObject({
       action: 'approve',
@@ -326,11 +335,11 @@ describe('Workflow V2 run controller', () => {
     expect(run.status).toBe('completed')
     const history = listWorkflowV2History(store.persistenceDb, runId)
     expect(history.map((entry) => [entry.stepId, entry.stepKind])).toEqual([
-      ['research', 'agent'],
-      ['write', 'agent'],
-      ['judge', 'decision'],
-      ['human', 'human']
+      ['spec-produce', 'agent'],
+      ['spec-review', 'agent'],
+      ['spec-decide', 'decision'],
+      ['spec-human', 'human']
     ])
-    expect(history.find((entry) => entry.stepId === 'write')?.agentOutputs).toHaveLength(2)
+    expect(history.find((entry) => entry.stepId === 'spec-review')?.agentOutputs).toHaveLength(2)
   })
 })

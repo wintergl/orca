@@ -22,6 +22,7 @@ import { WorkflowRunPolicyConfiguration } from './WorkflowRunPolicyConfiguration
 import { WorkflowRunPromptOverrideFields } from './WorkflowRunPromptOverrides'
 import { WorkflowRunPromptPreviews } from './WorkflowRunPromptPreviews'
 import { useWorkflowRunApplicationActions } from './use-workflow-run-application-actions'
+import { workflowRunStatusLabel } from './workflow-runtime-state-labels'
 import {
   workflowAssignableUnits,
   workflowRoleSlots
@@ -81,7 +82,7 @@ export function WorkflowRunApplicationPage({
                 {translate('workflows.application.title', 'Run configuration')}
               </h1>
               <Badge variant={run.status === 'ready' ? 'default' : 'secondary'}>
-                {runStatusLabel(run.status)}
+                {workflowRunStatusLabel(run.status)}
               </Badge>
             </div>
             <p className="truncate text-xs text-muted-foreground">
@@ -280,11 +281,4 @@ function requiredAssignmentProgress(run: WorkflowRunRecord): {
     }
   }
   return { assigned, required }
-}
-
-function runStatusLabel(status: WorkflowRunRecord['status']): string {
-  if (status === 'ready') {
-    return translate('workflows.application.ready', 'Ready')
-  }
-  return translate('workflows.application.configuring', 'Configuring')
 }

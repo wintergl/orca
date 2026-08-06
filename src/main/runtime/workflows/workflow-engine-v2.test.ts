@@ -32,14 +32,24 @@ afterEach(async () => {
 })
 
 describe('WorkflowEngine V2', () => {
-  it('completes single-agent → end through engine dispatch', async () => {
+  it('completes the default SPEC writing and review flow through engine dispatch', async () => {
     const harness = await createV2Harness({
       responses: {
-        'terminal-worker': '任务完成：单 Agent 输出。'
+        'terminal-spec-author': 'SPEC 第一版',
+        'terminal-spec-reviewer': '评审通过，无阻塞项。',
+        'terminal-spec-decider': '完成\n符合目标'
       }
     })
-    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.single-agent-end', [
-      ['produce', 'worker', 'worker', 'pane-worker', 'terminal-worker']
+    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.spec-review', [
+      ['spec-produce', 'spec-author', 'spec-author', 'pane-spec-author', 'terminal-spec-author'],
+      [
+        'spec-review',
+        'spec-reviewers',
+        'spec-reviewer',
+        'pane-spec-reviewer',
+        'terminal-spec-reviewer'
+      ],
+      ['spec-decide', 'spec-decider', 'spec-decider', 'pane-spec-decider', 'terminal-spec-decider']
     ])
     await harness.engine.start(runId, 'user-a', {
       callerIdentity: 'user-a',
@@ -49,23 +59,33 @@ describe('WorkflowEngine V2', () => {
     })
     const completed = await waitForRun(harness.store, runId, 'completed')
     expect(completed.steps.map((step) => [step.nodeId, step.status])).toEqual([
-      ['produce', 'succeeded']
+      ['spec-produce', 'succeeded'],
+      ['spec-review', 'succeeded'],
+      ['spec-decide', 'succeeded']
     ])
-    expect(listWorkflowV2History(harness.store.persistenceDb, runId)).toHaveLength(1)
+    expect(listWorkflowV2History(harness.store.persistenceDb, runId)).toHaveLength(3)
     expect(harness.sendPrompt).toHaveBeenCalled()
     expect(String(harness.sendPrompt.mock.calls[0]?.[1] ?? '')).toContain('Run the free-form')
   })
 
-  it('loops decision false then completes on 完成', async () => {
+  it('returns code to writing after review, then completes on 完成', async () => {
     const harness = await createV2Harness({
       responses: {
-        'terminal-producer': ['draft v1', 'draft v2'],
-        'terminal-judge': ['不完成\n再改', '完成\n通过']
+        'terminal-code-author': ['code v1', 'code v2'],
+        'terminal-code-reviewer': ['发现阻塞项', '阻塞项已关闭'],
+        'terminal-code-decider': ['不完成\n再改', '完成\n通过']
       }
     })
-    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.agent-decision-loop', [
-      ['produce', 'producer', 'producer', 'pane-producer', 'terminal-producer'],
-      ['judge', 'judge', 'judge', 'pane-judge', 'terminal-judge']
+    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.code-review', [
+      ['code-produce', 'code-author', 'code-author', 'pane-code-author', 'terminal-code-author'],
+      [
+        'code-review',
+        'code-reviewers',
+        'code-reviewer',
+        'pane-code-reviewer',
+        'terminal-code-reviewer'
+      ],
+      ['code-decide', 'code-decider', 'code-decider', 'pane-code-decider', 'terminal-code-decider']
     ])
     await harness.engine.start(runId, 'user-a', {
       callerIdentity: 'user-a',
@@ -74,26 +94,40 @@ describe('WorkflowEngine V2', () => {
       payload: { runId }
     })
     const completed = await waitForRun(harness.store, runId, 'completed')
-    expect(completed.steps.filter((step) => step.nodeId === 'produce')).toHaveLength(2)
-    expect(completed.steps.filter((step) => step.nodeId === 'judge')).toHaveLength(2)
+    expect(completed.steps.filter((step) => step.nodeId === 'code-produce')).toHaveLength(2)
+    expect(completed.steps.filter((step) => step.nodeId === 'code-review')).toHaveLength(2)
+    expect(completed.steps.filter((step) => step.nodeId === 'code-decide')).toHaveLength(2)
     const history = listWorkflowV2History(harness.store.persistenceDb, runId)
-    expect(history.map((entry) => entry.stepId)).toEqual(['produce', 'judge', 'produce', 'judge'])
-    expect(history[1]?.decision).toBe(false)
-    expect(history[3]?.decision).toBe(true)
+    expect(history.map((entry) => entry.stepId)).toEqual([
+      'code-produce',
+      'code-review',
+      'code-decide',
+      'code-produce',
+      'code-review',
+      'code-decide'
+    ])
+    expect(history[2]?.decision).toBe(false)
+    expect(history[5]?.decision).toBe(true)
   })
 
-  it('chains multi-agent and accepts a V2 human offer', async () => {
+  it('accepts a human approval when the SPEC decision is invalid', async () => {
     const harness = await createV2Harness({
       responses: {
-        'terminal-researcher': 'research notes',
-        'terminal-writer': 'draft article',
-        'terminal-judge': '不完成\n人工'
+        'terminal-spec-author': 'SPEC 第一版',
+        'terminal-spec-reviewer': '需要人工确认范围。',
+        'terminal-spec-decider': '请求人工确认'
       }
     })
-    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.multi-agent-human', [
-      ['research', 'researcher', 'researcher', 'pane-researcher', 'terminal-researcher'],
-      ['write', 'writer', 'writer', 'pane-writer', 'terminal-writer'],
-      ['judge', 'judge', 'judge', 'pane-judge', 'terminal-judge']
+    const runId = readyV2Run(harness.store, harness.runtime, 'builtin.v2.spec-review', [
+      ['spec-produce', 'spec-author', 'spec-author', 'pane-spec-author', 'terminal-spec-author'],
+      [
+        'spec-review',
+        'spec-reviewers',
+        'spec-reviewer',
+        'pane-spec-reviewer',
+        'terminal-spec-reviewer'
+      ],
+      ['spec-decide', 'spec-decider', 'spec-decider', 'pane-spec-decider', 'terminal-spec-decider']
     ])
     await harness.engine.start(runId, 'user-a', {
       callerIdentity: 'user-a',
@@ -102,9 +136,9 @@ describe('WorkflowEngine V2', () => {
       payload: { runId }
     })
     const waiting = await waitForRun(harness.store, runId, 'waiting-human')
-    expect(waiting.currentNodeId).toBe('human')
+    expect(waiting.currentNodeId).toBe('spec-human')
     const accept = waiting.resolutionOffers.find(
-      (offer) => offer.resolutionTransitionId === 'v2-human:accept'
+      (offer) => offer.resolutionTransitionId === 'v2-human:approve'
     )
     expect(accept).toBeTruthy()
     const resolved = harness.store.resolveRun(

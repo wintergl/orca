@@ -135,4 +135,49 @@ describe('launchAgentInNewTab initial cwd', () => {
       failureNotified: false
     })
   })
+
+  it('uses a custom profile command, permission mode, and tab title', async () => {
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    launchAgentInNewTab({
+      agent: 'codex',
+      agentCommand: 'codex --profile dba',
+      permissionMode: 'yolo',
+      title: 'Codex DBA',
+      worktreeId: 'wt-1'
+    })
+
+    expect(store.queueTabStartupCommand).toHaveBeenCalledWith(
+      'tab-1',
+      expect.objectContaining({
+        command: expect.stringContaining('codex --profile dba')
+      })
+    )
+    expect(store.setTabCustomTitle).toHaveBeenCalledWith(
+      'tab-1',
+      'Codex DBA',
+      expect.objectContaining({ recordInteraction: false })
+    )
+  })
+
+  it('forwards custom profile launch fields to a paired runtime', async () => {
+    mockIsWebRuntimeSessionActive.mockReturnValue(true)
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    launchAgentInNewTab({
+      agent: 'codex',
+      agentCommand: 'codex --profile dba',
+      permissionMode: 'manual',
+      title: 'Codex DBA',
+      worktreeId: 'wt-1'
+    })
+
+    expect(mockLaunchAgentInWebHostTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentCommand: 'codex --profile dba',
+        permissionMode: 'manual',
+        title: 'Codex DBA'
+      })
+    )
+  })
 })

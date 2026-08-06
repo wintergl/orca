@@ -31,6 +31,30 @@ describe('tab agent launch options', () => {
     )
   })
 
+  it('adds saved custom profiles with their launch command and permission mode', () => {
+    const options = buildTabAgentLaunchOptions(['codex'], {}, [
+      {
+        id: 'profile-1',
+        name: 'Codex DBA',
+        baseAgent: 'codex',
+        command: 'codex --profile dba',
+        permissionMode: 'yolo',
+        enabled: true
+      }
+    ])
+
+    expect(options).toContainEqual(
+      expect.objectContaining({
+        id: 'custom:profile-1',
+        agent: 'codex',
+        label: 'Codex DBA',
+        agentCommand: 'codex --profile dba',
+        permissionMode: 'yolo'
+      })
+    )
+    expect(findMatchingTabAgentLaunchOptions('dba', options)[0]?.id).toBe('custom:profile-1')
+  })
+
   it('matches agents on a partial prefix so the launcher actually searches', () => {
     const options = buildTabAgentLaunchOptions(['claude', 'codex', 'gemini', 'antigravity'])
 

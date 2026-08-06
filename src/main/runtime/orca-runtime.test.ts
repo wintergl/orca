@@ -1577,6 +1577,16 @@ describe('OrcaRuntimeService', () => {
         compactWorktreeCards: true,
         minimaxGroupId: 'group-42',
         minimaxUsageModels: 'general,abab6.5',
+        customAgentProfiles: [
+          {
+            id: 'profile-1',
+            name: 'Codex DBA',
+            baseAgent: 'codex' as const,
+            command: 'codex --profile dba',
+            permissionMode: 'yolo' as const,
+            enabled: true
+          }
+        ],
         terminalQuickCommands
       })
     } as never)
@@ -1585,7 +1595,8 @@ describe('OrcaRuntimeService', () => {
       experimentalNewWorktreeCardStyle: true,
       compactWorktreeCards: true,
       minimaxGroupId: 'group-42',
-      minimaxUsageModels: 'general,abab6.5'
+      minimaxUsageModels: 'general,abab6.5',
+      customAgentProfiles: [expect.objectContaining({ name: 'Codex DBA' })]
     })
     expect(runtime.getClientSettings()).not.toHaveProperty('terminalQuickCommands')
     expect(runtime.getClientTerminalQuickCommands()).toEqual(terminalQuickCommands)
@@ -1682,20 +1693,41 @@ describe('OrcaRuntimeService', () => {
         experimentalNewWorktreeCardStyle: true,
         compactWorktreeCards: true,
         minimaxGroupId: 'group-42',
-        minimaxUsageModels: 'general,abab6.5'
+        minimaxUsageModels: 'general,abab6.5',
+        customAgentProfiles: [
+          {
+            id: 'profile-1',
+            name: 'Codex DBA',
+            baseAgent: 'codex',
+            command: 'codex --profile dba',
+            permissionMode: 'manual',
+            enabled: true
+          }
+        ]
       })
     ).toMatchObject({
       experimentalNewWorktreeCardStyle: true,
       compactWorktreeCards: true,
       minimaxGroupId: 'group-42',
-      minimaxUsageModels: 'general,abab6.5'
+      minimaxUsageModels: 'general,abab6.5',
+      customAgentProfiles: [expect.objectContaining({ name: 'Codex DBA' })]
     })
     expect(updateSettings).toHaveBeenCalledWith(
       {
         experimentalNewWorktreeCardStyle: true,
         compactWorktreeCards: true,
         minimaxGroupId: 'group-42',
-        minimaxUsageModels: 'general,abab6.5'
+        minimaxUsageModels: 'general,abab6.5',
+        customAgentProfiles: [
+          {
+            id: 'profile-1',
+            name: 'Codex DBA',
+            baseAgent: 'codex',
+            command: 'codex --profile dba',
+            permissionMode: 'manual',
+            enabled: true
+          }
+        ]
       },
       { notifyListeners: true }
     )
@@ -1703,7 +1735,8 @@ describe('OrcaRuntimeService', () => {
       experimentalNewWorktreeCardStyle: true,
       compactWorktreeCards: true,
       minimaxGroupId: 'group-42',
-      minimaxUsageModels: 'general,abab6.5'
+      minimaxUsageModels: 'general,abab6.5',
+      customAgentProfiles: [expect.objectContaining({ name: 'Codex DBA' })]
     })
   })
 

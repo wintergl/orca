@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { ArrowUpRight, Check, Circle, History, LoaderCircle, Workflow, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
-  WorkflowRunRecord,
   WorkflowStepRunRecord,
   WorkflowStepRunStatus,
   WorkflowTemplateRecord
@@ -33,6 +32,11 @@ import {
 import { useWorkflowWorkspaceContext } from './use-workflow-workspace-context'
 import { WorkflowReviewProgress } from './WorkflowReviewProgress'
 import { WorkflowRunControls } from './WorkflowRunControls'
+import {
+  workflowRunStatusLabel,
+  workflowStepStatusLabel,
+  workflowWorkspaceKindLabel
+} from './workflow-runtime-state-labels'
 
 const POLL_INTERVAL_MS = 1_000
 
@@ -183,7 +187,7 @@ export function WorkflowActivityBox(): React.JSX.Element {
           </span>
           {activeRun ? (
             <span className="ml-auto text-[10px] text-muted-foreground">
-              {runStatusLabel(activeRun.status)}
+              {workflowRunStatusLabel(activeRun.status)}
             </span>
           ) : (
             <span className="ml-auto" />
@@ -285,8 +289,8 @@ function RunSummary({
         </p>
         <p className="truncate text-[10px] text-muted-foreground">
           {currentStep
-            ? `${currentStep.nodeName} · ${currentStep.assignment?.runtimeAgent ?? currentStep.status}`
-            : `v${run.templateVersion} · ${run.workspace.kind}`}
+            ? `${currentStep.nodeName} · ${currentStep.assignment?.runtimeAgent ?? workflowStepStatusLabel(currentStep.status)}`
+            : `${translate('workflows.runtime.templateVersion', 'Version {{version}}', { version: run.templateVersion })} · ${workflowWorkspaceKindLabel(run.workspace.kind)}`}
         </p>
       </div>
       <div className="flex items-center gap-1">
@@ -324,21 +328,6 @@ function StepIcon({ status }: { status: WorkflowStepRunStatus | undefined }): Re
     return <XCircle className="size-3 text-destructive" />
   }
   return <Circle className="size-3 text-muted-foreground" />
-}
-
-function runStatusLabel(status: WorkflowRunRecord['status']): string {
-  const labels = {
-    draft: translate('workflows.status.draft', 'Configuring'),
-    ready: translate('workflows.status.ready', 'Ready'),
-    running: translate('workflows.status.running', 'Running'),
-    paused: translate('workflows.status.paused', 'Paused'),
-    'waiting-human': translate('workflows.status.waitingHuman', 'Needs attention'),
-    'review-limit-reached': translate('workflows.status.reviewLimit', 'Review limit'),
-    completed: translate('workflows.status.completed', 'Completed'),
-    failed: translate('workflows.status.failed', 'Failed'),
-    cancelled: translate('workflows.status.cancelled', 'Cancelled')
-  } as const
-  return labels[status]
 }
 
 function showError(error: unknown, fallback: string): void {

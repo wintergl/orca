@@ -48,6 +48,17 @@ describe('useColdParkedTerminalPresentation', () => {
     expect(presentedTargetId(hook.result)).toBe('b')
   })
 
+  it('clears the presented terminal when the group switches to a non-terminal tab', () => {
+    const hook = renderPresentationHook({
+      desiredTargetId: 'a',
+      coldParkedTargetIds: new Set()
+    })
+
+    hook.rerender({ desiredTargetId: null, coldParkedTargetIds: new Set() })
+
+    expect(presentedTargetId(hook.result)).toBeNull()
+  })
+
   it('retains the prior target until a cold target settles', () => {
     const hook = renderPresentationHook({
       desiredTargetId: 'a',

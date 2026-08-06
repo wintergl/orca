@@ -11,6 +11,7 @@ import {
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { isTaskProvider } from '../../../../shared/task-providers'
 import { normalizeDisabledTuiAgents } from '../../../../shared/tui-agent-selection'
+import { normalizeCustomAgentProfiles } from '../../../../shared/custom-agent-profiles'
 import { normalizePRBotAuthorOverrides } from '../../../../shared/pr-bot-author-overrides'
 import { normalizeWorktreeCardProperties } from '../../../../shared/worktree-card-properties'
 import type { PersistedUIState, TaskProvider } from '../../../../shared/types'
@@ -128,10 +129,8 @@ export const SettingsUpdate = z
         value === null || value === 'blank' || isTuiAgent(value) ? value : undefined
       )
       .optional(),
-    disabledTuiAgents: z
-      .unknown()
-      .transform((value) => normalizeDisabledTuiAgents(value))
-      .optional(),
+    disabledTuiAgents: z.unknown().transform(normalizeDisabledTuiAgents).optional(),
+    customAgentProfiles: z.unknown().transform(normalizeCustomAgentProfiles).optional(),
     agentDefaultArgs: z
       .unknown()
       .transform((value) => normalizeTuiAgentArgsRecord(value))

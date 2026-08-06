@@ -7,51 +7,34 @@ import {
 } from '@/components/agents/AgentSessionCreationForm'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
-import { launchAgentBackgroundSession } from '@/lib/launch-agent-background-session'
-import { useAppStore } from '@/store'
 
 export function AgentCreationDialog({
   open,
   agents,
   detecting,
-  onOpenChange
+  onOpenChange,
+  onCreateProfile
 }: {
   open: boolean
   agents: readonly AgentSessionCreationOption[]
   detecting: boolean
   onOpenChange: (open: boolean) => void
+  onCreateProfile: (request: AgentSessionCreationRequest) => Promise<void> | void
 }): React.JSX.Element {
   const [creating, setCreating] = useState(false)
-  const activeWorktreeId = useAppStore((state) => state.activeWorktreeId)
 
   const createAgent = async (request: AgentSessionCreationRequest): Promise<void> => {
-    if (!activeWorktreeId || creating) {
+    if (creating) {
       return
     }
     setCreating(true)
     try {
-      const result = await launchAgentBackgroundSession({
-        ...request,
-        worktreeId: activeWorktreeId,
-        launchSource: 'unknown'
-      })
-      if (!result) {
-        throw new Error(
-          translate(
-            'auto.components.settings.AgentCreationDialog.launchFailed',
-            'Could not build the Agent launch command.'
-          )
-        )
-      }
-      const store = useAppStore.getState()
+      await onCreateProfile(request)
       onOpenChange(false)
-      store.closeSettingsPage()
-      store.setActiveTab(result.tabId)
-      store.setActiveTabType('terminal')
       toast.success(
         translate(
           'auto.components.settings.AgentCreationDialog.created',
-          '{{value0}} was created in a new tab.',
+          '{{value0}} was saved and is ready to launch.',
           { value0: request.title }
         )
       )
@@ -75,23 +58,16 @@ export function AgentCreationDialog({
         <AgentSessionCreationForm
           agents={agents}
           creating={creating}
-          creationDisabled={!activeWorktreeId}
+          commandRequired
           detecting={detecting}
           heading={translate(
             'auto.components.settings.AgentCreationDialog.title',
             'Create a new Agent'
           )}
-          description={
-            activeWorktreeId
-              ? translate(
-                  'auto.components.settings.AgentCreationDialog.description',
-                  'Start an Agent in the active workspace. Its catalog name becomes the tab name.'
-                )
-              : translate(
-                  'auto.components.settings.AgentCreationDialog.noWorkspace',
-                  'Open a workspace before creating an Agent.'
-                )
-          }
+          description={translate(
+            'auto.components.settings.AgentCreationDialog.description',
+            'Choose a base Agent, then give it a provider-specific name and launch command.'
+          )}
           onCreate={(request) => void createAgent(request)}
         />
       </DialogContent>

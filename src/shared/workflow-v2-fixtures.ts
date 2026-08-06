@@ -1,6 +1,5 @@
-import singleAgentJson from './workflow-fixtures/v2.single-agent-end.json'
-import agentDecisionJson from './workflow-fixtures/v2.agent-decision-loop.json'
-import multiAgentJson from './workflow-fixtures/v2.multi-agent-human.json'
+import codeReviewJson from './workflow-fixtures/v2.code-review.json'
+import specReviewJson from './workflow-fixtures/v2.spec-review.json'
 import { parseWorkflowDefinitionV2 } from './workflow-definition-v2-schema'
 import type { WorkflowDefinitionV2 } from './workflow-definition-v2-types'
 
@@ -29,9 +28,14 @@ function parseFixture(raw: {
 }
 
 export const BUILTIN_WORKFLOW_V2_TEMPLATES: readonly WorkflowV2TemplateFixture[] = Object.freeze([
-  parseFixture(singleAgentJson as WorkflowV2TemplateFixture),
-  parseFixture(agentDecisionJson as WorkflowV2TemplateFixture),
-  parseFixture(multiAgentJson as WorkflowV2TemplateFixture)
+  parseFixture(specReviewJson as WorkflowV2TemplateFixture),
+  parseFixture(codeReviewJson as WorkflowV2TemplateFixture)
+])
+
+export const RETIRED_BUILTIN_WORKFLOW_V2_TEMPLATE_IDS = Object.freeze([
+  'builtin.v2.single-agent-end',
+  'builtin.v2.agent-decision-loop',
+  'builtin.v2.multi-agent-human'
 ])
 
 export function getBuiltinWorkflowV2Template(

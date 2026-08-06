@@ -26,7 +26,6 @@ import {
   RESULT_LISTBOX_ID,
   resultOptionDomId
 } from './TabBarCreateEntryRow'
-import type { TuiAgent } from '../../../../shared/types'
 import { translate } from '@/i18n/i18n'
 import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import { useAppStore } from '@/store'
@@ -40,7 +39,7 @@ type TabBarCreateEntryProps = {
   menuOpen: boolean
   menuOptions?: readonly TabCreateMenuOption[]
   onDidOpenEntry?: () => void
-  onLaunchAgent?: (agent: TuiAgent) => void
+  onLaunchAgent?: (option: TabAgentLaunchOption) => void
   onOpenDefaultTerminal?: () => void
   onOpenEntry?: (args: TabCreateEntryArgs) => Promise<void>
   onQueryChange?: (query: string) => void
@@ -201,7 +200,7 @@ export default function TabBarCreateEntry({
       return
     }
     if (selectedOption.kind === 'agent') {
-      onLaunchAgent?.(selectedOption.option.agent)
+      onLaunchAgent?.(selectedOption.option)
       onDidOpenEntry?.()
       return
     }

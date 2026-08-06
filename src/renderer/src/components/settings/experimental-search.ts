@@ -5,7 +5,6 @@ import { translateSearchKeyword } from './settings-search-keywords'
 import { getNewWorktreeCardStyleSearchEntry } from './new-worktree-card-style-search-entry'
 import { getNativeChatExperimentalSearchEntry } from './native-chat-experimental-search-entry'
 import { getEphemeralVmsSearchEntry } from './ephemeral-vms-search'
-import { getWorkflowV2ExperimentalSearchEntry } from './workflow-v2-experimental-search-entry'
 
 export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
   (): SettingsSearchEntry[] => [
@@ -141,7 +140,6 @@ export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
       ]
     },
     getNativeChatExperimentalSearchEntry(),
-    getWorkflowV2ExperimentalSearchEntry(),
     {
       title: translate(
         'auto.components.settings.experimental.search.9e4ddf776d',
@@ -261,7 +259,6 @@ export function getExperimentalSearchEntry() {
     nativeChat: findEntry(
       translate('auto.components.settings.experimental.search.nativeChat.title', 'Chat UI')
     ),
-    workflowV2: findEntry(translate('workflows.settings.v2.title', 'Workflow V2')),
     terminalAttention: findEntry(
       translate('auto.components.settings.experimental.search.9e4ddf776d', 'Terminal attention')
     ),

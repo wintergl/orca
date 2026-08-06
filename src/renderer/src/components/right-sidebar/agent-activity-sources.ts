@@ -121,8 +121,11 @@ export function getCurrentAgentActivityKind(source: AgentActivitySource): AgentA
       return 'working'
     case 'idle':
       return 'idle'
-    case 'done':
-      return source.foreground?.agent && !source.foreground.shellForeground ? 'idle' : null
+    case 'done': {
+      const hasActiveLifecycle = source.rowSource === 'live' && source.lifecycle?.phase === 'active'
+      const hasForegroundAgent = source.foreground?.agent && !source.foreground.shellForeground
+      return hasActiveLifecycle || hasForegroundAgent ? 'idle' : null
+    }
   }
 }
 

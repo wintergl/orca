@@ -12,6 +12,7 @@ import {
   waitForActiveWorktree,
   getActiveWorktreeId,
   getActiveTabType,
+  getWorktreeTabs,
   getOpenFiles,
   ensureTerminalVisible
 } from './helpers/store'
@@ -74,6 +75,29 @@ test.describe('File Open & Markdown Preview', () => {
     // check would pass even if the explorer crashed on mount and the panel
     // painted empty.
     await expect(orcaPage.locator('[data-orca-explorer-shell]')).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('file explorer mounts only after workspace UI restoration is stable', async ({
+    orcaPage
+  }) => {
+    await openFileExplorer(orcaPage)
+    await orcaPage.evaluate(() => {
+      window.__store?.getState().setWorkspaceSessionUiReady(false)
+    })
+
+    await expect(orcaPage.locator('[data-workspace-session-restore-status]')).toBeVisible()
+    await expect(orcaPage.locator('[data-orca-explorer-shell]')).toHaveCount(0)
+
+    await orcaPage.evaluate(() => {
+      window.__store?.getState().setWorkspaceSessionUiReady(true)
+    })
+    await expect(orcaPage.locator('[data-orca-explorer-shell]')).toBeVisible({ timeout: 5_000 })
+
+    const clickedFile = await clickFileInExplorer(orcaPage, ['package.json', 'README.md'])
+    expect(clickedFile).not.toBeNull()
+    await expect(orcaPage.locator('.editor-header-path').first()).toContainText(clickedFile!, {
+      timeout: 20_000
+    })
   })
 
   /**
@@ -190,5 +214,31 @@ test.describe('File Open & Markdown Preview', () => {
     const openFilesAfter = await getOpenFiles(orcaPage, worktreeId)
     expect(openFilesAfter.length).toBe(openFilesBefore.length)
     expect(openFilesAfter[0].filePath).toBe(openFilesBefore[0].filePath)
+  })
+
+  test('reopening an existing file from the explorer replaces the terminal surface', async ({
+    orcaPage
+  }) => {
+    const worktreeId = (await getActiveWorktreeId(orcaPage))!
+    await openFileExplorer(orcaPage)
+
+    const clickedFile = await clickFileInExplorer(orcaPage, ['package.json'])
+    expect(clickedFile).toBe('package.json')
+    await expect.poll(async () => getActiveTabType(orcaPage), { timeout: 5_000 }).toBe('editor')
+    await expect(orcaPage.locator('.editor-header-path').first()).toContainText('package.json', {
+      timeout: 20_000
+    })
+
+    const terminalTabsBefore = await getWorktreeTabs(orcaPage, worktreeId)
+    await switchToTerminal(orcaPage, worktreeId)
+    await expect.poll(async () => getActiveTabType(orcaPage), { timeout: 3_000 }).toBe('terminal')
+
+    const reopenedFile = await clickFileInExplorer(orcaPage, ['package.json'])
+    expect(reopenedFile).toBe('package.json')
+    await expect.poll(async () => getActiveTabType(orcaPage), { timeout: 5_000 }).toBe('editor')
+    await expect(orcaPage.locator('.editor-header-path').first()).toContainText('package.json')
+    await expect(orcaPage.locator('.monaco-editor').first()).toBeVisible({ timeout: 20_000 })
+    await expect(orcaPage.locator('[data-terminal-overlay-presented="true"]')).toHaveCount(0)
+    expect(await getWorktreeTabs(orcaPage, worktreeId)).toEqual(terminalTabsBefore)
   })
 })

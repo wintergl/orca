@@ -15,9 +15,9 @@ describe('WorkflowReviewProgress', () => {
     expect(screen.getByText(/1 \/ 3 Reviewers completed/)).toBeTruthy()
     expect(screen.getByText(/1 waiting/)).toBeTruthy()
     expect(screen.getByText(/1 failed/)).toBeTruthy()
-    expect(screen.getByText('succeeded')).toBeTruthy()
-    expect(screen.getByText('running')).toBeTruthy()
-    expect(screen.getByText('timed-out')).toBeTruthy()
+    expect(screen.getByText('Succeeded')).toBeTruthy()
+    expect(screen.getByText('Running')).toBeTruthy()
+    expect(screen.getByText('Timed out')).toBeTruthy()
   })
 })
 
@@ -26,6 +26,7 @@ function runRecord(): WorkflowRunRecord {
     id: 'run-1',
     currentNodeId: 'review',
     templateSnapshot: {
+      schemaVersion: 1,
       nodes: [{ id: 'review', type: 'review' }]
     },
     steps: [

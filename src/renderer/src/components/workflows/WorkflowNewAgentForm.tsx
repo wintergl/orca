@@ -29,7 +29,7 @@ export function WorkflowNewAgentForm({
       heading={translate('workflows.agentPicker.createTitle', 'Create a new Agent')}
       description={translate(
         'workflows.agentPicker.createDescription',
-        'The Agent starts in this Draft workspace and is assigned when it becomes idle.'
+        'Choose a base Agent, then give this Draft a provider-specific name and launch command.'
       )}
       onBack={onBack}
       onCreate={onCreate}

@@ -169,6 +169,7 @@ export const CreateAgentSessionParams: z.ZodType<RuntimeCreateAgentSessionReques
     agent: z.string().refine(isTuiAgent, 'Unknown agent preset'),
     agentCommand: StrictNonEmptyString(MAX_AGENT_COMMAND_BYTES, 'Invalid agent command').optional(),
     permissionMode: z.enum(['yolo', 'manual']).optional(),
+    title: z.string().trim().min(1).max(256).optional(),
     prompt: z
       .string()
       .refine(

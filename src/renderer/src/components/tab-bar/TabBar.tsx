@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import type {
   BrowserTab as BrowserTabState,
+  CustomAgentProfile,
   Tab,
   TerminalTab,
   TuiAgent,
@@ -66,7 +67,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import type { TabCreateEntryArgs } from './tab-create-entry-action'
-import { buildTabAgentLaunchOptions, orderTabLaunchAgents } from './tab-agent-launch-options'
+import {
+  buildTabAgentLaunchOptions,
+  orderTabLaunchAgents,
+  type TabAgentLaunchOption
+} from './tab-agent-launch-options'
 import { buildTabCreateMenuOptions, type TabCreateMenuOption } from './tab-create-menu-options'
 import { MobileEmulatorTabIntroCallout } from '../emulator-pane/MobileEmulatorTabIntroCallout'
 import { shouldShowMobileEmulatorTabIntro } from '../emulator-pane/mobile-emulator-tab-intro-visibility'
@@ -81,6 +86,7 @@ import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcrip
 import { selectTabBarAgentProjections } from './tab-agent-types-by-tab-id'
 import { resolveCommittedTitleAgentType } from '@/lib/pane-agent-evidence'
 import { WorkflowTab } from './WorkflowTab'
+import { getLaunchableCustomAgentProfiles } from '../../../../shared/custom-agent-profiles'
 
 const isWindows = navigator.userAgent.includes('Windows')
 const isMacOs = navigator.userAgent.includes('Mac')
@@ -89,6 +95,7 @@ const NEW_TAB_MENU_TERMINAL_FOCUS_TIMEOUT_MS = 5000
 type GitStatusEntries = ReturnType<typeof useAppStore.getState>['gitStatusByWorktree'][string]
 const EMPTY_GIT_STATUS_ENTRIES: GitStatusEntries = []
 const EMPTY_AGENT_CMD_OVERRIDES: Partial<Record<TuiAgent, string>> = {}
+const EMPTY_CUSTOM_AGENT_PROFILES: readonly CustomAgentProfile[] = []
 const EMPTY_UNIFIED_TABS: readonly Tab[] = []
 
 function getProjectRuntimeShellMenuMode(
@@ -333,15 +340,20 @@ function TabBarInner({
   const agentCmdOverrides = useAppStore(
     (s) => s.settings?.agentCmdOverrides ?? EMPTY_AGENT_CMD_OVERRIDES
   )
+  const customAgentProfiles = useAppStore(
+    (s) => s.settings?.customAgentProfiles ?? EMPTY_CUSTOM_AGENT_PROFILES
+  )
+  const disabledTuiAgents = useAppStore((s) => s.settings?.disabledTuiAgents ?? [])
   const agentDetectionTarget = useAgentDetectionTargetForWorktree(worktreeId)
   const { detectedIds } = useDetectedAgents(agentDetectionTarget)
   const agentLaunchOptions = useMemo(
     () =>
       buildTabAgentLaunchOptions(
         orderTabLaunchAgents(defaultAgent, detectedIds ?? []),
-        agentCmdOverrides
+        agentCmdOverrides,
+        getLaunchableCustomAgentProfiles(customAgentProfiles, disabledTuiAgents)
       ),
-    [agentCmdOverrides, defaultAgent, detectedIds]
+    [agentCmdOverrides, customAgentProfiles, defaultAgent, detectedIds, disabledTuiAgents]
   )
   const isWebClient = (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ === true
   const windowsTerminalCapabilityOwnerKey = getWindowsTerminalCapabilityOwnerKey(
@@ -596,12 +608,14 @@ function TabBarInner({
         break
     }
   }
-  const launchAgentFromNewTabEntry = (agent: TuiAgent): void => {
-    const option = agentLaunchOptions.find((candidate) => candidate.agent === agent)
+  const launchAgentFromNewTabEntry = (option: TabAgentLaunchOption): void => {
     const result = launchAgentInNewTab({
-      agent,
+      agent: option.agent,
       worktreeId,
       groupId: resolvedGroupId,
+      ...(option.agentCommand ? { agentCommand: option.agentCommand } : {}),
+      ...(option.permissionMode ? { permissionMode: option.permissionMode } : {}),
+      title: option.label,
       launchSource: 'tab_bar_quick_launch'
     })
     if (!result) {
@@ -609,7 +623,7 @@ function TabBarInner({
         translate(
           'auto.components.tab.bar.TabBar.ab589350e5',
           'Could not build launch command for {{value0}}.',
-          { value0: option?.label ?? agent }
+          { value0: option.label }
         )
       )
       return

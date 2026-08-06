@@ -37,9 +37,6 @@ function itemState(kind: AgentActivityKind, entry: AgentStatusEntry): AgentActiv
   if (kind === 'idle') {
     return 'idle'
   }
-  if (kind === 'completed') {
-    return 'done'
-  }
   return entry.state === 'blocked' || entry.state === 'waiting' ? entry.state : 'working'
 }
 
@@ -154,18 +151,10 @@ function buildItem(args: {
             source.entry.lastAssistantMessage?.trim() ||
             null
           : completionMessage
-  const completedAt = kind === 'completed' ? source.entry.stateStartedAt : null
+  const completedAt = completionMessage ? source.entry.stateStartedAt : null
   const id = activityIdentity
-    ? encodeAgentActivityDisplayId([
-        kind === 'completed' ? 'completed' : 'current',
-        activityIdentity.canonicalKey,
-        completedAt
-      ])
-    : encodeAgentActivityDisplayId([
-        kind === 'completed' ? 'legacy-completed' : 'unresolved-current',
-        source.paneKey,
-        completedAt
-      ])
+    ? encodeAgentActivityDisplayId(['current', activityIdentity.canonicalKey])
+    : encodeAgentActivityDisplayId(['unresolved-current', source.paneKey])
   return {
     id,
     kind,
@@ -211,9 +200,7 @@ function buildItem(args: {
 }
 
 function compareItems(left: AgentActivityItem, right: AgentActivityItem): number {
-  const leftTime = left.kind === 'completed' ? (left.completedAt ?? 0) : left.stateChangedAt
-  const rightTime = right.kind === 'completed' ? (right.completedAt ?? 0) : right.stateChangedAt
-  return rightTime - leftTime || left.id.localeCompare(right.id)
+  return right.stateChangedAt - left.stateChangedAt || left.id.localeCompare(right.id)
 }
 
 function compareAttentionItems(left: AgentActivityItem, right: AgentActivityItem): number {
@@ -225,68 +212,33 @@ export function buildAgentActivity(args: BuildAgentActivityArgs): AgentActivityM
   const sessionByProviderKey = indexAgentActivitySessions(args.sessions)
   const enabledVaultAgents = new Set(args.enabledVaultAgents)
   const current: AgentActivityItem[] = []
-  const completed: AgentActivityItem[] = []
 
   for (const source of buildAgentActivitySources(args)) {
     const workspace = args.workspaceInfoById.get(source.worktreeId)
     const kind = getCurrentAgentActivityKind(source)
-    if (kind) {
-      const item = buildItem({ source, kind, workspace, sessionByProviderKey, filters: args })
-      if (visibleInAgentVault({ item, workspace, filters: args, enabledVaultAgents })) {
-        current.push(item)
-      }
+    if (!kind) {
       continue
     }
-    if (isNormalAgentCompletion(source.entry) && source.entry.lastAssistantMessage?.trim()) {
-      const item = buildItem({
-        source,
-        kind: 'completed',
-        workspace,
-        sessionByProviderKey,
-        filters: args
-      })
-      if (visibleInAgentVault({ item, workspace, filters: args, enabledVaultAgents })) {
-        completed.push(item)
-      }
+    const item = buildItem({ source, kind, workspace, sessionByProviderKey, filters: args })
+    if (visibleInAgentVault({ item, workspace, filters: args, enabledVaultAgents })) {
+      current.push(item)
     }
   }
 
-  const currentAliases = new Set<string>()
-  for (const item of current) {
-    for (const alias of item.activityIdentity?.aliases ?? []) {
-      currentAliases.add(alias)
-    }
-  }
-  const dedupedCompleted = new Map<string, AgentActivityItem>()
-  for (const item of completed) {
-    const suppressed = [...(item.activityIdentity?.aliases ?? [])].some((alias) =>
-      currentAliases.has(alias)
-    )
-    if (suppressed) {
-      continue
-    }
-    const existing = dedupedCompleted.get(item.id)
-    if (!existing || compareItems(item, existing) < 0) {
-      dedupedCompleted.set(item.id, item)
-    }
-  }
   const orderedCurrent = [...current].sort(compareItems)
   const attention = orderedCurrent
     .filter((item) => item.kind === 'attention')
     .sort(compareAttentionItems)
   const working = orderedCurrent.filter((item) => item.kind === 'working')
   const idle = orderedCurrent.filter((item) => item.kind === 'idle')
-  const orderedCompleted = [...dedupedCompleted.values()].sort(compareItems)
   return {
     attention,
     working,
     idle,
-    completed: orderedCompleted,
     counts: {
       attention: attention.length,
       working: working.length,
-      idle: idle.length,
-      completed: orderedCompleted.length
+      idle: idle.length
     }
   }
 }

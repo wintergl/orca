@@ -295,6 +295,7 @@ import {
   recognizeAgentProcess
 } from '../../shared/agent-process-recognition'
 import { isTuiAgentEnabled, pickTuiAgent } from '../../shared/tui-agent-selection'
+import { normalizeCustomAgentProfiles } from '../../shared/custom-agent-profiles'
 import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
@@ -1043,6 +1044,7 @@ type RuntimeStore = {
     defaultTuiAgent?: GlobalSettings['defaultTuiAgent']
     disabledTuiAgents?: GlobalSettings['disabledTuiAgents']
     agentCmdOverrides?: GlobalSettings['agentCmdOverrides']
+    customAgentProfiles?: GlobalSettings['customAgentProfiles']
     agentDefaultArgs?: GlobalSettings['agentDefaultArgs']
     agentDefaultEnv?: GlobalSettings['agentDefaultEnv']
     terminalWindowsShell?: GlobalSettings['terminalWindowsShell']
@@ -3152,6 +3154,7 @@ export class OrcaRuntimeService {
     | 'defaultTuiAgent'
     | 'disabledTuiAgents'
     | 'agentCmdOverrides'
+    | 'customAgentProfiles'
     | 'agentDefaultArgs'
     | 'agentDefaultEnv'
     | 'agentStatusHooksEnabled'
@@ -3176,6 +3179,7 @@ export class OrcaRuntimeService {
       defaultTuiAgent: settings.defaultTuiAgent ?? null,
       disabledTuiAgents: settings.disabledTuiAgents ?? [],
       agentCmdOverrides: settings.agentCmdOverrides ?? {},
+      customAgentProfiles: normalizeCustomAgentProfiles(settings.customAgentProfiles),
       agentDefaultArgs: settings.agentDefaultArgs ?? {},
       agentDefaultEnv: settings.agentDefaultEnv ?? {},
       agentStatusHooksEnabled: settings.agentStatusHooksEnabled !== false,
@@ -3200,6 +3204,7 @@ export class OrcaRuntimeService {
       | 'agentStatusHooksEnabled'
       | 'defaultTuiAgent'
       | 'disabledTuiAgents'
+      | 'customAgentProfiles'
       | 'agentDefaultArgs'
       | 'agentDefaultEnv'
       | 'defaultTaskSource'
@@ -3220,6 +3225,7 @@ export class OrcaRuntimeService {
     | 'defaultTuiAgent'
     | 'disabledTuiAgents'
     | 'agentCmdOverrides'
+    | 'customAgentProfiles'
     | 'agentDefaultArgs'
     | 'agentDefaultEnv'
     | 'agentStatusHooksEnabled'
@@ -22056,6 +22062,7 @@ export class OrcaRuntimeService {
           request.agent,
           request.agentCommand ?? null,
           request.permissionMode ?? null,
+          request.title ?? null,
           request.prompt ?? null,
           request.promptDelivery ?? null,
           request.agentArgs ?? null,
@@ -22124,6 +22131,7 @@ export class OrcaRuntimeService {
             request.agent,
             request.agentCommand ?? null,
             request.permissionMode ?? null,
+            request.title ?? null,
             request.prompt ?? null,
             request.promptDelivery ?? null,
             request.agentArgs ?? null,
@@ -22222,6 +22230,7 @@ export class OrcaRuntimeService {
           env: startup.env,
           launchConfig: startup.launchConfig,
           launchAgent: request.agent,
+          title: request.title,
           startupCommandDelivery: startup.startupCommandDelivery,
           cwd: startupCwd,
           presentation: request.presentation ?? 'background',

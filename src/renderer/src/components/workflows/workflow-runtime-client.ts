@@ -110,6 +110,12 @@ export function archiveWorkflowTemplate(
   })
 }
 
+export function resetDefaultWorkflowConfigurations(
+  target: RuntimeClientTarget
+): Promise<WorkflowTemplateRecord[]> {
+  return callRuntimeRpc(target, 'workflow.templateResetDefaults', { requestId: requestId() })
+}
+
 export function createWorkflowRun(
   target: RuntimeClientTarget,
   input: {

@@ -19,7 +19,7 @@ export type AgentActivityWorkspaceInfo = {
   executionHostId: ExecutionHostId | null
 }
 
-export type AgentActivityKind = 'attention' | 'working' | 'idle' | 'completed'
+export type AgentActivityKind = 'attention' | 'working' | 'idle'
 
 export type AgentActivityNavigationTarget = {
   worktreeId: string
@@ -44,7 +44,7 @@ export type AgentActivityNavigationUnavailableReason =
 export type AgentActivityItem = {
   id: string
   kind: AgentActivityKind
-  state: 'working' | 'blocked' | 'waiting' | 'idle' | 'done'
+  state: 'working' | 'blocked' | 'waiting' | 'idle'
   paneKey: string | null
   worktreeId: string | null
   executionHostId: ExecutionHostId | null
@@ -74,8 +74,7 @@ export type AgentActivityModel = {
   attention: readonly AgentActivityItem[]
   working: readonly AgentActivityItem[]
   idle: readonly AgentActivityItem[]
-  completed: readonly AgentActivityItem[]
-  counts: { attention: number; working: number; idle: number; completed: number }
+  counts: { attention: number; working: number; idle: number }
 }
 
 export type BuildAgentActivityArgs = {

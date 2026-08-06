@@ -24,6 +24,15 @@ import { WorkflowRunV2BudgetSnapshot } from './WorkflowRunV2BudgetSnapshot'
 import { WorkflowRunV1BudgetSnapshot } from './WorkflowRunV1BudgetSnapshot'
 import { buildWorkflowDiagnosticSummary } from './workflow-diagnostic-summary'
 import { ArtifactPanel, ContentPanel, StepIdentity, StepStateIcon } from './WorkflowRunStepPanels'
+import { workflowEventTypeLabel } from './workflow-event-type-labels'
+import {
+  workflowExecutionHostLabel,
+  workflowNodeTypeLabel,
+  workflowRunStatusLabel,
+  workflowRuntimeValueLabel,
+  workflowStepStatusLabel,
+  workflowWorkspaceKindLabel
+} from './workflow-runtime-state-labels'
 
 export function WorkflowRunDetail({
   run,
@@ -83,7 +92,8 @@ export function WorkflowRunDetail({
         <div className="mb-3">
           <h2 className="truncate text-sm font-semibold">{run.templateName}</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {run.status} · {run.workspace.kind} · {run.executionHostId}
+            {workflowRunStatusLabel(run.status)} · {workflowWorkspaceKindLabel(run.workspace.kind)}{' '}
+            · {workflowExecutionHostLabel(run.executionHostId)}
           </p>
         </div>
         <div className="space-y-1">
@@ -101,8 +111,10 @@ export function WorkflowRunDetail({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-medium">{step.nodeName}</span>
                 <span className="block truncate text-[11px] text-muted-foreground">
-                  {step.status} ·{' '}
-                  {step.assignment?.runtimeAgent ?? step.assignment?.agentLifecycleId ?? 'Engine'}
+                  {workflowStepStatusLabel(step.status)} ·{' '}
+                  {step.assignment?.runtimeAgent ??
+                    step.assignment?.agentLifecycleId ??
+                    workflowRuntimeValueLabel('engine')}
                 </span>
               </span>
             </button>
@@ -115,7 +127,7 @@ export function WorkflowRunDetail({
           <div className="space-y-2">
             {events.map((event) => (
               <div key={event.id} className="text-[11px]">
-                <p className="font-medium">{event.type}</p>
+                <p className="font-medium">{workflowEventTypeLabel(event.type)}</p>
                 <p className="text-muted-foreground">
                   #{event.sequence} · {formatTimestamp(event.createdAt)}
                 </p>
@@ -134,7 +146,9 @@ export function WorkflowRunDetail({
                     translate('workflows.run.details', 'Workflow run details')}
                 </h2>
                 <Badge variant={run.status === 'completed' ? 'default' : 'secondary'}>
-                  {selectedStep?.status ?? run.status}
+                  {selectedStep
+                    ? workflowStepStatusLabel(selectedStep.status)
+                    : workflowRunStatusLabel(run.status)}
                 </Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -143,7 +157,7 @@ export function WorkflowRunDetail({
                       'workflows.run.stepMetadata',
                       '{{type}} · local cycle {{round}} · lineage cycle {{lineageCycle}} · attempt {{attempt}}',
                       {
-                        type: selectedStep.nodeType,
+                        type: workflowNodeTypeLabel(selectedStep.nodeType),
                         round: selectedStep.round,
                         lineageCycle: run.lineageCycleBase + selectedStep.round,
                         attempt: selectedStep.attempt

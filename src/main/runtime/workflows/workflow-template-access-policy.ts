@@ -9,9 +9,6 @@ export function assertWorkflowTemplateEditable(row: WorkflowTemplateRow): void {
 }
 
 export function assertWorkflowTemplateArchivable(row: WorkflowTemplateRow): void {
-  if (row.scope === 'built-in') {
-    throw new WorkflowError('workflow_forbidden', 'Built-in templates cannot be archived.')
-  }
   if (row.archived_at) {
     throw new WorkflowError('workflow_archived', 'Template is already archived.')
   }

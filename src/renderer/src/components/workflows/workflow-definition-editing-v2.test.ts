@@ -3,6 +3,7 @@ import type { WorkflowDefinitionV2 } from '../../../../shared/workflow-definitio
 import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
 import {
   addWorkflowV2Step,
+  moveWorkflowV2Step,
   removeWorkflowV2Step,
   setWorkflowV2EntryStep,
   updateWorkflowV2Step
@@ -86,7 +87,31 @@ describe('workflow definition editing v2', () => {
     )
     definition = removeWorkflowV2Step(definition, added.stepId)
     const entry = definition.steps.find((step) => step.id === 'agent-1')
-    expect(entry?.kind === 'agent' && entry.next.targetStepId).toBe('agent-1')
+    expect(entry?.kind === 'agent' && entry.next.targetStepId).toBe('end')
+  })
+
+  it('inserts executable steps before End and lets their display order move freely', () => {
+    const added = addWorkflowV2Step(blank(), 'agent')
+    expect(added.definition.steps.map((step) => step.id)).toEqual(['agent-1', added.stepId, 'end'])
+
+    const moved = moveWorkflowV2Step(added.definition, added.stepId, -1)
+    expect(moved.steps.map((step) => step.id)).toEqual([added.stepId, 'agent-1', 'end'])
+    expect(() => parseWorkflowDefinitionV2(moved)).not.toThrow()
+  })
+
+  it('removes an extra End and retargets routes to the remaining End', () => {
+    const added = addWorkflowV2Step(blank(), 'end')
+    const definition = updateWorkflowV2Step(added.definition, 'agent-1', (step) =>
+      step.kind === 'agent' ? { ...step, next: { targetStepId: added.stepId } } : step
+    )
+
+    const removed = removeWorkflowV2Step(definition, added.stepId)
+    const entry = removed.steps.find((step) => step.id === 'agent-1')
+    expect(entry?.kind === 'agent' && entry.next.targetStepId).toBe('end')
+    expect(() => parseWorkflowDefinitionV2(removed)).not.toThrow()
+    expect(() => removeWorkflowV2Step(removed, 'end')).toThrow(
+      'Workflow must keep at least one End step.'
+    )
   })
 
   it('can switch entry to another agent/decision step', () => {

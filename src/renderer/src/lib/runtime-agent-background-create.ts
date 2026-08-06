@@ -4,7 +4,10 @@ import type { SessionOptionValue } from '../../../shared/native-chat-session-opt
 import type { RuntimeTerminalCreate } from '../../../shared/runtime-types'
 import type { TuiAgent } from '../../../shared/types'
 import type { AgentPermissionMode } from '../../../shared/tui-agent-permissions'
-import { AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import {
+  AGENT_SESSION_CUSTOM_TITLE_RUNTIME_CAPABILITY,
+  AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY
+} from '../../../shared/protocol-version'
 import {
   createAgentSessionCreateOperation,
   toAgentLaunchPreferences,
@@ -37,9 +40,11 @@ export async function createRuntimeAgentBackgroundTerminal(args: {
   const launchPreferences = toAgentLaunchPreferences(args.sessionOptions)
   return await runRemoteAgentSessionLaunch({
     environmentId: args.environmentId,
-    ...(args.agentCommand || args.permissionMode
-      ? { hostAuthorityCapability: AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY }
-      : {}),
+    ...(args.legacy.title
+      ? { hostAuthorityCapability: AGENT_SESSION_CUSTOM_TITLE_RUNTIME_CAPABILITY }
+      : args.agentCommand || args.permissionMode
+        ? { hostAuthorityCapability: AGENT_SESSION_LAUNCH_OVERRIDES_RUNTIME_CAPABILITY }
+        : {}),
     hostAuthority: () =>
       operation.run((clientOperationId) =>
         callRuntimeRpc<{ terminal: RuntimeTerminalCreate }>(
@@ -51,6 +56,7 @@ export async function createRuntimeAgentBackgroundTerminal(args: {
               agent: args.agent,
               ...(args.agentCommand ? { agentCommand: args.agentCommand } : {}),
               ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
+              ...(args.legacy.title ? { title: args.legacy.title } : {}),
               ...(args.prompt
                 ? { prompt: args.prompt, promptDelivery: 'auto-submit' as const }
                 : {}),

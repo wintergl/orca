@@ -2,16 +2,21 @@ import React, { useCallback } from 'react'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownMenuItem, DropdownMenuShortcut } from '@/components/ui/dropdown-menu'
-import { getAgentCatalog, AgentIcon } from '@/lib/agent-catalog'
+import { AgentIcon } from '@/lib/agent-catalog'
 import { useAppStore } from '@/store'
 import { useAgentDetectionTargetForWorktree } from '@/hooks/useAgentDetectionTarget'
 import { useDetectedAgents } from '@/hooks/useDetectedAgents'
 import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
-import type { TuiAgent } from '../../../../shared/types'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import { filterEnabledTuiAgents } from '../../../../shared/tui-agent-selection'
 import { translate } from '@/i18n/i18n'
+import {
+  buildTabAgentLaunchOptions,
+  orderTabLaunchAgents,
+  type TabAgentLaunchOption
+} from './tab-agent-launch-options'
+import { getLaunchableCustomAgentProfiles } from '../../../../shared/custom-agent-profiles'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -32,25 +37,6 @@ export type QuickLaunchAgentMenuItemsProps = {
   launchSource?: LaunchSource
   /** Called after a prompt is queued into the agent, or immediately for argv prompt launches. */
   onPromptDelivered?: () => void
-}
-
-function getCatalogEntry(agent: TuiAgent): { id: TuiAgent; label: string } | null {
-  return getAgentCatalog().find((a) => a.id === agent) ?? null
-}
-
-function orderAgents(
-  defaultAgent: TuiAgent | 'blank' | null | undefined,
-  detected: TuiAgent[]
-): TuiAgent[] {
-  const inCatalogOrder = getAgentCatalog()
-    .filter((entry) => detected.includes(entry.id))
-    .map((entry) => entry.id)
-  if (!defaultAgent || defaultAgent === 'blank' || !inCatalogOrder.includes(defaultAgent)) {
-    return inCatalogOrder
-  }
-  // Why: surface the user's configured default first — matches the prior
-  // split-button behavior where the default agent was the primary action.
-  return [defaultAgent, ...inCatalogOrder.filter((id) => id !== defaultAgent)]
 }
 
 export function shouldShowLaunchWatchdogTimeout({ hasPty }: { hasPty: boolean }): boolean {
@@ -108,6 +94,8 @@ function QuickLaunchAgentMenuItemsInner({
   const { detectedIds } = useDetectedAgents(agentDetectionTarget)
   const defaultAgent = useAppStore((s) => s.settings?.defaultTuiAgent)
   const disabledAgents = useAppStore((s) => s.settings?.disabledTuiAgents ?? [])
+  const commandOverrides = useAppStore((s) => s.settings?.agentCmdOverrides ?? {})
+  const customAgentProfiles = useAppStore((s) => s.settings?.customAgentProfiles ?? [])
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const newAgentShortcut = useOptionalShortcutLabel('tab.newAgent')
@@ -118,13 +106,15 @@ function QuickLaunchAgentMenuItemsInner({
   }, [openSettingsPage, openSettingsTarget])
 
   const runLaunch = useCallback(
-    (agent: TuiAgent) => {
-      const entry = getCatalogEntry(agent)
-      const label = entry?.label ?? agent
+    (option: TabAgentLaunchOption) => {
+      const label = option.label
       const result = launchAgentInNewTab({
-        agent,
+        agent: option.agent,
         worktreeId,
         groupId,
+        ...(option.agentCommand ? { agentCommand: option.agentCommand } : {}),
+        ...(option.permissionMode ? { permissionMode: option.permissionMode } : {}),
+        title: option.label,
         ...(prompt !== undefined ? { prompt } : {}),
         ...(promptDelivery !== undefined ? { promptDelivery } : {}),
         ...(launchSource !== undefined ? { launchSource } : {}),
@@ -172,7 +162,11 @@ function QuickLaunchAgentMenuItemsInner({
   )
 
   const enabledDetectedIds = detectedIds ? filterEnabledTuiAgents(detectedIds, disabledAgents) : []
-  const agents = detectedIds ? orderAgents(defaultAgent, enabledDetectedIds) : []
+  const agents = buildTabAgentLaunchOptions(
+    detectedIds ? orderTabLaunchAgents(defaultAgent, enabledDetectedIds) : [],
+    commandOverrides,
+    getLaunchableCustomAgentProfiles(customAgentProfiles, disabledAgents)
+  )
 
   return (
     <>
@@ -189,15 +183,17 @@ function QuickLaunchAgentMenuItemsInner({
               )}
         </DropdownMenuItem>
       ) : null}
-      {agents.map((agent) => {
-        const entry = getCatalogEntry(agent)
-        const label = entry?.label ?? agent
+      {agents.map((option) => {
+        const label = option.label
         const showsDefaultAgentShortcut =
-          newAgentShortcut !== null && defaultAgent !== 'blank' && agent === defaultAgent
+          newAgentShortcut !== null &&
+          defaultAgent !== 'blank' &&
+          option.agent === defaultAgent &&
+          !option.agentCommand
         return (
           <DropdownMenuItem
-            key={agent}
-            onSelect={() => runLaunch(agent)}
+            key={option.id}
+            onSelect={() => runLaunch(option)}
             className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
             title={translate(
               'auto.components.tab.bar.QuickLaunchButton.ec2adf093e',
@@ -205,7 +201,7 @@ function QuickLaunchAgentMenuItemsInner({
               { value0: label }
             )}
           >
-            <AgentIcon agent={agent} size={14} />
+            <AgentIcon agent={option.agent} size={14} />
             <span className="flex-1">{label}</span>
             {showsDefaultAgentShortcut ? (
               <DropdownMenuShortcut>{newAgentShortcut}</DropdownMenuShortcut>

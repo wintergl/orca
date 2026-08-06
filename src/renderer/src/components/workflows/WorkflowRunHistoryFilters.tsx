@@ -9,6 +9,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { translate } from '@/i18n/i18n'
+import { workflowRunStatusLabel } from './workflow-runtime-state-labels'
 
 export type WorkflowHistoryTemplateOption = { id: string; name: string }
 
@@ -76,7 +77,7 @@ export function WorkflowRunHistoryFilters({
             </SelectItem>
             {RUN_STATUSES.map((value) => (
               <SelectItem key={value} value={value}>
-                {value}
+                {workflowRunStatusLabel(value)}
               </SelectItem>
             ))}
           </SelectContent>

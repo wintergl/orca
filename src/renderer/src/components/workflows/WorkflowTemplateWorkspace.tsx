@@ -10,6 +10,7 @@ import { parseWorkflowDefinitionV1 } from '../../../../shared/workflow-definitio
 import { parseWorkflowDefinitionV2 } from '../../../../shared/workflow-definition-v2-schema'
 import { validateWorkflowPromptBoundaries } from '../../../../shared/workflow-prompt-boundary-validation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,7 @@ import {
   archiveWorkflowTemplate,
   cloneWorkflowTemplate,
   createWorkflowTemplate,
+  resetDefaultWorkflowConfigurations,
   updateWorkflowTemplate
 } from './workflow-runtime-client'
 import { setWorkflowSelectedTemplate } from './workflow-renderer-state'
@@ -63,6 +65,7 @@ export function WorkflowTemplateWorkspace({
   const [draft, setDraft] = useState<EditorDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
+  const confirm = useConfirmationDialog()
   const workflowV2Blocked = workflowV2Enabled === false && draft?.definition.schemaVersion === 2
   const activeRunCount =
     draft?.kind === 'existing'
@@ -188,8 +191,17 @@ export function WorkflowTemplateWorkspace({
     }
   }
 
-  const archiveTemplate = async (template: WorkflowTemplateRecord): Promise<void> => {
-    if (template.scope === 'built-in') {
+  const deleteTemplate = async (template: WorkflowTemplateRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: translate('workflows.templates.deleteTitle', 'Delete workflow?'),
+      description: translate(
+        'workflows.templates.deleteDescription',
+        'This removes the workflow from the configuration list. Default workflows can be restored with Reset defaults.'
+      ),
+      confirmLabel: translate('workflows.templates.delete', 'Delete'),
+      confirmVariant: 'destructive'
+    })
+    if (!confirmed) {
       return
     }
     try {
@@ -203,12 +215,42 @@ export function WorkflowTemplateWorkspace({
         setDraft(null)
       }
       await onTemplatesChanged()
-      toast.success(translate('workflows.templates.archived', 'Template archived'))
+      toast.success(translate('workflows.templates.deleted', 'Workflow deleted'))
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : translate('workflows.errors.archiveTemplate', 'Could not archive template')
+          : translate('workflows.errors.deleteTemplate', 'Could not delete workflow')
+      )
+    }
+  }
+
+  const resetDefaults = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: translate('workflows.templates.resetDefaultsTitle', 'Reset default workflows?'),
+      description: translate(
+        'workflows.templates.resetDefaultsDescription',
+        'Restores the two default V2 workflows and replaces any edits made to them.'
+      ),
+      confirmLabel: translate('workflows.templates.resetDefaults', 'Reset defaults')
+    })
+    if (!confirmed) {
+      return
+    }
+    try {
+      const restored = await resetDefaultWorkflowConfigurations(target)
+      const preferred = restored.find((template) => template.id === selected?.id) ?? restored[0]
+      if (preferred) {
+        setWorkflowSelectedTemplate(preferred)
+        setDraft(toExistingDraft(preferred))
+      }
+      await onTemplatesChanged(preferred)
+      toast.success(translate('workflows.templates.defaultsRestored', 'Default workflows restored'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : translate('workflows.errors.resetDefaults', 'Could not reset default workflows')
       )
     }
   }
@@ -336,7 +378,8 @@ export function WorkflowTemplateWorkspace({
         onNew={startNew}
         onOpen={openTemplate}
         onCopy={copyTemplate}
-        onArchive={archiveTemplate}
+        onDelete={deleteTemplate}
+        onResetDefaults={resetDefaults}
       />
     </div>
   )
@@ -356,7 +399,7 @@ function toExistingDraft(template: WorkflowTemplateRecord): EditorDraft {
 function scopeLabel(scope: WorkflowTemplateScope): string {
   switch (scope) {
     case 'built-in':
-      return translate('workflows.scope.builtin', 'Built-in')
+      return translate('workflows.scope.default', 'Default')
     case 'personal':
       return translate('workflows.scope.personal', 'Personal')
     case 'project':
